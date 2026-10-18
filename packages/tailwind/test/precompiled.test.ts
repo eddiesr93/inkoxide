@@ -11,9 +11,9 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { TailwindCompiler } from '../src/compile.ts';
 import * as compiler from '../src/index.ts';
-import { precompile } from '../src/precompile.ts';
 import { candidatesIn, scanFiles, sourceFiles } from '../src/scan.ts';
 import { A4_UNITS, SUPPORTED, UNSUPPORTED } from '../src/supported.ts';
+import { TableBuilder } from '../src/table-builder.ts';
 import { type Table, TableSource } from '../src/table-source.ts';
 
 const ROOT = fileURLToPath(new URL('../../..', import.meta.url));
@@ -48,6 +48,13 @@ function classStrings(files: string[]): string[] {
   return [...out].sort();
 }
 
+/** The table of the classes Tailwind knows among `candidates`, for the bundled theme. */
+async function tableOf(candidates: Iterable<string>): Promise<Table> {
+  const builder = await TableBuilder.create();
+  builder.add(candidates);
+  return builder.table();
+}
+
 type Entry = typeof compiler;
 let table: Table;
 let precompiled: Entry;
@@ -70,7 +77,7 @@ beforeAll(async () => {
   const candidates = scanFiles(files);
   for (const f of SUPPORTED) for (const cls of Object.keys(f.examples)) candidatesIn(cls, candidates);
   for (const { example } of UNSUPPORTED) candidatesIn(example, candidates);
-  table = await precompile({ candidates });
+  table = await tableOf(candidates);
   await compiler.initTailwind();
   compiler.setTailwindStrict(true);
   precompiled = await withTable(table);
@@ -156,7 +163,7 @@ describe('the precompiled entry', () => {
   });
 
   it('is the same bytes for the same classes and theme', async () => {
-    const again = await precompile({ candidates: Object.keys(table.classes).reverse() });
+    const again = await tableOf(Object.keys(table.classes).reverse());
     expect(JSON.stringify(again)).toBe(JSON.stringify(table));
   });
 

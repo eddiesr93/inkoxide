@@ -1,37 +1,10 @@
 import { type MediaQuery, parseMedia } from '@inkoxide/style/internal';
 import postcss, { type AtRule, type Container, type Rule } from 'postcss';
 
+import { memo } from './cache.ts';
+import type { CandidateCss, CandidateProblem, CandidateResult } from './candidate.ts';
+import { sortByRank } from './parse.ts';
 import { DEFAULT_THEME_CSS } from './theme.ts';
-
-/**
- * A declaration, `[property, value, media]`: `media` are the page media it is for (`md:`,
- * `landscape:`), all of which must match; none for most.
- */
-export type Decl = readonly [property: string, value: string, media: readonly MediaQuery[]];
-
-/** What Tailwind emits for one class, before any value is resolved. */
-export interface CandidateCss {
-  /** Declarations in source order; custom properties included. */
-  decls: Decl[];
-  /** `@property --tw-*` initial values the rule depends on. */
-  initials: Array<[string, string]>;
-}
-
-/** Why a class cannot be used, when Tailwind's output already says so. */
-export type CandidateProblem =
-  | { kind: 'unknown' }
-  /** Not in the table a build made (`precompiled.ts`): unknown, or not seen. */
-  | { kind: 'unseen' }
-  /** A media query around the rule that does not parse or reads the screen: why, quoting it. */
-  | { kind: 'media'; message: string }
-  /** An at-rule other than `@media` and `@supports` (`@container …`). */
-  | { kind: 'atRule'; rule: string }
-  /** `@media` inside the rule: sizes that follow the screen's (`container`). */
-  | { kind: 'screenSizes'; rule: string }
-  /** A selector beyond the class: a state (`&:hover`), a part (`::marker`), other elements. */
-  | { kind: 'selector'; selector: string };
-
-export type CandidateResult = { ok: true; css: CandidateCss } | { ok: false; problem: CandidateProblem };
 
 /**
  * What is used of Tailwind's design system. `tailwindcss` and `@tailwindcss/node` each declare the
@@ -100,21 +73,13 @@ export class TailwindCompiler {
   /** Sorts classes the way Tailwind orders them in its stylesheet (later wins on conflicts). */
   sort(classes: string[]): string[] {
     if (classes.length < 2) return classes;
-    const order = this.ds.getClassOrder(classes);
-    return order
-      .map(([cls, rank], i) => ({ cls, rank: rank ?? -1n, i }))
-      .sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : a.i - b.i))
-      .map((x) => x.cls);
+    const ranks = this.ranks(classes);
+    return sortByRank(classes, (cls) => ranks.get(cls));
   }
 
   /** The CSS of one class, cached for the life of the compiler. */
   candidate(cls: string): CandidateResult {
-    let hit = this.cache.get(cls);
-    if (!hit) {
-      hit = this.compileOne(cls);
-      this.cache.set(cls, hit);
-    }
-    return hit;
+    return memo(this.cache, cls, (c) => this.compileOne(c));
   }
 
   private compileOne(cls: string): CandidateResult {

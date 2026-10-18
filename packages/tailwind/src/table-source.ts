@@ -1,11 +1,12 @@
 /**
- * The table the Tailwind build plugin writes (`precompile.ts`), and the class source that reads it
+ * The table the Tailwind build plugin writes (`table-builder.ts`), and the class source that reads it
  * in place of Tailwind's compiler (`precompiled.ts`). Imports neither the compiler nor postcss.
  */
 import { type MediaQuery, parseMedia } from '@inkoxide/style/internal';
 
-import type { CandidateCss, CandidateProblem, CandidateResult } from './compile.ts';
-import type { ClassSource } from './parse.ts';
+import { memo } from './cache.ts';
+import type { CandidateCss, CandidateProblem, CandidateResult } from './candidate.ts';
+import { type ClassSource, sortByRank } from './parse.ts';
 
 /** The version of the table's format: a table of another fails `initTailwind()`. */
 export const TABLE_FORMAT = 1;
@@ -45,26 +46,14 @@ export class TableSource implements ClassSource {
   }
 
   candidate(cls: string): CandidateResult {
-    let hit = this.results.get(cls);
-    if (!hit) {
-      hit = this.read(cls);
-      this.results.set(cls, hit);
-    }
-    return hit;
+    return memo(this.results, cls, (c) => this.read(c));
   }
 
   private read(cls: string): CandidateResult {
     const entry = Object.hasOwn(this.table.classes, cls) ? this.table.classes[cls] : undefined;
     if (entry === undefined) return { ok: false, problem: { kind: 'unseen' } };
     if ('problem' in entry) return { ok: false, problem: entry.problem };
-    const query = (text: string) => {
-      let q = this.queries.get(text);
-      if (!q) {
-        q = parseMedia(text);
-        this.queries.set(text, q);
-      }
-      return q;
-    };
+    const query = (text: string) => memo(this.queries, text, parseMedia);
     const css: CandidateCss = {
       decls: entry.decls.map(([p, v, media]) => [p, v, media.map(query)]),
       initials: entry.initials,
@@ -74,15 +63,10 @@ export class TableSource implements ClassSource {
   }
 
   sort(classes: string[]): string[] {
-    if (classes.length < 2) return classes;
-    const rank = (cls: string) => {
+    return sortByRank(classes, (cls) => {
       this.candidate(cls);
-      return this.ranks.get(cls) ?? -1n;
-    };
-    return classes
-      .map((cls, i) => ({ cls, rank: rank(cls), i }))
-      .sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : a.i - b.i))
-      .map((x) => x.cls);
+      return this.ranks.get(cls);
+    });
   }
 
   themeValue(name: string): string | undefined {

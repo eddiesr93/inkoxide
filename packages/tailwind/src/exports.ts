@@ -1,6 +1,6 @@
 // What both entries (api.ts and precompiled.ts) export besides `initTailwind`.
 export { DEFAULT_THEME_CSS } from './theme.ts';
-export { isTailwindReady, setTailwindStrict, type TailwindOptions, tw } from './core.ts';
+export { isTailwindReady, setTailwindStrict, type TailwindOptions, tw } from './tw.ts';
 export { type TwUnits, UnsupportedUtilityError } from './parse.ts';
 // The style values it shares with @inkoxide/react, from @inkoxide/style.
 export {

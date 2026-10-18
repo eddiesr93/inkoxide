@@ -14,7 +14,8 @@ import {
   type UnsupportedUtilityError,
 } from './parse.ts';
 
-export interface TailwindOptions {
+/** A theme: its CSS, and where its `@import`s resolve from. */
+export interface ThemeOptions {
   /**
    * Theme CSS (`@import "tailwindcss/theme"; @theme { … }`). Defaults to `DEFAULT_THEME_CSS`, the
    * bundled theme; extend that one to keep its font stacks, which name the bundled fonts.
@@ -25,6 +26,9 @@ export interface TailwindOptions {
    * browser, `css` can import only `tailwindcss/theme`, and `base` is not used.
    */
   base?: string;
+}
+
+export interface TailwindOptions extends ThemeOptions {
   /**
    * Throw on unsupported classes (default outside production). When false, the class is
    * logged once and ignored.
@@ -45,21 +49,21 @@ const warned = new Set<string>();
 const EMPTY: FlatStyle = Object.freeze({}) as FlatStyle;
 
 /**
- * Applies `strict` and `cacheSize`, then loads a class source: `theme()` when the options set a
- * theme, else `fallback()` unless one is loaded or being loaded already. Waits for the source asked
- * for last, including one asked for while it waits.
+ * Applies `strict` and `cacheSize`, then loads a class source with `load`: in place of the one
+ * there is when `replace` (the options set a theme), else unless one is loaded or being loaded
+ * already. Waits for the source asked for last, including one asked for while it waits.
  */
 export async function initSource(
   opts: TailwindOptions,
-  theme: (() => Promise<ClassSource>) | undefined,
-  fallback: () => Promise<ClassSource>,
+  load: () => Promise<ClassSource>,
+  replace: boolean,
 ): Promise<void> {
   if (opts.strict !== undefined) setTailwindStrict(opts.strict);
   if (opts.cacheSize !== undefined) cache = new Lru<FlatStyle>(opts.cacheSize);
-  if (theme) {
-    loading = theme();
+  if (replace) {
+    loading = load();
   } else if (!source) {
-    loading ??= fallback();
+    loading ??= load();
   }
   while (loading) {
     const load = loading;

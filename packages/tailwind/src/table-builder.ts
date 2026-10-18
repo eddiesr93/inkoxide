@@ -4,18 +4,11 @@
  * Tailwind's order, and the theme values those can reach. Runs in Node, at build time.
  */
 import './node.ts';
-import { type CandidateResult, DEFAULT_THEME_CSS, TailwindCompiler } from './compile.ts';
+import type { CandidateResult } from './candidate.ts';
+import { DEFAULT_THEME_CSS, TailwindCompiler } from './compile.ts';
 import { variantOf } from './parse.ts';
 import { TABLE_FORMAT, type Table, type TableEntry } from './table-source.ts';
-
-export { type Table, TABLE_FORMAT } from './table-source.ts';
-
-export interface PrecompileOptions {
-  /** Theme CSS, as for `initTailwind({ css })`; by default `DEFAULT_THEME_CSS`. */
-  css?: string;
-  /** Directory that `@import`s in `css` resolve from (default: the tailwindcss package). */
-  base?: string;
-}
+import type { ThemeOptions } from './tw.ts';
 
 /** The class every table has: the default family of a document that sets none. */
 const ALWAYS = ['font-sans'];
@@ -24,7 +17,7 @@ const ALWAYS = ['font-sans'];
 const VAR = /var\(\s*(--[\w-]+)/g;
 
 /** A table of classes that grows as a build sees more (in a dev server, as files change). */
-export class Precompiler {
+export class TableBuilder {
   private readonly seen = new Set<string>();
   private readonly known = new Map<string, CandidateResult>();
   private readonly compiler: TailwindCompiler;
@@ -36,9 +29,9 @@ export class Precompiler {
     this.add(ALWAYS);
   }
 
-  static async create(opts: PrecompileOptions = {}): Promise<Precompiler> {
-    const css = opts.css ?? DEFAULT_THEME_CSS;
-    return new Precompiler(await TailwindCompiler.load(css, opts.base), css);
+  static async create(theme: ThemeOptions = {}): Promise<TableBuilder> {
+    const css = theme.css ?? DEFAULT_THEME_CSS;
+    return new TableBuilder(await TailwindCompiler.load(css, theme.base), css);
   }
 
   /** Adds the classes Tailwind knows among `candidates`; true when there was one not seen. */
@@ -101,11 +94,4 @@ export class Precompiler {
     }
     return { format: TABLE_FORMAT, css: this.css, classes, theme };
   }
-}
-
-/** The table of the classes Tailwind knows among `candidates`, for theme `css`. */
-export async function precompile(opts: PrecompileOptions & { candidates: Iterable<string> }): Promise<Table> {
-  const p = await Precompiler.create(opts);
-  p.add(opts.candidates);
-  return p.table();
 }

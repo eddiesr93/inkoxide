@@ -10,7 +10,6 @@
       "default": "./src/index.ts"
     },
     "./plugin": "./src/plugin.ts",
-    "./precompile": "./src/precompile.ts",
     "./precompiled": "./src/precompiled.ts"
   },
   "dependencies": {

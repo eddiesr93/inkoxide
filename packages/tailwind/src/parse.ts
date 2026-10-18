@@ -21,7 +21,7 @@ import {
   verticalAlignKeyword,
 } from '@inkoxide/style/internal';
 
-import type { CandidateCss, CandidateProblem, CandidateResult, Decl } from './compile.ts';
+import type { CandidateCss, CandidateProblem, CandidateResult, Decl } from './candidate.ts';
 
 /**
  * Where the classes come from: Tailwind's compiler (`TailwindCompiler`), or a table of the classes
@@ -34,6 +34,18 @@ export interface ClassSource {
   sort(classes: string[]): string[];
   /** A theme variable (`--spacing`, `--color-red-500`), unresolved. */
   themeValue(name: string): string | undefined;
+}
+
+/**
+ * `classes` in Tailwind's order, by their `rank` in its stylesheet (one without first), and as
+ * given where ranks tie.
+ */
+export function sortByRank(classes: string[], rank: (cls: string) => bigint | null | undefined): string[] {
+  if (classes.length < 2) return classes;
+  return classes
+    .map((cls, i) => ({ cls, rank: rank(cls) ?? -1n, i }))
+    .sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : a.i - b.i))
+    .map((x) => x.cls);
 }
 
 /** A class that cannot be turned into an engine style. Thrown in strict (dev) mode. */
