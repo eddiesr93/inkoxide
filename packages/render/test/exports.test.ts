@@ -136,6 +136,7 @@ const MAIN_TYPES = [
   'RenderErrorCode',
   'RenderProp',
   'RenderToBufferOptions',
+  'Role',
   'RowProps',
   'SelectProps',
   'SpacerProps',

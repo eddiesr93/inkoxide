@@ -1296,7 +1296,8 @@ exported:
 - styles and values: `Style`, `StyleProp`, `MediaStyle` (a `StyleProp` with `@media` blocks),
   `AbsoluteLength`, `Length`, `LengthPercent`,
   `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`,
-  `Permissions` (of `<Document permissions>`), and `TextFormat`, the `format` of a `TextField`;
+  `Permissions` (of `<Document permissions>`), `Role`, the `role` of an element in tagged output,
+  and `TextFormat`, the `format` of a `TextField`;
 - attachments: `AttachmentFile`, a file of `<Document attachments>`, `AttachmentProps`, and
   `FacturXOptions` and `FacturXProfile`, of `facturX()`;
 - `render` props and images: `RenderProp`, `PageInfo`, `ImageSrc`, `ImageSrcValue`,

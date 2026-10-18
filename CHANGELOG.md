@@ -54,7 +54,7 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   without a title, a language, alternative text on its images (in text too), labels on its fields
   (in headers too), headings in order or lists made of items (`UA_CONFLICT`). New PDF/A levels
   2a and 3a are tagged. Nodes take `role`, `figure` boxes `alt`, table cells `header` and fields
-  `label`; `@inkoxide/render` takes them as props, with
+  `label`; `@inkoxide/render` takes them as props (the `Role` type is exported), with
   `<Document tagged pdfUA>` and `conformance="PDF/A-2a"`. The CLI takes `--tagged` and
   `--pdf-ua`. Untagged output is unchanged.
 
