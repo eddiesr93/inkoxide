@@ -642,12 +642,12 @@ export interface ImageRequest {
 
 /**
  * What a function or promise `src` resolves to: bytes (a `Uint8Array`, `Buffer` or
- * `ArrayBuffer`), any string `src`, or a request.
+ * `ArrayBuffer`), a `Blob` (a `File` the page's user picked, say), any string `src`, or a request.
  */
-export type ImageSrcValue = Uint8Array | ArrayBuffer | string | ImageRequest;
+export type ImageSrcValue = Uint8Array | ArrayBuffer | Blob | string | ImageRequest;
 
 /**
- * An image `src`: bytes, a string (an image id, a `data:` URL, a file path or `file:` URL, an
+ * An image `src`: bytes, a `Blob`, a string (an image id, a `data:` URL, a file path or `file:` URL, an
  * allowed remote URL), a request, or a function or promise resolving to one of those.
  */
 export type ImageSrc =
@@ -657,8 +657,8 @@ export type ImageSrc =
 
 export interface ImageProps extends Omit<Flow, 'children'> {
   /**
-   * Bytes (JPEG, PNG, GIF, WebP, SVG; a `Uint8Array`, `Buffer` or `ArrayBuffer`), a `data:` URL,
-   * the id of an image passed in the render options, a file path (`./logo.png`,
+   * Bytes (JPEG, PNG, GIF, WebP, SVG; a `Uint8Array`, `Buffer` or `ArrayBuffer`), a `Blob` (a
+   * `File` from a file input, read when the render starts), a `data:` URL, the id of an image passed in the render options, a file path (`./logo.png`,
    * `/srv/img/logo.png`) or `file:` URL in a folder allowed by the render option `localImages`, an
    * `https:` URL or a request allowed by the render option `remoteImages`, or a function or
    * promise resolving to one of those. A string naming an image in the render options is that

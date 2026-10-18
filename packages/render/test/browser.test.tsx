@@ -78,6 +78,32 @@ describe.skipIf(!built)('@inkoxide/render/browser', () => {
     const blob = await browser.renderToBlob(<Doc ink={browser} />, { ...OPTS, images: { logo: PNG } });
     expect(blob.type).toBe('application/pdf');
     expect(Buffer.from(await blob.arrayBuffer()).equals(Buffer.from(expected))).toBe(true);
+
+    const stream = await browser.renderToStream(<Doc ink={browser} />, { ...OPTS, images: { logo: PNG } });
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    expect(chunks.length).toBe(Math.ceil(expected.byteLength / (64 * 1024)));
+    expect(Buffer.concat(chunks).equals(Buffer.from(expected))).toBe(true);
+
+    // A reader that transfers a chunk's buffer gets an error, not a PDF cut short: a PDF of a few
+    // chunks.
+    const { Document, Page, Text } = browser;
+    const long = (
+      <Document>
+        {Array.from({ length: 40 }, (_, i) => (
+          <Page key={i}>
+            <Text>{'A page of the long document. '.repeat(40)}</Text>
+          </Page>
+        ))}
+      </Document>
+    );
+    const reader = (await browser.renderToStream(long, { compress: false })).getReader();
+    const { value } = await reader.read();
+    structuredClone(value?.buffer, { transfer: [value?.buffer as ArrayBuffer] });
+    const rest = (async () => {
+      for (;;) if ((await reader.read()).done) return 'done';
+    })();
+    await expect(rest).rejects.toThrow('the PDF was transferred while it was read');
   });
 
   it('reads a bundled font only when a document uses it', async () => {

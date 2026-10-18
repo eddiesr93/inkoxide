@@ -33,8 +33,8 @@ Inkoxide is designed to render documents built from untrusted data:
   same, and an instance has at most 4 GiB of memory (2 GiB with threads). Renders run in a Web
   Worker, which a `signal` ends. Remote images stay off unless allowed, as on a server, since the
   requests come from the user's network; they are sent without cookies or credentials. The page
-  needs `script-src 'wasm-unsafe-eval'` and `worker-src 'self'`, and nothing needs
-  `'unsafe-eval'`. Threads need a cross-origin isolated page (`Cross-Origin-Opener-Policy` and
+  needs `script-src 'wasm-unsafe-eval'` and `worker-src 'self'` (with scripts from a CDN,
+  `worker-src blob:`), and nothing needs `'unsafe-eval'`. Threads need a cross-origin isolated page (`Cross-Origin-Opener-Policy` and
   `Cross-Origin-Embedder-Policy`). With `@inkoxide/wasm` and threads, a pool thread reports a bug
   on a `BroadcastChannel` (`trapChannel`), which every context of the origin can read and post to:
   give it a name of its own.

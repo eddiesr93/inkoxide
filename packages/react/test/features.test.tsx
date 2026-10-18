@@ -2260,6 +2260,8 @@ describe('image sources', () => {
     expect(kind('')).toBe('id');
     expect(kind(new Uint8Array(1))).toBe('bytes');
     expect(kind(new ArrayBuffer(1))).toBe('bytes');
+    expect(kind(new Blob(['x']))).toBe('blob');
+    expect(kind(new File(['x'], 'a.png'))).toBe('blob');
     expect(kind(() => 'logo')).toBe('function');
     expect(kind(Promise.resolve('logo'))).toBe('promise');
     expect(kind({ uri: 'https://cdn.example.com/a.png' })).toBe('request');

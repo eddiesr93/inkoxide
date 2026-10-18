@@ -78,6 +78,14 @@ cannot end the call that waits for it: the thread posts `{ message }` on the
 `BroadcastChannel` named `trapChannel`, and the page, listening, ends the
 worker. `@inkoxide/render/browser` does all of this with its `threads` option.
 
+**From a CDN.** A page cannot start a worker from a script of another origin. When this package
+is served from one, the pool's threads start as workers of the page's origin from a `blob:` URL
+that imports `thread.js`. The CDN must serve `thread.js`, the modules and the other assets with
+CORS (`Access-Control-Allow-Origin`); on a page that is cross-origin isolated, its files also
+need CORS or `Cross-Origin-Resource-Policy: cross-origin`. A Content Security Policy needs
+`worker-src blob:`, and `script-src` and `connect-src` that allow the CDN. A script of the
+page's own origin starts its workers as before, and `worker-src 'self'` is enough.
+
 **From a CDN**, give `init` the module with its
 [Subresource Integrity](https://developer.mozilla.org/docs/Web/Security/Subresource_Integrity)
 hash, so that the browser refuses any other bytes, and the folder of the

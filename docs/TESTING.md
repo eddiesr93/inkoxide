@@ -242,6 +242,9 @@ only on demand, from the Actions tab, with the ID of that release run.
   does the same on the page served cross-origin isolated, where the
   engine renders on a pool of threads, and checks that a bug on a pool
   thread fails the render with `INTERNAL` and the next one renders.
+  `tests/cdn.spec.ts` serves the page's scripts and assets from another
+  origin, as a CDN would (ports 4182 and 4181), and checks that the workers
+  start from `blob:` URLs and render the same bytes on a pool of threads.
 - `packages/render/test/browser.test.tsx`: `@inkoxide/render/browser` on
   the calling thread renders the bytes the main entry renders. It needs
   `scripts/build-wasm.sh` first, and skips without it outside CI.

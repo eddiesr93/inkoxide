@@ -247,6 +247,8 @@ async function resolveValue(
   switch (src.kind) {
     case 'bytes':
       return src.bytes instanceof Uint8Array ? src.bytes : new Uint8Array(src.bytes);
+    case 'blob':
+      return new Uint8Array(await src.blob.arrayBuffer());
     case 'registered':
       return registered[src.src] as Uint8Array;
     case 'data':
@@ -261,7 +263,7 @@ async function resolveValue(
       if (typeof src.request.uri === 'string') return fetchAllowed(src.request, policies.remote);
       break;
   }
-  return fail(`${describe(value)}; expected bytes, a string or a request`);
+  return fail(`${describe(value)}; expected bytes, a Blob, a string or a request`);
 }
 
 const describe = (v: unknown): string =>

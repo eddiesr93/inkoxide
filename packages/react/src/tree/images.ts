@@ -80,6 +80,7 @@ export function isImagePath(src: string): boolean {
  */
 export type ImageSource =
   | { kind: 'bytes'; bytes: Uint8Array | ArrayBuffer }
+  | { kind: 'blob'; blob: Blob }
   | { kind: 'registered' | 'data' | 'path' | 'url' | 'id'; src: string }
   | { kind: 'function'; src: () => ImageSrcValue | Promise<ImageSrcValue> }
   | { kind: 'promise'; src: PromiseLike<ImageSrcValue> }
@@ -89,6 +90,7 @@ export type ImageSource =
 /** Sorts an image `src` (see `ImageSource`); `registered` says whether a string is a caller's id. */
 export function imageSource(src: unknown, registered: (id: string) => boolean): ImageSource {
   if (src instanceof Uint8Array || src instanceof ArrayBuffer) return { kind: 'bytes', bytes: src };
+  if (typeof Blob === 'function' && src instanceof Blob) return { kind: 'blob', blob: src };
   if (typeof src === 'string') {
     if (registered(src)) return { kind: 'registered', src };
     if (src.startsWith('data:')) return { kind: 'data', src };
@@ -206,6 +208,11 @@ export class ImageTable {
         break;
       case 'function':
         return { src: this.pendingId(s.src, 'deferred', () => ({ kind: 'deferred', src: s.src })) };
+      // Read when the render loads its images, as a function `src` is called.
+      case 'blob': {
+        const { blob } = s;
+        return { src: this.pendingId(blob, 'deferred', () => ({ kind: 'deferred', src: () => blob })) };
+      }
       case 'promise':
         return {
           src: this.pendingId(s.src, 'deferred', () => {
@@ -233,7 +240,7 @@ export class ImageTable {
       }
     }
     return fail(
-      `<${component}> needs a src: bytes, a data: URL, an image id, a file path, a URL, a request, or a function or promise.`,
+      `<${component}> needs a src: bytes, a Blob, a data: URL, an image id, a file path, a URL, a request, or a function or promise.`,
     );
   }
 
