@@ -153,9 +153,21 @@ function checkOptions(options) {
   if (encryption === undefined) return;
   checkObject(encryption, 'options.encryption');
   checkTypes(encryption, { userPassword: 'string', ownerPassword: 'string' }, 'options.encryption');
+  const { entropy } = encryption;
+  if (entropy !== undefined && typeof entropy !== 'boolean' && !(entropy instanceof Uint8Array)) {
+    throw engineError('INVALID_ARGUMENT', 'options.encryption.entropy', 'must be a boolean or a Uint8Array');
+  }
   if (encryption.permissions === undefined) return;
   checkObject(encryption.permissions, 'options.encryption.permissions');
   checkTypes(encryption.permissions, PERMISSION_TYPES, 'options.encryption.permissions');
+}
+
+// `encryption.entropy`: `true` is 32 random bytes, drawn once per render, `false` none.
+function resolveEntropy(options) {
+  const entropy = options?.encryption?.entropy;
+  if (typeof entropy !== 'boolean') return options;
+  const random = entropy ? crypto.getRandomValues(new Uint8Array(32)) : undefined;
+  return { ...options, encryption: { ...options.encryption, entropy: random } };
 }
 
 function call(fn, args) {
@@ -178,19 +190,20 @@ export const registerHyphenationPatterns = (lang, data) =>
 export const unregisterHyphenationPatterns = (lang) => call(native.unregisterHyphenationPatterns, [lang]);
 export const validate = (doc, format, images, options) => {
   checkOptions(options);
-  return call(native.validate, [doc, format ?? undefined, images ?? undefined, options ?? undefined]);
+  const resolved = resolveEntropy(options) ?? undefined;
+  return call(native.validate, [doc, format ?? undefined, images ?? undefined, resolved]);
 };
 export const render = async (doc, options) => {
   try {
     checkOptions(options);
-    return toUint8Array(await native.render(doc, options ?? undefined));
+    return toUint8Array(await native.render(doc, resolveEntropy(options) ?? undefined));
   } catch (e) {
     throw wrapError(e);
   }
 };
 export const renderSync = (doc, options) => {
   checkOptions(options);
-  return toUint8Array(call(native.renderSync, [doc, options ?? undefined]));
+  return toUint8Array(call(native.renderSync, [doc, resolveEntropy(options) ?? undefined]));
 };
 export const version = () => call(native.version, []);
 // Test hook, not public API and not in index.d.ts: a panic behind the native boundary. A

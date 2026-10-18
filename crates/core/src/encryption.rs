@@ -8,14 +8,20 @@ use crate::pdf::crypt::{Params, MAX_PASSWORD};
 /// Encrypts the PDF with AES-256 (PDF 2.0, revision 6): opening it needs
 /// the user password, and the owner password lifts the [`Permissions`].
 ///
-/// At least one password is needed. Passwords are printable ASCII, at
-/// most 127 bytes. Without an owner password, the user password is also
+/// At least one password is needed. A password is any text `SASLprep`
+/// (RFC 4013) accepts, which PDF 2.0 prepares it with, at most 127 bytes
+/// of UTF-8 once prepared. Without an owner password, the user password is also
 /// the owner password, so whoever opens the file has every permission;
 /// `permissions` therefore need an owner password that differs from the
 /// user password. Without a user password, anyone opens the file, and the
 /// permissions hold for whoever lacks the owner password.
 ///
-/// `Debug` prints `<redacted>` for the passwords.
+/// The keys are derived from the passwords and the document, so the same
+/// document with the same passwords gives the same file. With
+/// [`entropy`](Self::entropy), random bytes the caller supplies, they
+/// differ from render to render, as the standard's random keys do.
+///
+/// `Debug` prints `<redacted>` for the passwords and the entropy.
 ///
 /// ```
 /// use inkoxide::{Encryption, Permissions, Printing};
@@ -38,6 +44,9 @@ pub struct Encryption {
     /// [`Permissions::default`]. Needs an owner password other than the
     /// user password.
     pub permissions: Option<Permissions>,
+    /// Random bytes, at least 16 and at most 256, mixed into the derived
+    /// keys; `None`: none, and identical renders give identical files.
+    pub entropy: Option<Vec<u8>>,
 }
 
 impl fmt::Debug for Encryption {
@@ -47,9 +56,14 @@ impl fmt::Debug for Encryption {
             .field("user_password", &redacted(&self.user_password))
             .field("owner_password", &redacted(&self.owner_password))
             .field("permissions", &self.permissions)
+            .field("entropy", &self.entropy.as_ref().map(|_| Redacted))
             .finish()
     }
 }
+
+/// Bounds of [`Encryption::entropy`], in bytes.
+const MIN_ENTROPY: usize = 16;
+const MAX_ENTROPY: usize = 256;
 
 /// Prints `<redacted>` in place of a secret.
 struct Redacted;
@@ -88,6 +102,13 @@ impl Encryption {
         self
     }
 
+    /// Sets [`entropy`](Self::entropy).
+    #[must_use]
+    pub fn with_entropy(mut self, entropy: impl Into<Vec<u8>>) -> Self {
+        self.entropy = Some(entropy.into());
+        self
+    }
+
     /// The checked passwords and permission bits. Errors name the option,
     /// never a password.
     pub(crate) fn params(&self) -> Result<Params, ValidationError> {
@@ -97,11 +118,17 @@ impl Encryption {
             message: message.into(),
         };
         let password = |p: &Option<String>, path: &str| -> Result<Vec<u8>, ValidationError> {
-            let p = p.as_deref().unwrap_or_default();
-            if p.len() > MAX_PASSWORD || !p.bytes().all(|b| matches!(b, 0x20..=0x7E)) {
+            // The error names no character: it would be part of a password.
+            let p = stringprep::saslprep(p.as_deref().unwrap_or_default()).map_err(|_| {
+                invalid(
+                    path,
+                    "a password is text SASLprep (RFC 4013) accepts: no control, private-use or unassigned characters, and no mixed-direction text",
+                )
+            })?;
+            if p.len() > MAX_PASSWORD {
                 return Err(invalid(
                     path,
-                    &format!("a password is printable ASCII, at most {MAX_PASSWORD} bytes"),
+                    &format!("a password is at most {MAX_PASSWORD} bytes of UTF-8"),
                 ));
             }
             Ok(p.as_bytes().to_vec())
@@ -117,6 +144,14 @@ impl Encryption {
                 "permissions need an owner password other than the user password, which would lift them",
             ));
         }
+        if let Some(e) = &self.entropy {
+            if !(MIN_ENTROPY..=MAX_ENTROPY).contains(&e.len()) {
+                return Err(invalid(
+                    ".entropy",
+                    &format!("entropy is {MIN_ENTROPY} to {MAX_ENTROPY} random bytes"),
+                ));
+            }
+        }
         let owner = if owner.is_empty() {
             user.clone()
         } else {
@@ -126,6 +161,7 @@ impl Encryption {
             user,
             owner,
             p: self.permissions.unwrap_or_default().bits(),
+            entropy: self.entropy.clone(),
         })
     }
 }
@@ -295,8 +331,25 @@ mod tests {
             (
                 Encryption::new()
                     .with_user_password("u")
-                    .with_owner_password(format!("{secret}é")),
+                    .with_owner_password(format!("{secret}\u{E000}")),
                 "options.encryption.ownerPassword",
+            ),
+            (
+                // Right-to-left and left-to-right letters together.
+                Encryption::new().with_user_password(format!("{secret}\u{05D0}")),
+                "options.encryption.userPassword",
+            ),
+            (
+                Encryption::new()
+                    .with_user_password(secret)
+                    .with_entropy(secret.as_bytes()[..8].to_vec()),
+                "options.encryption.entropy",
+            ),
+            (
+                Encryption::new()
+                    .with_user_password(secret)
+                    .with_entropy(vec![0; 257]),
+                "options.encryption.entropy",
             ),
             (
                 Encryption::new().with_user_password(format!("{secret}\n")),
@@ -338,7 +391,40 @@ mod tests {
         assert!(!format!("{:?}", full.params().unwrap()).contains(secret));
         assert_eq!(
             format!("{full:?}"),
-            "Encryption { user_password: Some(<redacted>), owner_password: Some(<redacted>), permissions: None }"
+            "Encryption { user_password: Some(<redacted>), owner_password: Some(<redacted>), permissions: None, entropy: None }"
         );
+        let entropy = full.with_entropy(secret.repeat(2));
+        let p = entropy.params().unwrap();
+        assert_eq!(p.entropy.as_deref(), Some(secret.repeat(2).as_bytes()));
+        assert!(!format!("{entropy:?}").contains(secret));
+        assert!(!format!("{p:?}").contains(secret));
+    }
+
+    #[test]
+    fn unicode_passwords_are_prepared_with_saslprep() {
+        let user = |p: &str| {
+            Encryption::new()
+                .with_user_password(p)
+                .params()
+                .map(|p| p.user)
+        };
+        // Mapped to nothing, non-ASCII spaces mapped to a space, NFKC.
+        assert_eq!(user("I\u{00AD}X").unwrap(), b"IX");
+        assert_eq!(user("a\u{00A0}b").unwrap(), b"a b");
+        assert_eq!(user("\u{2163}").unwrap(), b"IV");
+        assert_eq!(user("a\u{0308}").unwrap(), "ä".as_bytes());
+        assert_eq!(user("parolă").unwrap(), "parolă".as_bytes());
+        assert_eq!(user("\u{05E1}\u{05D5}\u{05D3}").unwrap(), "סוד".as_bytes());
+        // At most 127 bytes of UTF-8 once prepared.
+        assert!(user(&"ă".repeat(63)).is_ok());
+        assert!(user(&"ă".repeat(64)).is_err());
+        assert!(user(&"\u{00AD}".repeat(200)).is_err_and(|e| e.path == "options.encryption"));
+        // The same password, written two ways, lifts the permissions.
+        assert!(Encryption::new()
+            .with_user_password("ä")
+            .with_owner_password("a\u{0308}")
+            .with_permissions(Permissions::new())
+            .params()
+            .is_err_and(|e| e.path == "options.encryption.permissions"));
     }
 }

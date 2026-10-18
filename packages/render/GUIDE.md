@@ -36,7 +36,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 
 | Component | What it is |
 |---|---|
-| `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `creator`, `producer`, `lang` (`"en-US"`), `creationDate`, `pageMode`, `pageLayout` and `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)); `conformance` and `flattenAlpha` ([PDF/A](#pdfa)), `userPassword`, `ownerPassword` and `permissions` ([passwords](#passwords-and-permissions)), `tagged` and `pdfUA` ([accessibility](#accessibility)), `attachments` and `xmpExtensions` ([attachments](#attachments)). |
+| `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `creator`, `producer`, `lang` (`"en-US"`), `creationDate`, `pageMode`, `pageLayout` and `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)); `conformance` and `flattenAlpha` ([PDF/A](#pdfa)), `userPassword`, `ownerPassword`, `permissions` and `entropy` ([passwords](#passwords-and-permissions)), `tagged` and `pdfUA` ([accessibility](#accessibility)), `attachments` and `xmpExtensions` ([attachments](#attachments)). |
 | `Page` | One page layout; content flows over as many sheets as it needs. `size` (a [preset](#page-sizes) such as `"A4"`, `"letter"` or `"A4-landscape"`, `[width, height]`, `{ width, height }`, or `[width]` or one length for a square), `orientation`, `margin`. Padding on a page is its margin; a percentage is of the page width, on every side, as in CSS. |
 | `View` | A box: flex column by default, and also grid. |
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
@@ -725,11 +725,13 @@ reader without it may do:
 | `contentAccessibility` | `true` | extracting text for screen readers |
 | `documentAssembly` | `false` | inserting, rotating and deleting pages |
 
-- Passwords are printable ASCII, at most 127 bytes. With only `ownerPassword`, anyone opens the
+- A password is any text SASLprep (RFC 4013) accepts, as PDF 2.0 asks: letters of any script,
+  but no control or private-use characters, and not right-to-left and left-to-right letters
+  together. Once prepared, it is at most 127 bytes of UTF-8. With only `ownerPassword`, anyone opens the
   file and the permissions apply; with only `userPassword`, it is also the owner password, so
   `permissions` need an `ownerPassword` other than `userPassword`.
-- The `encryption` render option (`{ userPassword, ownerPassword, permissions }`) replaces the
-  three props as a whole, for passwords that come from the request rather than the template.
+- The `encryption` render option (`{ userPassword, ownerPassword, permissions, entropy }`)
+  replaces the four props as a whole, for passwords that come from the request rather than the template.
 - Encryption and PDF/A do not go together: PDF/A forbids encryption.
 - A bad value fails with `ENGINE_REJECTED` at its path (`options.encryption.userPassword`, …).
   No error shows a password, and the passwords are not part of `result.document` or of the
@@ -737,7 +739,11 @@ reader without it may do:
 - Readers enforce the permissions; the file cannot. Encryption hides the text and images, not
   the page count or sizes. Field values are hidden, but not which checkboxes are checked, nor
   the positions of the chosen radio button and list box options.
-- The same document and passwords give the same bytes, as unencrypted output does.
+- The same document and passwords give the same bytes, as unencrypted output does, so whoever
+  can have a document of their choosing encrypted with your password can tell whether another
+  file is the same document. `entropy` (`<Document entropy>` or `encryption.entropy`) mixes
+  random bytes into the keys so that each render differs: `true` draws 32 for each render, or
+  pass 16 to 256 bytes of your own.
 
 ## Text: hyphenation and direction
 
@@ -1293,7 +1299,7 @@ All three take the same options:
 | `pdfUA` | `false` | Write PDF/UA-1 (see [Accessibility](#accessibility)). Wins over `<Document pdfUA>`. |
 | `flattenAlpha` | `false` | At PDF/A-1b, draw images with partial alpha on white instead of failing (see [PDF/A](#pdfa)). Wins over `<Document flattenAlpha>`. |
 | `attachments` | none | The bytes of the files a document written as JSON names in `src`, by id (see [Attachments](#attachments)). `<Document attachments>` carries its files itself. |
-| `encryption` | none | `{ userPassword, ownerPassword, permissions }`: encrypt the PDF (see [Passwords and permissions](#passwords-and-permissions)). Replaces the `<Document>` props of the same names. |
+| `encryption` | none | `{ userPassword, ownerPassword, permissions, entropy }`: encrypt the PDF (see [Passwords and permissions](#passwords-and-permissions)). Replaces the `<Document>` props of the same names. |
 | `compress` | `true` | Compress the page content |
 | `subsetFonts` | `true` | Embed only the glyphs the document uses |
 | `creationDate` | none | RFC 3339 timestamp written to the PDF. Without it, the same input gives byte-identical output. |

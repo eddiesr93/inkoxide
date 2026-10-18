@@ -34,6 +34,7 @@ image = { version = "=0.25.10", default-features = false, features = ["png", "jp
 xxhash-rust = { version = "=0.8.19", features = ["xxh3"] }
 aes = "=0.9.3"
 sha2 = { version = "=0.11.1", default-features = false }
+stringprep = "=0.1.5"
 rayon = "=1.12.0"
 # `variable-fonts` is its instancer, which embeds variable fonts as static instances.
 subsetter = { version = "=0.2.6", default-features = false, features = ["variable-fonts"] }

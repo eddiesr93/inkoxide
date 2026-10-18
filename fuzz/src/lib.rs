@@ -351,9 +351,10 @@ fn check_encrypted(
         .with_attachments(ATTACHMENTS.clone())
         .with_encryption(
             Encryption::new()
-                .with_user_password("fuzz user")
+                .with_user_password("fuzz utilizator ă")
                 .with_owner_password("fuzz owner")
-                .with_permissions(Permissions::new().with_copying(true)),
+                .with_permissions(Permissions::new().with_copying(true))
+                .with_entropy([0x5A; 16]),
         );
     let encrypted = inkoxide::render(doc, InputFormat::Json, &options, fonts, images);
     let (plain, encrypted) = match (plain, &encrypted) {

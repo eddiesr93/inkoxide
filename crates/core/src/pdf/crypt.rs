@@ -7,7 +7,10 @@
 //! and identical input must give identical output, so everything is
 //! derived instead, from the passwords and a digest `D`: the SHA-256 of
 //! the file the same render writes unencrypted ([`digest`]), so a change
-//! anywhere in the document changes it.
+//! anywhere in the document changes it. With the caller's random bytes
+//! (the `entropy` option), `D` is `HMAC(entropy, SHA-256(file))`, so two
+//! renders of the same document get different keys, as the standard's
+//! random ones would.
 //!
 //! - the salts: `HMAC(S_u ‖ S_o, "salts" ‖ D)`, where `S_u` and `S_o` are
 //!   Algorithm 2.B hashes of the user and the owner password, salted with
@@ -33,14 +36,16 @@ use aes::{Aes128, Aes256};
 use pdf_writer::{Chunk, Name, Ref, Str};
 use sha2::{Digest, Sha256, Sha384, Sha512};
 
-/// Passwords and permissions of an encrypted file, checked: printable
-/// ASCII, at most [`MAX_PASSWORD`] bytes each.
+/// Passwords and permissions of an encrypted file, checked: `SASLprep`
+/// UTF-8, at most [`MAX_PASSWORD`] bytes each.
 #[derive(Clone)]
 pub(crate) struct Params {
     pub user: Vec<u8>,
     pub owner: Vec<u8>,
     /// `/P`: the permission bits.
     pub p: i32,
+    /// The caller's random bytes mixed into `D`, if any.
+    pub entropy: Option<Vec<u8>>,
 }
 
 impl std::fmt::Debug for Params {
@@ -49,6 +54,7 @@ impl std::fmt::Debug for Params {
             .field("user", &"<redacted>")
             .field("owner", &"<redacted>")
             .field("p", &self.p)
+            .field("entropy", &self.entropy.as_ref().map(|_| "<redacted>"))
             .finish()
     }
 }
@@ -213,9 +219,13 @@ impl Crypt {
 /// What the keys are derived from: the SHA-256 of `plain`, the file as
 /// it is written unencrypted. It covers everything the document puts in
 /// the file, and depends on neither the input format nor the thread
-/// count.
-pub(crate) fn digest(plain: &[u8]) -> [u8; 32] {
-    Sha256::digest(plain).into()
+/// count. With `entropy`, the HMAC of that hash keyed with it.
+pub(crate) fn digest(plain: &[u8], entropy: Option<&[u8]>) -> [u8; 32] {
+    let d: [u8; 32] = Sha256::digest(plain).into();
+    match entropy {
+        Some(e) => hmac(e, &[&d]),
+        None => d,
+    }
 }
 
 /// HMAC-SHA256 (RFC 2104) of the concatenation of `parts`.
@@ -370,6 +380,7 @@ mod tests {
             user: b"user".to_vec(),
             owner: b"owner".to_vec(),
             p: -3904,
+            entropy: None,
         };
         let (crypt, dict) = Crypt::new(&params, &[7; 32]);
         // A user password checks against `U`, and its intermediate key
@@ -464,6 +475,7 @@ mod tests {
                 user: user.to_vec(),
                 owner: owner.to_vec(),
                 p: -4,
+                entropy: None,
             };
             let (_, dict) = Crypt::new(&params, &[7; 32]);
             (dict.u[32..].to_vec(), dict.o[32..].to_vec())
@@ -477,6 +489,15 @@ mod tests {
         assert_eq!(salts(b"user", b"owner"), base);
         // They are not the HMAC of the digest alone.
         assert_ne!(base.0, hmac(&[7; 32], &[b"salts"])[..16]);
+    }
+
+    #[test]
+    fn entropy_keys_the_digest() {
+        let d = digest(b"file", None);
+        assert_eq!(d, <[u8; 32]>::from(Sha256::digest(b"file")));
+        let e = digest(b"file", Some(&[1; 16]));
+        assert_eq!(e, hmac(&[1; 16], &[&d]));
+        assert_ne!(e, digest(b"file", Some(&[2; 16])));
     }
 
     #[test]
@@ -507,6 +528,7 @@ mod tests {
             user: Vec::new(),
             owner: b"o".to_vec(),
             p: -4,
+            entropy: None,
         };
         let (mut crypt, _) = Crypt::new(&params, &[1; 32]);
         let a = crypt.string(b"same");

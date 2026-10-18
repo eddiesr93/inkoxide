@@ -682,7 +682,8 @@ describe('renderToBuffer', () => {
         {},
         'options.encryption.permissions',
       ],
-      [{ userPassword: `${secret}é` }, {}, 'options.encryption.userPassword'],
+      [{ userPassword: `${secret}\u{E000}` }, {}, 'options.encryption.userPassword'],
+      [{ userPassword: secret, entropy: new Uint8Array(4) }, {}, 'options.encryption.entropy'],
       [{}, { encryption: { userPassword: secret }, pdfA: true }, 'options.encryption'],
     ] as const) {
       const err = await renderToBuffer(doc(p), opts).catch((e: unknown) => e);
@@ -704,6 +705,17 @@ describe('renderToBuffer', () => {
     });
     expect(JSON.stringify(typed)).not.toMatch(/1234|s3cret/);
     expect((typed as Error).message).not.toMatch(/1234|s3cret/);
+    const badEntropy = await renderToBuffer(doc({}), {
+      encryption: { userPassword: 'u', entropy: secret as unknown as boolean },
+    }).catch((e: unknown) => e);
+    expect(badEntropy).toMatchObject({ code: 'ENGINE_REJECTED', path: 'options.encryption.entropy' });
+    expect((badEntropy as Error).message).not.toContain(secret);
+    // Unicode passwords; with entropy, each render gets other keys.
+    expect(await text(doc({ userPassword: 'parolă' }))).toMatch(/\/R 6/);
+    const random = { userPassword: 'u', entropy: true };
+    expect(await text(doc(random))).not.toBe(await text(doc(random)));
+    const fixed = { userPassword: 'u', entropy: new Uint8Array(32).fill(9) };
+    expect(await text(doc(fixed))).toBe(await text(doc(fixed)));
   });
 
   it('names the component PDF/A-1b rejects for its transparency', async () => {

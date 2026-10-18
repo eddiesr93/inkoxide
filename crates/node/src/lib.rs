@@ -100,6 +100,9 @@ pub struct EncryptionOptions {
     pub user_password: Option<String>,
     pub owner_password: Option<String>,
     pub permissions: Option<PermissionOptions>,
+    /// Random bytes mixed into the keys; the JS wrapper turns `true` into
+    /// 32 of them.
+    pub entropy: Option<Uint8Array>,
 }
 
 /// `options.encryption.permissions`: mirrors Rust `Permissions`; a field
@@ -179,6 +182,7 @@ fn engine_options(
                 user_password: e.user_password,
                 owner_password: e.owner_password,
                 permissions: e.permissions.map(Into::into),
+                entropy: e.entropy.map(|b| b.to_vec()),
             }),
             tagged: o.tagged,
             pdf_ua: o.pdf_ua,

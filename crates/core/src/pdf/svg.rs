@@ -1790,6 +1790,7 @@ mod tests {
                 user_password: Some("user".into()),
                 owner_password: None,
                 permissions: None,
+                entropy: None,
             });
         }
         let pdf = crate::render(

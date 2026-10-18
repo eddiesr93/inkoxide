@@ -14,7 +14,7 @@ export interface OutputOptions {
   /** `<Document flattenAlpha>`: images with partial alpha drawn on white at PDF/A-1b. */
   flattenAlpha?: boolean;
   /**
-   * The encryption of `<Document userPassword ownerPassword permissions>`; the render option
+   * The encryption of `<Document userPassword ownerPassword permissions entropy>`; the render option
    * `encryption` replaces it. JSON and `util.inspect` show it as `'<redacted>'`.
    */
   encryption?: EncryptionOptions;
@@ -25,6 +25,8 @@ export interface EncryptionOptions {
   userPassword?: string;
   ownerPassword?: string;
   permissions?: Permissions;
+  /** Random bytes mixed into the keys; `true`: 32 drawn for each render. */
+  entropy?: boolean | Uint8Array;
 }
 
 const REDACTED = '<redacted>';
@@ -48,8 +50,8 @@ const PDF_A_LEVELS = ['1b', '2b', '2a', '3b', '3a'] as const;
 export type PdfALevel = (typeof PDF_A_LEVELS)[number];
 
 /**
- * The encryption of `<Document userPassword ownerPassword permissions>`, its types checked;
- * the engine checks the values. Messages never show a password.
+ * The encryption of `<Document userPassword ownerPassword permissions entropy>`, its types
+ * checked; the engine checks the values. Messages never show a password.
  */
 export function documentEncryption(p: Record<string, unknown>, fail: Fail): EncryptionOptions | undefined {
   const out: EncryptionOptions = {};
@@ -65,6 +67,13 @@ export function documentEncryption(p: Record<string, unknown>, fail: Fail): Encr
       fail('<Document permissions> must be an object.');
     }
     out.permissions = { ...(perms as Permissions) };
+  }
+  const entropy = p.entropy;
+  if (entropy !== undefined) {
+    if (typeof entropy !== 'boolean' && !(entropy instanceof Uint8Array)) {
+      fail('<Document entropy> must be a boolean or a Uint8Array.');
+    }
+    if (entropy !== false) out.entropy = entropy instanceof Uint8Array ? entropy.slice() : true;
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }

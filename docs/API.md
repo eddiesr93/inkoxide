@@ -102,7 +102,7 @@ How it differs from the Node package:
 | `attachments` / `with_attachments` (`AttachmentStore`) | `attachments: Record<string, Uint8Array>` | none | The bytes of the files the document's `attachments` name in `src`, by id. A `src` missing from them is `ATTACHMENT_NOT_REGISTERED` |
 | `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns; and, for a build without the `embedded-hyphenation` feature, built-in patterns given with `register_builtin` |
 | `deferred_fonts` / `with_deferred_fonts` | (`@inkoxide/wasm`: `deferredFonts`, id → URL) | none | Ids of declared fonts that may be missing: a render that does not draw with one, or try it for a character, renders as if it were registered; one that does fails with `NOT_LOADED` naming it |
-| `encryption` / `with_encryption` (`Encryption`) | `encryption: { userPassword?, ownerPassword?, permissions? }` | none | Encrypt the PDF with passwords and permissions (see [Encryption](#encryption)). Not with PDF/A |
+| `encryption` / `with_encryption` (`Encryption`) | `encryption: { userPassword?, ownerPassword?, permissions?, entropy? }` | none | Encrypt the PDF with passwords and permissions (see [Encryption](#encryption)). Not with PDF/A |
 | (argument `format`) | `format` | `'json'` | Input encoding |
 | (argument `&ImageStore`) | `images` | `{}` | Image bytes by id: JPEG, PNG, GIF (first frame), WebP or SVG |
 
@@ -239,9 +239,18 @@ password lifts the permissions.
 | `permissions.printing: Option<Printing>` | `permissions.printing: 'lowResolution' \| 'highResolution'` | not allowed |
 | `permissions.modifying`, `copying`, `annotating`, `filling_forms`, `document_assembly` | `modifying`, `copying`, `annotating`, `fillingForms`, `documentAssembly` | `false` |
 | `permissions.content_accessibility` | `contentAccessibility` | `true` |
+| `entropy: Option<Vec<u8>>` | `entropy: true \| Uint8Array` | none: the same input gives the same file |
 
-- At least one password is needed. Passwords are printable ASCII, at most
-  127 bytes.
+- At least one password is needed. A password is any text SASLprep
+  (RFC 4013) accepts, which PDF 2.0 prepares passwords with: no control,
+  private-use or unassigned characters, and no text that mixes
+  right-to-left and left-to-right letters. Once prepared (NFKC, non-ASCII
+  spaces made spaces, soft hyphens and the like removed), it is at most
+  127 bytes of UTF-8. `"a\u{0308}"` and `"ä"` are the same password.
+- `entropy` is 16 to 256 random bytes mixed into the keys, so renders of
+  the same input differ; in Node and the browser, `true` draws 32 with
+  `crypto.getRandomValues` for each render. Without it, encryption is
+  deterministic (see [Determinism](#determinism)).
 - `permissions` need an owner password other than the user password:
   without one, or with the same one, the user password lifts them. Readers,
   not the file, enforce the permissions.
@@ -406,7 +415,9 @@ file as it would be written unencrypted, so identical input gives
 identical bytes, and documents whose files differ anywhere (text,
 images, links, form fields, notes, bookmarks, metadata) get different
 keys. The same input with the same passwords gives the same bytes, so
-equal files can be told apart from different ones. The derivation is not
+equal files can be told apart from different ones; the `entropy` option
+mixes random bytes in, for output that cannot be linked to its input. The
+derivation is not
 the standard's random one; it has been reviewed internally but has not had
 an independent cryptography review yet. What encryption does and does not
 protect is in [SECURITY.md](../SECURITY.md#encryption).

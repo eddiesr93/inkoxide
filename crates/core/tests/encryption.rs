@@ -629,7 +629,7 @@ fn bad_encryption_options_name_the_option_and_never_the_password() {
     for (e, path) in [
         (Encryption::new(), "options.encryption"),
         (
-            Encryption::new().with_user_password(format!("{secret}ü")),
+            Encryption::new().with_user_password(format!("{secret}\u{E000}")),
             "options.encryption.userPassword",
         ),
         (
@@ -732,6 +732,89 @@ fn every_part_of_the_document_changes_the_key() {
     ] {
         assert_ne!(other.0, base.0, "{what}: the same /ID");
         assert_ne!(other.1, base.1, "{what}: the same salts and keys");
+    }
+}
+
+/// Unicode passwords, prepared with `SASLprep`, open the file in qpdf, and
+/// a password written another way that `SASLprep` makes the same opens it
+/// too.
+#[test]
+fn unicode_passwords_open_the_file() {
+    if !qpdf_available() {
+        return;
+    }
+    let (fonts, images) = stores();
+    let input = fs::read(root().join("fixtures/docs/invoice.json")).unwrap();
+    let out_dir = root().join("target/fixtures-encrypted");
+    fs::create_dir_all(&out_dir).unwrap();
+    for (name, password, typed) in [
+        ("romanian", "parolă sigură", "parolă sigură"),
+        ("hebrew", "סיסמה", "סיסמה"),
+        ("combining", "a\u{0308}rger", "ärger"),
+        ("compatibility", "\u{2163}", "IV"),
+    ] {
+        let e = Encryption::new()
+            .with_user_password(password)
+            .with_owner_password("owner")
+            .with_permissions(Permissions::new());
+        let pdf = inkoxide::render(
+            &input,
+            InputFormat::Json,
+            &options(Some(e)),
+            &fonts,
+            &images,
+        )
+        .unwrap();
+        let path = out_dir.join(format!("invoice-unicode-{name}.pdf"));
+        fs::write(&path, pdf).unwrap();
+        let o = qpdf(&["--check", &format!("--password={typed}")], &path);
+        assert!(
+            o.status.success(),
+            "{name}: {}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+        assert!(!qpdf(&["--check", "--password=wrong"], &path)
+            .status
+            .success());
+    }
+}
+
+/// Without entropy, the same document and passwords give the same file;
+/// with it, each render gets other keys and identifier, and still opens.
+#[test]
+fn entropy_makes_each_render_differ() {
+    let (fonts, images) = stores();
+    let input = fs::read(root().join("fixtures/docs/invoice.json")).unwrap();
+    let render = |e: Encryption| {
+        inkoxide::render(
+            &input,
+            InputFormat::Json,
+            &options(Some(e)),
+            &fonts,
+            &images,
+        )
+        .unwrap()
+    };
+    assert_eq!(render(both()), render(both()));
+    let a = render(both().with_entropy([1; 32]));
+    let b = render(both().with_entropy([2; 32]));
+    assert_ne!(a, render(both()));
+    assert_ne!(a, b);
+    // The same entropy gives the same file.
+    assert_eq!(a, render(both().with_entropy([1; 32])));
+    if !qpdf_available() {
+        return;
+    }
+    let out_dir = root().join("target/fixtures-encrypted");
+    fs::create_dir_all(&out_dir).unwrap();
+    for (name, pdf) in [("a", &a), ("b", &b)] {
+        let path = out_dir.join(format!("invoice-entropy-{name}.pdf"));
+        fs::write(&path, pdf).unwrap();
+        for password in [USER, OWNER] {
+            assert!(qpdf(&["--check", &format!("--password={password}")], &path)
+                .status
+                .success());
+        }
     }
 }
 
