@@ -3,6 +3,9 @@
  * the theme bundled, in place of `@tailwindcss/node`. Tailwind's compiler needs no Node, so this
  * runs here.
  */
+import { fileURLToPath } from 'node:url';
+
+import * as esbuild from 'esbuild';
 import { describe, expect, it, vi } from 'vitest';
 
 const CLASSES = [
@@ -29,6 +32,41 @@ describe('the browser entry', () => {
     const browser = await load('../src/browser.ts');
     expect(CLASSES.map((c) => browser.tw(c, UNITS))).toEqual(expected);
     expect(browser.tw('font-sans').fontFamily).toEqual(['Inter', 'Noto Sans']);
+  });
+
+  it('is strict outside production only, where a bundler replaces process.env.NODE_ENV', async () => {
+    const src = fileURLToPath(new URL('../src/', import.meta.url));
+    const bundle = async (mode: string) => {
+      const out = await esbuild.build({
+        stdin: { contents: "export { initSource, tw } from './tw.ts';", resolveDir: src, loader: 'ts' },
+        bundle: true,
+        format: 'esm',
+        platform: 'browser',
+        write: false,
+        logLevel: 'silent',
+        define: { 'process.env.NODE_ENV': JSON.stringify(mode) },
+      });
+      const code = out.outputFiles[0]?.text ?? '';
+      return import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+    };
+    // A class source that knows no class.
+    const source = {
+      candidate: () => ({ ok: false, problem: { kind: 'unknown' } }),
+      sort: (classes: string[]) => classes,
+      themeValue: () => undefined,
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const production = await bundle('production');
+      await production.initSource({}, () => Promise.resolve(source), false);
+      expect(production.tw('not-a-class')).toEqual({});
+      expect(warn).toHaveBeenCalledTimes(1);
+      const development = await bundle('development');
+      await development.initSource({}, () => Promise.resolve(source), false);
+      expect(() => development.tw('not-a-class')).toThrow(/not-a-class/);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('takes a theme that imports Tailwind’s, and nothing else', async () => {

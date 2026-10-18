@@ -120,6 +120,10 @@ only on demand, from the Actions tab, with the ID of that release run.
   and the integer limits the schema states.
 - `packages/inkoxide/test/schema-parity.test.js`: ajv with the schema and
   the engine accept the same percentages, `fr` sizes and integers.
+- `packages/style/test/bounds.test.ts`: the bounds the style readers and the
+  class mapper check (grid lines, font features and variations, stretch,
+  `zIndex`, `orphans`, `maxLines`, line height, aspect ratio, run size) are
+  the ones in the schema, read from `document.v1.json`.
 - `crates/core/tests/threads.rs`: concurrent one-thread renders each run
   on their calling thread, at the same time.
 - `crates/core/tests/clear_caches.rs`: after `clear_caches`, a render
@@ -256,13 +260,17 @@ only on demand, from the Actions tab, with the ID of that release run.
   `precompiled.test.ts` maps every class string of the mapper's tests, the
   documented subset, the examples, benchmarks and React and render tests
   through a table and through the compiler, and expects the same styles,
-  errors and order; `scan.test.ts` the scanner, and which files it reads.
-- `packages/*/test` (Vitest, `pnpm test`): the style value readers,
-  Tailwind class mapping and `initTailwind` options, the React tree
-  builder, `renderToBuffer`, `Font.register`, `usePdf` (in happy-dom),
-  error messages, the
-  export lists of `@inkoxide/style` and `@inkoxide/render`, and the
-  examples and benchmark invoices, each run through a symlinked path.
+  errors and order; `scan.test.ts` the scanner, and which files it reads
+  (`isSource` agrees with `sourceFiles`, which the dev server relies on);
+  `sources.test.ts` a theme's `@source` directives (brace expansion, globs,
+  `not`, `inline`); `browser.test.ts` the browser entry, which maps classes as
+  the Node one does and is strict outside production.
+- `packages/*/test` (Vitest, `pnpm test`): the style value readers and page
+  media queries, Tailwind class mapping and `initTailwind` options, the React
+  tree builder, `renderToBuffer`, `Font.register`, `usePdf` (in happy-dom),
+  error messages, the export lists of `@inkoxide/style` and
+  `@inkoxide/render`, and the examples and benchmark invoices, each run
+  through a symlinked path.
 - `scripts/check-generated.sh`: regenerates every committed generated
   file (`packages/schema/index.d.ts`, `docs/SCHEMA.md`,
   `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict`, the fixture

@@ -250,6 +250,10 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   draws 32 bytes with `crypto.getRandomValues` for each render. Without it, encrypted output
   stays deterministic.
 
+- `tw.warm(classNames, units)` in `@inkoxide/tailwind` takes the units a render passes to `tw()`,
+  to warm class strings with page variants or `em`, `vw` and `vh` values; without them such a
+  string was an error.
+
 ### Changed
 
 - `@inkoxide/react` refuses what the guide says it refuses and used to ignore: `className`,
@@ -412,6 +416,28 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   fails the render with `IMAGE_READ_FAILED`, instead of the browser's own error.
 - The guide says that `tagged`, `pdfUA` and `flattenAlpha`, like `conformance`, are not part
   of `result.document`: to render it again the same way, pass them to `renderDocument`.
+- `@inkoxide/tailwind`: a class whose value the document schema does not take fails where it is
+  read, naming the class, instead of later in the engine with a path: a negative size, padding,
+  gap, border width or radius (`w-[-10px]`, `rounded-[-4px]`), `text-[0px]`, a `z-*` past 32 bits,
+  `leading-[200]`, `orphans` or `widows` over 100, `line-clamp-[…]` past 32 bits, `aspect-[…]`
+  over 1,000,000, a colour opacity over 100% (`bg-red-500/[150%]`) and a `calc()` that is not a
+  number (`w-[calc(0px/0)]`).
+- A custom property that names others through many levels of `var()` in a Tailwind class stops
+  at 10,000 substitutions or 65,536 characters, as an unsupported class, instead of using time
+  and memory without bound.
+- `@inkoxide/style` reads a leading `+` in every length (`w-[+5px]`), and its readers share one
+  definition of a CSS number.
+- In a production browser bundle (a bundler that replaces `process.env.NODE_ENV`),
+  `@inkoxide/tailwind` logs an unsupported class once and ignores it, as documented; it threw
+  there, because the browser has no `process`.
+- `aspect-auto` removes the aspect ratio, so that `aspect-video md:aspect-auto` can be written.
+- A class that Tailwind's own parser cannot read (a value nested thousands of levels deep) is an
+  unknown class with strict mode off as well, instead of an exception from `tw()`.
+- A Vite dev server reads the files the build scan reads: not `tmp`, `coverage` and the other
+  build output directly under a root, nor hidden directories, nor files over 1 MiB. A file
+  named in the plugin's `sources` is read at any size; the README says so. The documented
+  custom breakpoint is written in `rem` (`--breakpoint-a4: 49.6067rem`): Tailwind sorts
+  breakpoints of different units by unit, so one in `pt` lost to `sm:`.
 
 ### Repository
 

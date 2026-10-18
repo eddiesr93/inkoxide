@@ -83,7 +83,13 @@ export class TailwindCompiler {
   }
 
   private compileOne(cls: string): CandidateResult {
-    const [css] = this.ds.candidatesToCss([cls]);
+    let css: string | null | undefined;
+    try {
+      [css] = this.ds.candidatesToCss([cls]);
+    } catch {
+      // Tailwind's parser gave up on the class (a value nested past its stack): no class.
+      return { ok: false, problem: { kind: 'unknown' } };
+    }
     if (css == null) return { ok: false, problem: { kind: 'unknown' } };
     let root;
     try {

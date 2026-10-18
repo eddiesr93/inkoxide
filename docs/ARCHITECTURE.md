@@ -27,8 +27,8 @@ how the pieces fit together, for contributors.
 
 The npm packages depend on each other like this:
 
-- `@inkoxide/schema` and `@inkoxide/style` depend on no other Inkoxide package
-  (`@inkoxide/style` only on culori).
+- `@inkoxide/schema` depends on no other Inkoxide package. `@inkoxide/style` depends on
+  `@inkoxide/schema`, for the types of the styles it reads, and on culori.
 - `@inkoxide/react` depends on `@inkoxide/schema` and `@inkoxide/style`.
 - `@inkoxide/render` depends on `@inkoxide/react`, `@inkoxide/schema` and `inkoxide`.
 - `@inkoxide/tailwind` depends on `@inkoxide/style`. `@inkoxide/react` and

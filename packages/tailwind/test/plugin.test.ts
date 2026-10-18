@@ -29,6 +29,7 @@ import {
   inkoxideTailwindWebpack,
   withInkoxideTailwind,
 } from '../src/plugin.ts';
+import { checkTable, TABLE_GLOBAL } from '../src/table-source.ts';
 
 const SRC = fileURLToPath(new URL('../src/', import.meta.url));
 
@@ -240,6 +241,34 @@ describe('the build plugin', () => {
     expect(table?.code).toContain('m-5');
   });
 
+  it('reads in a dev server the files the build reads, and no others', async () => {
+    for (const d of ['tmp', '.cache', 'node_modules/x', 'src/build'])
+      mkdirSync(join(dir, d), { recursive: true });
+    // Over 1 MiB: not read in a directory.
+    writeFileSync(join(dir, 'src/big.tsx'), 'p-4 '.repeat(300_000));
+    const plugin = inkoxideTailwind();
+    plugin.configResolved({ root: dir });
+    await plugin.buildStart.call({});
+    const sent: unknown[] = [];
+    const client = {
+      environment: {
+        config: { consumer: 'client' },
+        moduleGraph: { getModuleById: () => undefined, invalidateModule: () => {} },
+        hot: { send: (payload: unknown) => void sent.push(payload) },
+      },
+    };
+    const hot = (file: string) =>
+      plugin.hotUpdate.call(client, { type: 'update', file: join(dir, file), read: () => 'm-7' });
+    // Build output, dependencies and hidden directories directly under or below the root.
+    for (const file of ['tmp/a.tsx', '.cache/b.js', 'node_modules/x/c.js', 'src/big.tsx']) {
+      expect(await hot(file), file).toBeUndefined();
+    }
+    expect(sent).toEqual([]);
+    // A folder named like build output is read below the root.
+    expect(await hot('src/build/d.ts')).toEqual([]);
+    expect(sent).toEqual([{ type: 'full-reload' }]);
+  });
+
   it("scans what the theme's @source directives name", async () => {
     mkdirSync(join(dir, 'theme/lib'), { recursive: true });
     writeFileSync(join(dir, 'theme/lib/card.ts'), "export const card = 'text-blue-500 p-4';");
@@ -287,6 +316,14 @@ describe('the build plugin', () => {
       expect(text).toContain('bg-lime-900');
       const pkg = JSON.parse(readFileSync(join(dirname(module), 'package.json'), 'utf8'));
       expect(pkg).toEqual({ type: 'module', sideEffects: true });
+      // What Turbopack runs: the table lands where the precompiled entry looks for it.
+      const global = globalThis as { [TABLE_GLOBAL]?: unknown };
+      try {
+        new Function(text.replace(/^export \* from .*$/m, ''))();
+        expect(Object.keys(checkTable(global[TABLE_GLOBAL]).classes)).toContain('bg-lime-900');
+      } finally {
+        delete global[TABLE_GLOBAL];
+      }
       const from = /export \* from "(.*)";/.exec(text)?.[1] ?? '';
       expect(resolve(dirname(module), from)).toBe(realpathSync(join(SRC, 'precompiled.ts')));
       const browser = config.webpack?.({}, { isServer: false, dir }) as { plugins: unknown[]; user: boolean };

@@ -171,7 +171,9 @@ it.
   `min-[200mm]:flex-row`, `landscape:flex-row`, `print:hidden`, and stacked, `sm:landscape:`.
   Breakpoints are Tailwind's: `sm` 480pt, `md` 576pt (A4 and Letter portrait are wider), `lg`
   768pt (their landscape is wider), `xl` 960pt, `2xl` 1152pt; a theme can add its own
-  (`--breakpoint-a4: 595.28pt` gives `a4:` and `max-a4:`).
+  (`--breakpoint-a4: 49.6067rem`, which is 595.28pt, gives `a4:` and `max-a4:`). Write them in
+  `rem`: Tailwind sorts breakpoints of different units by unit, not by size, so one in `pt`
+  comes before `sm:` and loses to it.
 - **Not supported:** variants for screens and states (`hover:`, `focus:`, `dark:`), container
   queries (`@sm:`), shadows, gradients and `space-*`/`divide-*` (use `gap-*` and borders). Using one throws and names the class; in production (`NODE_ENV=production`) it is logged once and ignored.
 - **In a browser**, the Tailwind compiler is about 90 KB to download with brotli. The build

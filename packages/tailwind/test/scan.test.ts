@@ -1,11 +1,11 @@
 /** The scanner finds classes in source text, arbitrary values whole. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { candidatesIn, sourceFiles } from '../src/scan.ts';
+import { candidatesIn, isSource, sourceFiles } from '../src/scan.ts';
 
 const tokens = (text: string) => {
   const out = new Set<string>();
@@ -69,6 +69,67 @@ describe('the scanner', () => {
       expect(sourceFiles([join(dir, 'src/b.css')]).map((f) => f.slice(dir.length + 1))).toEqual([
         'src/b.css',
       ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reads a file named as a source at any size, and the files of a directory up to 1 MiB', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'inkoxide-scan-'));
+    try {
+      const big = join(dir, 'big.md');
+      writeFileSync(big, 'p-4 '.repeat(300_000));
+      writeFileSync(join(dir, 'small.md'), 'p-4');
+      expect(sourceFiles([dir]).map((f) => f.slice(dir.length + 1))).toEqual(['small.md']);
+      expect(sourceFiles([big])).toEqual([big]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('tells in isSource the files sourceFiles lists', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'inkoxide-scan-'));
+    try {
+      const files = [
+        'src/a.tsx',
+        'src/b.css',
+        'src/build/g.ts',
+        'src/deep/dist/h.ts',
+        'src/.hidden/i.ts',
+        'node_modules/x/c.js',
+        'dist/d.js',
+        'tmp/t.tsx',
+        'coverage/c.js',
+        '.cache/e.ts',
+        '.env.ts',
+        'f.md',
+        'big.md',
+      ];
+      for (const f of files) {
+        mkdirSync(dirname(join(dir, f)), { recursive: true });
+        writeFileSync(join(dir, f), f === 'big.md' ? 'p-4 '.repeat(300_000) : 'p-4');
+      }
+      const exclude = new Set([join(dir, 'src/deep')]);
+      for (const [roots, skip] of [
+        [[dir], new Set<string>()],
+        [[dir], exclude],
+        [[join(dir, 'src'), join(dir, 'big.md')], new Set<string>()],
+      ] as const) {
+        const listed = new Set(sourceFiles(roots, skip));
+        for (const f of files) {
+          expect(isSource(join(dir, f), roots, skip), f).toBe(listed.has(join(dir, f)));
+        }
+      }
+      expect(sourceFiles([dir]).map((f) => f.slice(dir.length + 1))).toEqual([
+        '.env.ts',
+        'f.md',
+        'src/a.tsx',
+        'src/build/g.ts',
+        'src/deep/dist/h.ts',
+      ]);
+      // A file that is not there yet is judged by its path alone.
+      expect(isSource(join(dir, 'src/new.tsx'), [dir])).toBe(true);
+      expect(isSource(join(dir, 'tmp/new.tsx'), [dir])).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -2,7 +2,7 @@
 // paper. A query is parsed once and matched against each page size; matching is a pure function
 // of the query and the size, so output stays deterministic.
 
-import { PT_PER_UNIT, ValueError } from './values.ts';
+import { NUMBER_SOURCE, PT_PER_UNIT, ValueError } from './values.ts';
 
 /** The size of a page, in points: its whole sheet, margins included. */
 export interface PageSize {
@@ -62,7 +62,7 @@ type Token =
 
 type Test = (page: PageSize) => boolean;
 
-const NUMBER = /[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/iy;
+const NUMBER = new RegExp(NUMBER_SOURCE, 'iy');
 const UNIT = /[a-z%]+/iy;
 const IDENT = /-?[a-z_][\w-]*/iy;
 

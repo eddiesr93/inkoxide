@@ -36,7 +36,7 @@ tw('w-[2em] h-[10vh]', { parentFontSize: 12, page: { width: 595.28, height: 841.
 
 // Options, all optional: `css`, a theme (extend the bundled one: its font stacks name the
 // bundled fonts); `base`, the directory its @imports resolve from; `strict` (default: outside
-// production); and `cacheSize`, how many class strings are cached (default 5000).
+// production, where `process.env.NODE_ENV` is not `production`, which a bundler sets in a browser build); and `cacheSize`, how many class strings are cached (default 5000).
 await initTailwind({
   css: DEFAULT_THEME_CSS + '@theme { --color-accent: #1e4a99; }',
   strict: true,
@@ -44,7 +44,9 @@ await initTailwind({
 });
 setTailwindStrict(false); // log unsupported classes once instead of throwing
 tw.warm(['p-4 text-lg', 'flex gap-2']); // map known class strings ahead, e.g. at server start
-tw.cacheSize(); // 2: the class strings cached
+// Classes with page variants, or `em`, `vw` and `vh` values, are warmed with the units a render gives:
+tw.warm(['p-4 md:flex-row'], { parentFontSize: 12, page: { width: 595.28, height: 841.89 } });
+tw.cacheSize(); // 3: the class strings cached
 ```
 
 ## In a browser bundle
@@ -128,7 +130,9 @@ a change to the theme file, or to a CSS file it imports, scans again.
 
 The scan reads the sources' text, not `.gitignore`: it leaves out `node_modules`, hidden
 directories and build output directly under a root (`dist`, `build`, `out`, …), and the
-bundle's output directory. A Vite dev server reads each file that is created or changes; the
+bundle's output directory. In a directory it reads files up to 1 MiB (bundles and data are not
+sources); a file named in `sources` is read at any size. A Vite dev server reads each file that
+is created or changes, if the scan would read it; the
 watch modes of Rollup, esbuild, webpack and Rspack scan again on each build, but watch only the
 files there were at the last scan. In a plain Rollup config, put the plugin before `@rollup/plugin-node-resolve`, so that it
 sees `@inkoxide/tailwind` first. `@inkoxide/tailwind/precompiled` has the entry's documented

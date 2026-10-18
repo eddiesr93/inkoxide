@@ -4,6 +4,7 @@ import {
   parseColor,
   parseFlex,
   parseFontFeatureSettings,
+  parseFontStretch,
   parseFontVariantNumeric,
   parseFontVariationSettings,
   parseObjectPosition,
@@ -14,7 +15,14 @@ import {
   UnsupportedValueError,
   ValueError,
 } from '../src/index.ts';
-import { evalDim, parseFontFamily, Reader, substituteVars, verticalAlignKeyword } from '../src/internal.ts';
+import {
+  evalDim,
+  parseFontFamily,
+  parseMedia,
+  Reader,
+  substituteVars,
+  verticalAlignKeyword,
+} from '../src/internal.ts';
 
 describe('Reader.placement', () => {
   it('reads both halves of a grid placement', () => {
@@ -278,6 +286,46 @@ describe('substituteVars', () => {
     expect(() => substituteVars('var(--v0)', levels(''))).toThrow(/expands more than 10000 times/);
     const long = (name: string) => (name === '--x' ? 'x'.repeat(40_000) : 'var(--x) var(--x)');
     expect(() => substituteVars('var(--y)', long)).toThrow(/more than 65536 characters/);
+  });
+});
+
+describe('numbers', () => {
+  it('are read alike by every value reader', () => {
+    for (const n of ['5', '+5', '1.', '.5e1', '1e2', '+1.5e1', '10.5']) {
+      const value = Number(n);
+      expect(evalDim(`${n}pt`), n).toEqual({ v: value, u: 'pt' });
+      expect(parseFlex(`${n} ${n}`, Number, String), n).toEqual([value, value, '0%']);
+      expect(parseFontStretch('fontStretch', `${n}%` as `${number}%`), n).toBe(value);
+      expect(parseMedia(`(min-width: ${n}pt)`).matches({ width: value, height: 1 }), n).toBe(true);
+    }
+    expect(parseFontVariationSettings('fontVariationSettings', "'wght' +650")).toEqual({ wght: 650 });
+  });
+
+  it('refuse a calculation that is not a number', () => {
+    for (const bad of ['calc(0 / 0)', 'calc(infinity - infinity)', 'calc(0px / 0)']) {
+      expect(() => evalDim(bad), bad).toThrow(/is not a number/);
+    }
+  });
+});
+
+describe('color-mix() opacity', () => {
+  it('is a percentage from 0% to 100%', () => {
+    expect(parseColor('color-mix(in oklab, red 0%, transparent)')).toEqual([1, 0, 0, 0]);
+    expect(parseColor('color-mix(in oklab, red 100%, transparent)')).toEqual([1, 0, 0, 1]);
+    for (const bad of ['150%', '-50%', '1.2.3%']) {
+      expect(() => parseColor(`color-mix(in oklab, red ${bad}, transparent)`), bad).toThrow(ValueError);
+    }
+  });
+});
+
+describe('Reader.integer', () => {
+  it('takes a minimum and a maximum', () => {
+    const r = new Reader('z-index');
+    expect(r.integer('5', 1, 10)).toBe(5);
+    expect(r.integer('-9', -10)).toBe(-9);
+    expect(() => r.integer('11', 1, 10)).toThrow('z-index: 11 (expected an integer from 1 to 10)');
+    expect(() => r.integer('0', 1)).toThrow('z-index: 0 (expected an integer ≥ 1)');
+    expect(() => r.integer('2.5', 1, 10)).toThrow(/expected an integer/);
   });
 });
 

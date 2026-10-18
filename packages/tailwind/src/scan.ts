@@ -30,10 +30,15 @@ const SKIPPED = new Set(['node_modules']);
 /** Build output, which it does not go into directly under a root. */
 const OUTPUT = new Set(['dist', 'build', 'out', 'coverage', 'target', 'tmp']);
 
-/** Files larger than this are not read: bundles and data, not sources. */
+/** Files larger than this are not read, unless named as a source: bundles and data, not sources. */
 const MAX_FILE = 1 << 20;
 /** Tokens longer than this are not classes; one that grows past it is dropped. */
 const MAX_TOKEN = 256;
+
+/** Whether the walk skips the directory `name` at `level` below a root. */
+function skipsDir(name: string, level: number): boolean {
+  return level > 0 && (SKIPPED.has(name) || name.startsWith('.') || (level === 1 && OUTPUT.has(name)));
+}
 
 /** Characters that end a token outside brackets: a backslash too, of an escaped quote. */
 const DELIMITERS = new Set(' \t\r\n"\'`<>{};,=)\\');
@@ -139,12 +144,11 @@ export function sourceFiles(
     }
     if (stat.isDirectory()) {
       const name = path.split(/[\\/]/).pop() ?? '';
-      if (level > 0 && (SKIPPED.has(name) || name.startsWith('.'))) return;
-      if (level === 1 && OUTPUT.has(name)) return;
+      if (skipsDir(name, level)) return;
       for (const entry of readdirSync(path).sort()) walk(join(path, entry), level + 1, glob);
       return;
     }
-    if (!stat.isFile() || stat.size > MAX_FILE) return;
+    if (!stat.isFile() || (level > 0 && stat.size > MAX_FILE)) return;
     const kept = glob === undefined ? level === 0 || SCANNED.has(extname(path)) : matchesGlob(path, glob);
     if (kept && !excludeGlobs.some((g) => matchesGlob(path, g))) files.add(path);
   };
@@ -153,6 +157,40 @@ export function sourceFiles(
     else walk(root.dir, 0, root);
   }
   return [...files];
+}
+
+/**
+ * Whether `sourceFiles(roots, exclude, excludeGlobs)` would list `file`, decided without walking:
+ * the same rules for the directories entered and the files read, so that a dev server reads what
+ * a build does. `file` need not exist; its size counts when it does.
+ */
+export function isSource(
+  file: string,
+  roots: readonly (string | SourceGlob)[],
+  exclude: ReadonlySet<string> = new Set(),
+  excludeGlobs: readonly SourceGlob[] = [],
+): boolean {
+  const under = (dir: string) => file === dir || file.startsWith(dir + sep);
+  if ([...exclude].some(under) || excludeGlobs.some((g) => matchesGlob(file, g))) return false;
+  // The directories between the root and the file are all ones the walk enters.
+  const entered = (dir: string) =>
+    file
+      .slice(dir.length + 1)
+      .split(sep)
+      .slice(0, -1)
+      .every((name, i) => !skipsDir(name, i + 1));
+  const small = () => {
+    try {
+      return statSync(file).size <= MAX_FILE;
+    } catch {
+      return true;
+    }
+  };
+  return roots.some((root) =>
+    typeof root === 'string'
+      ? file === root || (under(root) && SCANNED.has(extname(file)) && entered(root) && small())
+      : matchesGlob(file, root) && entered(root.dir) && small(),
+  );
 }
 
 /** The tokens of `files` that may be classes. */

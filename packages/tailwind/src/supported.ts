@@ -338,6 +338,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
       'aspect-square': { aspectRatio: 1 },
       'aspect-video': { aspectRatio: 1.777778 },
       'aspect-[4/3]': { aspectRatio: 1.333333 },
+      'aspect-auto': {},
     },
   },
   // Position
@@ -852,7 +853,7 @@ export const SUPPORTED: readonly SupportedFamily[] = [
     utilities: PAGE_VARIANTS.map((v) => `\`${v.split(' … ').join('` … `')}\``).join(', '),
     maps: 'the class, on pages it matches',
     notes:
-      "Media queries read the page: its width and height (the whole sheet, margins included), `aspect-ratio` and `orientation`; `print` always matches. Breakpoints are Tailwind's: `sm` 480pt, `md` 576pt (A4 and Letter portrait are wider), `lg` 768pt (their landscape is wider), `xl` 960pt, `2xl` 1152pt; a theme can add its own (`--breakpoint-a4: 595.28pt`). Variants stack (`sm:landscape:`).",
+      "Media queries read the page: its width and height (the whole sheet, margins included), `aspect-ratio` and `orientation`; `print` always matches. Breakpoints are Tailwind's: `sm` 480pt, `md` 576pt (A4 and Letter portrait are wider), `lg` 768pt (their landscape is wider), `xl` 960pt, `2xl` 1152pt; a theme can add its own (`--breakpoint-a4: 49.6067rem`, 595.28pt, gives `a4:` and `max-a4:`; write them all in `rem`, as Tailwind sorts breakpoints of different units by unit, not by size). Variants stack (`sm:landscape:`).",
     units: A4_UNITS,
     examples: {
       'md:p-4': { paddingTop: 12, paddingRight: 12, paddingBottom: 12, paddingLeft: 12 },
