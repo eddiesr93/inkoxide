@@ -104,7 +104,7 @@ jobs:
       - name: Install the nightly toolchain of the module with threads
         # With the sources of the standard library, which scripts/build-wasm.sh --threads rebuilds.
         run: >-
-          rustup toolchain install "$(sed -n 's/^NIGHTLY=//p' scripts/build-wasm.sh)"
+          rustup toolchain install "$(scripts/build-wasm.sh --toolchain)"
           --profile minimal --component rust-src --no-self-update
       - name: Build the WebAssembly engine
         run: |

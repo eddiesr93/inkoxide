@@ -77,7 +77,7 @@ else
   fi
   node scripts/wasm-parity.mjs
   # The module with threads, on the nightly of scripts/build-wasm.sh --threads.
-  nightly=$(sed -n 's/^NIGHTLY=//p' scripts/build-wasm.sh)
+  nightly=$(scripts/build-wasm.sh --toolchain)
   if ! rustup "+$nightly" component list --installed 2>/dev/null | grep -q '^rust-src'; then
     echo "$nightly with rust-src is not installed; the module with threads skipped" \
       "(rustup toolchain install $nightly --profile minimal --component rust-src)"

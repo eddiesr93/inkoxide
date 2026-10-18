@@ -200,7 +200,7 @@ jobs:
           targets: wasm32-unknown-unknown
       - name: Install the nightly toolchain of the module with threads
         run: >-
-          rustup toolchain install "$(sed -n 's/^NIGHTLY=//p' scripts/build-wasm.sh)"
+          rustup toolchain install "$(scripts/build-wasm.sh --toolchain)"
           --profile minimal --component rust-src --no-self-update
       - name: Build
         # As the ci workflow builds the modules it tests: no wasm-opt, which made them no smaller

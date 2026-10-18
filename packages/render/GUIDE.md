@@ -1486,10 +1486,10 @@ function InvoicePage({ invoice }: { invoice: InvoiceData }) {
   render that times out rejects with a `DOMException` named `TimeoutError`.
 - **`init(options?)`** starts the engine, and every render calls it; only the options of the
   first call count. The options (`BrowserOptions`): `wasm` is where the module comes from (a
-  URL, a `Response`, its bytes or a compiled `WebAssembly.Module`), or `{ single, threads }`, each
-  of the two modules; `assets` is a folder to serve the bundled fonts and hyphenation patterns
-  from: `fonts/` and `hyphenation/` from `@inkoxide/render`'s `assets/`, with the `.bin` files of
-  `@inkoxide/wasm`'s `hyphenation/` in `hyphenation/` too; `threads` is how many threads renders
+  URL, a `Response`, its bytes or a compiled `WebAssembly.Module`, of either module); `assets` is
+  a folder to serve the bundled fonts and hyphenation patterns from: `fonts/` and `hyphenation/`
+  from `@inkoxide/render`'s `assets/`, with the `.bin` files of `@inkoxide/wasm`'s
+  `hyphenation/` in `hyphenation/` too; `threads` is how many threads renders
   use ([below](#threads-in-the-browser)); `worker: false` renders on the calling thread.
 - **`clearCaches()`** empties the engine's caches of decoded images, font subsets and SVG text.
   The memory stays with the engine, which reuses it for the next renders; the PDFs are the

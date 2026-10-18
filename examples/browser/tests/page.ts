@@ -42,12 +42,12 @@ export const call = <H extends keyof Hooks>(page: Page, hook: H): ReturnType<Hoo
   ) as ReturnType<Hooks[H]>;
 
 /**
- * Counts the page's workers, and, through the engine's worker, stops a render once that worker
+ * Instruments the page's workers: counts them, and, through the engine's worker, stops a render once that worker
  * has it (it dispatches `inkoxide:stop`, which `abortedRender` waits for), or, once
  * `inkoxidePoolPanic` is set on the page, makes a thread of the engine's pool panic just before
  * the next render. Call it before `open`; it returns how many workers the page has started.
  */
-export async function countWorkers(page: Page): Promise<() => Promise<number>> {
+export async function instrumentWorkers(page: Page): Promise<() => Promise<number>> {
   await page.addInitScript(() => {
     const scope = globalThis as unknown as {
       workers: number;

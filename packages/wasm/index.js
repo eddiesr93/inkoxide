@@ -119,6 +119,9 @@ const decoder = new TextDecoder();
 // 16 MiB at first, at most 2 GiB, shared with the pool's workers.
 const SHARED_MEMORY = { initial: 256, maximum: 32768, shared: true };
 
+// The most threads a render or a pool has: MAX_THREADS in crates/wasm/src/threads.rs.
+const MAX_THREADS = 256;
+
 /** A `file:` URL's bytes, in Node, where fetch does not read files; otherwise the URL. */
 async function fromFile(url) {
   if (!(url instanceof URL) || url.protocol !== 'file:') return url;
@@ -144,23 +147,6 @@ async function compile(source) {
   return WebAssembly.compile(source);
 }
 
-// `source` as both modules: `{ single, threads }` names each, and anything else is the one
-// module to use. Left out, each is the package's own.
-function sources(source) {
-  const both =
-    isObject(source) &&
-    ('single' in source || 'threads' in source) &&
-    !(source instanceof URL || source instanceof WebAssembly.Module || ArrayBuffer.isView(source));
-  if (both) {
-    return {
-      single: source.single,
-      threads: source.threads ?? new URL('./inkoxide-threads.wasm', import.meta.url),
-    };
-  }
-  if (source !== undefined) return { single: source, threads: source };
-  return { single: undefined, threads: new URL('./inkoxide-threads.wasm', import.meta.url) };
-}
-
 // Whether this thread may share memory with workers and wait for them: a page that is
 // cross-origin isolated, in a worker (a page's main thread cannot wait), or Node.
 const canShare = () =>
@@ -183,13 +169,34 @@ function sharedMemory(maximum = SHARED_MEMORY.maximum) {
 
 const importsMemory = (module) => WebAssembly.Module.imports(module).some((i) => i.kind === 'memory');
 
+// The memory of an instance of `module`: none for a module with its own; else `memory`, or new
+// shared memory of the largest maximum the device reserves (after a trap, while the old memory is
+// not freed, it may reserve less).
+function memoryFor(module, memory = null) {
+  if (!importsMemory(module)) return null;
+  for (let max = SHARED_MEMORY.maximum; !memory && max >= SHARED_MEMORY.initial; max /= 2) {
+    memory = sharedMemory(max);
+  }
+  if (!memory) {
+    throw engineError(
+      'INTERNAL',
+      '',
+      'no shared memory for the module with threads: it needs a cross-origin isolated page, and memory the device can reserve',
+    );
+  }
+  return memory;
+}
+
+// The imports of an instance on `memory`, which the module with threads imports.
+const importsOf = (memory) => (memory ? { env: { memory } } : {});
+
 // The exports of an instance, with its memory, which the module with threads imports.
 const exportsOf = (instance, memory) => (memory ? { ...instance.exports, memory } : instance.exports);
 
 function poolSize(threads) {
   if (threads === undefined) return 1;
-  if (!Number.isInteger(threads) || threads < 1 || threads > 256) {
-    throw engineError('INVALID_ARGUMENT', 'options.threads', 'must be an integer from 1 to 256');
+  if (!Number.isInteger(threads) || threads < 1 || threads > MAX_THREADS) {
+    throw engineError('INVALID_ARGUMENT', 'options.threads', `must be an integer from 1 to ${MAX_THREADS}`);
   }
   return threads;
 }
@@ -277,17 +284,13 @@ export function init(source, options) {
   }
   starting ??= (async () => {
     const threads = poolSize(options?.threads);
-    const both = sources(source);
     // The memory first: where there is none, the module with threads is not downloaded.
-    let memory = threads > 1 && canShare() ? sharedMemory() : null;
-    const module = await compile(memory ? both.threads : both.single);
-    if (!importsMemory(module)) memory = null;
-    else memory ??= sharedMemory();
-    if (importsMemory(module) && !memory) {
-      throw new Error('@inkoxide/wasm: this module needs shared memory: a cross-origin isolated page');
-    }
-    const instance = await WebAssembly.instantiate(module, memory ? { env: { memory } } : {});
-    const e = exportsOf(instance, memory);
+    const shared = threads > 1 && canShare() ? sharedMemory() : null;
+    const module = await compile(
+      source ?? (shared ? new URL('./inkoxide-threads.wasm', import.meta.url) : undefined),
+    );
+    const memory = memoryFor(module, shared);
+    const e = exportsOf(await WebAssembly.instantiate(module, importsOf(memory)), memory);
     pool.trapChannel = options?.trapChannel;
     if (memory && threads > 1 && canShare()) {
       pool.size = threads;
@@ -319,16 +322,9 @@ function engine() {
   if (!compiled) throw new Error('@inkoxide/wasm: call init() and wait for it first');
   // After a trap: a new instance, with what the old one had registered. The module with threads
   // gets new memory, and a new pool once its workers have started; renders until then run on
-  // one thread. While the old memory is not freed, a device may not reserve as much again: the
-  // new one may then grow less far.
-  let memory = null;
-  if (importsMemory(compiled)) {
-    for (let max = SHARED_MEMORY.maximum; !memory && max >= SHARED_MEMORY.initial; max /= 2) {
-      memory = sharedMemory(max);
-    }
-    if (!memory) throw engineError('INTERNAL', '', 'the engine stopped: no memory for a new one');
-  }
-  const e = exportsOf(new WebAssembly.Instance(compiled, memory ? { env: { memory } } : {}), memory);
+  // one thread.
+  const memory = memoryFor(compiled);
+  const e = exportsOf(new WebAssembly.Instance(compiled, importsOf(memory)), memory);
   for (const [id, data] of fonts) callIn(e, () => registerIn(e, 'ink_register_font', id, data));
   for (const [lang, data] of patterns) {
     callIn(e, () => registerIn(e, 'ink_register_hyphenation_patterns', lang, data));

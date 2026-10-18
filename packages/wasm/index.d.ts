@@ -4,24 +4,13 @@
 // index.js and the `inkoxide` package.
 
 /**
- * Where one of the engine's WebAssembly modules comes from: a URL, a
- * `Response`, its bytes, or the module compiled already.
+ * Where the engine's WebAssembly module comes from: a URL, a `Response`, its
+ * bytes, or the module compiled already. By default `inkoxide.wasm` next to
+ * this module, or `inkoxide-threads.wasm`, the module with threads, for a
+ * pool. A module given is the one used, either of the two: the module with
+ * threads needs a page that can share memory.
  */
-export type WasmModuleSource =
-  | URL
-  | string
-  | Response
-  | PromiseLike<Response>
-  | BufferSource
-  | WebAssembly.Module;
-
-/**
- * Where the engine comes from: one module, or each of the two. `single` is
- * the one-thread module (by default `inkoxide.wasm` next to this module) and
- * `threads` the module with threads (`inkoxide-threads.wasm`), which `init`
- * uses for a pool. A single source is used for both: either module.
- */
-export type WasmSource = WasmModuleSource | { single?: WasmModuleSource; threads?: WasmModuleSource };
+export type WasmSource = URL | string | Response | PromiseLike<Response> | BufferSource | WebAssembly.Module;
 
 export interface InitOptions {
   /**

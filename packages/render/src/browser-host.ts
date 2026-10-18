@@ -5,7 +5,7 @@
  * the engine runs on the calling thread.
  */
 import * as wasm from '@inkoxide/wasm';
-import type { InitOptions, WasmModuleSource, WasmSource } from '@inkoxide/wasm';
+import type { InitOptions, WasmSource } from '@inkoxide/wasm';
 
 import { type EngineHost, type EngineIssue, type EngineVersion, setEngineHost } from './host.ts';
 import { nodeProcess, onPage } from './runtime.ts';
@@ -13,9 +13,8 @@ import type { Op, Request, Response } from './worker.ts';
 
 export interface BrowserOptions {
   /**
-   * The engine's WebAssembly module, as `@inkoxide/wasm`'s `init` takes it: one module, or
-   * `{ single, threads }`, the one-thread module and the module with threads. Default: those of
-   * that package.
+   * The engine's WebAssembly module, as `@inkoxide/wasm`'s `init` takes it: the one-thread module
+   * or the module with threads. Default: that package's, the module with threads for a pool.
    */
   wasm?: WasmSource;
   /**
@@ -102,22 +101,6 @@ const direct: Engine = {
  * caller meant it, and a response compiled here. Bytes and a compiled module go as they are.
  */
 async function forWorker(source: WasmSource): Promise<unknown> {
-  if (!isBoth(source)) return moduleForWorker(source as WasmModuleSource);
-  const { single, threads } = source as { single?: WasmModuleSource; threads?: WasmModuleSource };
-  const both: Record<string, unknown> = {};
-  if (single !== undefined) both.single = await moduleForWorker(single);
-  if (threads !== undefined) both.threads = await moduleForWorker(threads);
-  return both;
-}
-
-/** Whether `source` is `{ single, threads }`, as `@inkoxide/wasm` tells. */
-const isBoth = (source: WasmSource): boolean =>
-  typeof source === 'object' &&
-  source !== null &&
-  ('single' in source || 'threads' in source) &&
-  !(source instanceof URL || source instanceof WebAssembly.Module || ArrayBuffer.isView(source));
-
-async function moduleForWorker(source: WasmModuleSource): Promise<unknown> {
   if (source instanceof URL) return source.href;
   if (typeof source === 'string') return onPage(source).href;
   if (source instanceof WebAssembly.Module || ArrayBuffer.isView(source) || source instanceof ArrayBuffer) {

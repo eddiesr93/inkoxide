@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import ink, { threads, wasm } from './binding.js';
+import ink, { pooled, wasm } from './binding.js';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const fixture = (p) => readFileSync(join(root, 'fixtures', p));
@@ -346,7 +346,7 @@ test('out-of-range numeric options are INVALID_ARGUMENT, not converted', async (
     return true;
   };
   // WebAssembly has one thread, unless it has a pool.
-  const most = wasm && !threads ? 1 : 256;
+  const most = wasm && !pooled ? 1 : 256;
   for (const threads of [0, -1, 1.5, most + 1, 100000, NaN, Infinity, 2 ** 32 + 1]) {
     assert.throws(() => ink.renderSync(doc, { threads }), rejected('threads'), `threads: ${threads}`);
     await assert.rejects(ink.render(doc, { threads }), rejected('threads'), `threads: ${threads}`);

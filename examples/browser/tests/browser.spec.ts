@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 
 import { expect, test } from '@playwright/test';
 
-import { call, countWorkers, node, open } from './page.ts';
+import { call, instrumentWorkers, node, open } from './page.ts';
 
 const expected = node.invoice;
 
@@ -48,7 +48,7 @@ test('needs no cross-origin isolation', async ({ page }) => {
 });
 
 test('a signal ends the worker of a render, and the next one renders', async ({ page }) => {
-  const workers = await countWorkers(page);
+  const workers = await instrumentWorkers(page);
   await open(page);
   const before = await workers();
   expect(await call(page, 'abortedRender')).toBe('stopped');

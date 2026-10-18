@@ -4,17 +4,23 @@
 # fetches into packages/wasm/hyphenation/, which makes packages/wasm a
 # complete package.
 #   scripts/build-wasm.sh
-#   scripts/build-wasm.sh --threads   # packages/wasm/inkoxide-threads.wasm instead
+#   scripts/build-wasm.sh --threads     # packages/wasm/inkoxide-threads.wasm instead
+#   scripts/build-wasm.sh --toolchain   # the nightly that one is built on
 #
 # The build with threads uses shared memory, which the standard library
 # shipped for wasm32-unknown-unknown is not built for: it rebuilds the
 # standard library, with -Zbuild-std, on the nightly below, which needs its
 # rust-src component (docs/adr/0003-browser-threads.md):
-#   rustup toolchain install nightly-2026-07-09 --profile minimal --component rust-src
+#   rustup toolchain install "$(scripts/build-wasm.sh --toolchain)" --profile minimal \
+#     --component rust-src
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 NIGHTLY=nightly-2026-07-09
+if [[ "${1:-}" == "--toolchain" ]]; then
+  echo "$NIGHTLY"
+  exit 0
+fi
 
 if [[ "${1:-}" == "--threads" ]]; then
   # rustc warns, once per crate, that the atomics feature is unstable.

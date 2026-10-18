@@ -50,7 +50,7 @@ How it differs from `inkoxide`:
   URL) that a document draws with, or needs as a fallback. `renderSync` cannot fetch, and fails
   with `NOT_LOADED`: call `loadHyphenation(['de'])` first, or use `render`.
 - **`init(source?)`** takes a URL, a `Response`, the bytes or a compiled
-  `WebAssembly.Module`. On one thread it needs no cross-origin isolation; a
+  `WebAssembly.Module`, of either module. On one thread it needs no cross-origin isolation; a
   Content Security Policy needs `script-src 'wasm-unsafe-eval'`.
 - **A bug in the engine** (`INTERNAL`) ends its instance: the next call runs in
   a new one, with the fonts and hyphenation patterns registered so far, which

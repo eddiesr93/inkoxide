@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test';
 
 import { ISOLATED_PORT } from '../playwright.config.ts';
 import { ISOLATION } from '../vite.config.ts';
-import { call, countWorkers, node, open } from './page.ts';
+import { call, instrumentWorkers, node, open } from './page.ts';
 
 test.use({ baseURL: `http://localhost:${ISOLATED_PORT}` });
 
@@ -28,7 +28,7 @@ test('serves the page cross-origin isolated', async ({ page }) => {
 });
 
 test('a signal ends the worker of a render on the pool, and the next one renders', async ({ page }) => {
-  const workers = await countWorkers(page);
+  const workers = await instrumentWorkers(page);
   await open(page);
   const before = await workers();
   expect(await call(page, 'abortedRender')).toBe('stopped');
@@ -43,7 +43,7 @@ test('timeoutMs stops a render on the pool, and the next one renders', async ({ 
 });
 
 test('a bug on a thread of the pool fails the render, and the next one renders', async ({ page }) => {
-  const workers = await countWorkers(page);
+  const workers = await instrumentWorkers(page);
   await open(page);
   test.skip((await call(page, 'threads')) < 2, 'one core: no pool');
   const before = await workers();

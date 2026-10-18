@@ -25,9 +25,10 @@ export const ISOLATION = {
 
 /**
  * ISOLATION on every response of `vite preview`, a 304 included: `preview.headers` leaves them out
- * of a 304, and WebKit then refuses to start the engine's worker again from its cache.
+ * of a 304, and WebKit then refuses to start the engine's worker again from its cache. The
+ * browser benchmark serves its page with it too.
  */
-const isolated = (): Plugin => ({
+export const isolated = (): Plugin => ({
   name: 'isolated',
   configurePreviewServer(server) {
     server.middlewares.use((_req, res, next) => {
