@@ -174,7 +174,7 @@ describe('parseOrigin', () => {
 });
 
 describe('parseShape', () => {
-  const shape = (v: string) => parseShape('shapeOutside', v, { em: 10, vw: 400, vh: 800 });
+  const shape = (v: string) => parseShape('shapeOutside', v, { em: 10, page: { width: 400, height: 800 } });
 
   it('reads the basic shapes', () => {
     expect(shape('circle()')).toEqual({ circle: {} });

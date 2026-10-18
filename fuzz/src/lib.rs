@@ -1913,6 +1913,24 @@ fn field(s: &mut Src) -> Value {
             m.insert(key.into(), json!(s.chance(128)));
         }
     }
+    // Sorted and typed choices, unchecked spelling, and where the value
+    // goes; with chaos, on fields that do not take them.
+    let typed = (kind == "select" || s.chaos) && s.chance(60);
+    if typed {
+        m.insert("edit".into(), json!(true));
+        if kind == "select" && !s.chaos && s.chance(100) {
+            m.insert("value".into(), json!(text(s)));
+        }
+    }
+    if (choice || s.chaos) && s.chance(60) {
+        m.insert("sort".into(), json!(s.chance(200)));
+    }
+    if (kind == "text" || typed || s.chaos) && s.chance(40) {
+        m.insert("noSpell".into(), json!(true));
+    }
+    if (matches!(kind, "text" | "select" | "list") || s.chaos) && s.chance(60) {
+        m.insert("align".into(), json!(s.pick(&["left", "center", "right"])));
+    }
     if (kind == "text" || s.chaos) && s.chance(40) {
         let max = if s.chaos {
             s.below(3)
@@ -2074,8 +2092,21 @@ fn note(s: &mut Src) -> Value {
     if s.chance(80) {
         m.insert("open".into(), json!(s.chance(128)));
     }
-    if s.chaos && s.chance(20) {
-        m.insert("icon".into(), json!("Key"));
+    if s.chance(100) {
+        let icon = if s.chaos && s.chance(40) {
+            "Key"
+        } else {
+            s.pick(&[
+                "note",
+                "comment",
+                "key",
+                "help",
+                "newParagraph",
+                "paragraph",
+                "insert",
+            ])
+        };
+        m.insert("icon".into(), json!(icon));
     }
     Value::Object(m)
 }
@@ -2816,6 +2847,11 @@ mod tests {
             r#""kind":"select""#,
             r#""kind":"list""#,
             r#""multiSelect":true"#,
+            r#""edit":true"#,
+            r#""sort":true"#,
+            r#""noSpell":true"#,
+            r#""align":"right""#,
+            r#""icon":"insert""#,
             r#""value":["#,
             r#""kind":"radio""#,
             r#""name":"set0.sub"#,

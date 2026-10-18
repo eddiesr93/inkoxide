@@ -2219,6 +2219,16 @@
           "default": false,
           "description": "list only: several options can be selected at once"
         },
+        "sort": {
+          "type": "boolean",
+          "default": false,
+          "description": "select and list only: the options sorted by their lowercase text (then their text), as the field shows and stores them."
+        },
+        "edit": {
+          "type": "boolean",
+          "default": false,
+          "description": "select only: a value can be typed as well as chosen; `value` need not be one of `options`."
+        },
         "multiline": {
           "type": "boolean",
           "default": false,
@@ -2228,6 +2238,11 @@
           "type": "boolean",
           "default": false,
           "description": "text only; the value is neither shown nor stored"
+        },
+        "noSpell": {
+          "type": "boolean",
+          "default": false,
+          "description": "text, and select with `edit`: viewers do not check the spelling of what is typed."
         },
         "maxLength": {
           "type": "integer",
@@ -2266,6 +2281,15 @@
           "minLength": 1,
           "maxLength": 1024,
           "description": "What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it."
+        },
+        "align": {
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "left",
+          "description": "text, select and list only: where the text sits across the field, as written and as viewers lay out what is typed (`/Q`)."
         }
       }
     },
@@ -2390,6 +2414,19 @@
           "type": "boolean",
           "default": false,
           "description": "Whether viewers show the text when the document opens."
+        },
+        "icon": {
+          "enum": [
+            "note",
+            "comment",
+            "key",
+            "help",
+            "newParagraph",
+            "paragraph",
+            "insert"
+          ],
+          "default": "note",
+          "description": "The icon: a sticky note, a speech bubble, a key, a question mark, a new paragraph, a paragraph sign or a caret."
         }
       }
     },

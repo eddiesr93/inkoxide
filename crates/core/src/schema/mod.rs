@@ -543,6 +543,22 @@ pub struct Note {
     /// Shown open when the document opens.
     #[serde(default)]
     pub open: bool,
+    #[serde(default)]
+    pub icon: NoteIcon,
+}
+
+/// The icon of a note (`/Name`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NoteIcon {
+    #[default]
+    Note,
+    Comment,
+    Key,
+    Help,
+    NewParagraph,
+    Paragraph,
+    Insert,
 }
 
 /// The default colour of a note.
@@ -589,6 +605,28 @@ pub struct Field {
     pub format: Option<Box<FieldFormat>>,
     /// What the field is for, which screen readers say (`/TU`).
     pub label: Option<String>,
+    /// Select and list: the options sorted, as the field shows and
+    /// stores them.
+    #[serde(default)]
+    pub sort: bool,
+    /// Select: a value can be typed as well as chosen.
+    #[serde(default)]
+    pub edit: bool,
+    /// Text, and a select with `edit`: viewers do not check the spelling.
+    #[serde(default)]
+    pub no_spell: bool,
+    /// Text, select and list: where the text sits across the field.
+    pub align: Option<FieldAlign>,
+}
+
+/// Where a field's text sits across it (`/Q`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FieldAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
 }
 
 impl Field {
@@ -607,6 +645,16 @@ impl Field {
             Some(FieldValue::One(v)) => std::slice::from_ref(v),
             Some(FieldValue::Many(v)) => v,
         }
+    }
+
+    /// The options in the order the field shows them: sorted with `sort`,
+    /// by their lowercase text, then their text.
+    pub fn ordered_options(&self) -> Vec<String> {
+        let mut options = self.options.clone();
+        if self.sort {
+            options.sort_by_cached_key(|o| (o.to_lowercase(), o.clone()));
+        }
+        options
     }
 
     /// Whether the field shows text: a text field, or a choice of options.

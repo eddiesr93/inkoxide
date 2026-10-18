@@ -1239,6 +1239,28 @@ describe('form fields', () => {
     expect(r.validate()).toEqual([]);
   });
 
+  it('passes sort, edit, noSpell and align to the engine', () => {
+    const r = tree(
+      <View>
+        <TextField name="city" noSpell align="center" />
+        <Select name="fruit" options={['pear', 'Apple']} sort edit noSpell value="kiwi" align="right" />
+        <List name="days" options={['Tue', 'Mon']} sort />
+      </View>,
+    );
+    const [city, fruit, days] = (first<BoxNode>(r).children ?? []) as FieldNode[];
+    expect(city?.field).toMatchObject({ noSpell: true, align: 'center' });
+    expect(fruit?.field).toMatchObject({
+      sort: true,
+      edit: true,
+      noSpell: true,
+      value: 'kiwi',
+      align: 'right',
+    });
+    expect(days?.field).toMatchObject({ sort: true });
+    expect(days?.field).not.toHaveProperty('edit');
+    expect(r.validate()).toEqual([]);
+  });
+
   it('builds list boxes, and takes select for options and TextInput for TextField', () => {
     const r = tree(
       <View>
@@ -1568,6 +1590,19 @@ describe('notes', () => {
       style: { margin: { top: 4 } },
     });
     expect(c).toEqual({ type: 'note', note: { contents: 'Yellow' } });
+    expect(r.validate()).toEqual([]);
+  });
+
+  it('takes the icon it names', () => {
+    const r = tree(
+      <View>
+        <Note icon="key">Locked</Note>
+        <Note icon="help">Why?</Note>
+      </View>,
+    );
+    const [key, help] = (first<BoxNode>(r).children ?? []) as NoteNode[];
+    expect(key?.note).toEqual({ contents: 'Locked', icon: 'key' });
+    expect(help?.note.icon).toBe('help');
     expect(r.validate()).toEqual([]);
   });
 

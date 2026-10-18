@@ -148,6 +148,21 @@ impl Checker<'_> {
             "multiSelect",
             "list",
         );
+        only(self, !choice && f.sort, "sort", "select and list");
+        only(self, !is(FieldKind::Select) && f.edit, "edit", "select");
+        if f.no_spell && !(is(FieldKind::Text) || (is(FieldKind::Select) && f.edit)) {
+            self.err(
+                Code::InvalidValue,
+                Some("noSpell"),
+                "`noSpell` only applies to text fields, and to select fields with `edit`",
+            );
+        }
+        only(
+            self,
+            f.align.is_some() && !f.is_text_like(),
+            "align",
+            "text, select and list",
+        );
         only(
             self,
             !matches!(f.kind, FieldKind::Checkbox | FieldKind::Radio) && f.checked,
@@ -245,6 +260,8 @@ impl Checker<'_> {
                 "select and list fields require `options`",
             ),
             FieldKind::Select | FieldKind::List => match &f.value {
+                // A select with `edit` takes any text.
+                Some(FieldValue::One(_)) if f.edit => {}
                 Some(FieldValue::One(v)) if !f.options.contains(v) => {
                     self.err(Code::InvalidValue, Some("value"), "is not one of `options`");
                 }
@@ -301,6 +318,11 @@ impl Checker<'_> {
             );
             true
         };
+        if f.kind == FieldKind::Select && f.edit {
+            if let Some(v) = f.value_str() {
+                lacks(self, Some("value"), v);
+            }
+        }
         if f.kind == FieldKind::Text && !f.password {
             if let Some(v) = f.value_str() {
                 if !lacks(self, Some("value"), v) {

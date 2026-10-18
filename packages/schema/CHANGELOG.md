@@ -30,6 +30,10 @@ version 2.
 - **Floats:** `shapeOutside` (a circle, an ellipse, an inset or a polygon of 3 to 1000 corners,
   in the float's margin box) and `shapeMargin`, on floats only; `justifyContent` on a box with
   floats, and `flexGrow` on its children that are not floats, which were rejected.
+- **Fields:** `sort` on select and list fields, `edit` on select fields, `noSpell` on text
+  fields and on select fields with `edit`, and `align` (`left`, `center`, `right`) on text, select
+  and list fields. A select field with `edit` takes a `value` that is not among its options.
+- **Notes:** `icon` (`note`, `comment`, `key`, `help`, `newParagraph`, `paragraph`, `insert`).
 - **Definitions:** `ShapeOutside`, `ShapeCircle`, `ShapeEllipse` and `ShapeInset`.
 
 ### Fixed

@@ -1414,7 +1414,7 @@ fn notes() {
         ),
         (
             r#"{"type":"note","note":{"contents":"x","icon":"Key"}}"#,
-            C::UnknownField,
+            C::InvalidValue,
             "note.icon",
         ),
     ] {
@@ -1466,7 +1466,7 @@ fn note_runs_are_checked() {
         (r#","note":{}"#, C::MissingField, "note.contents"),
         (
             r#","note":{"contents":"x","icon":"Key"}"#,
-            C::UnknownField,
+            C::InvalidValue,
             "note.icon",
         ),
         (
@@ -2026,6 +2026,66 @@ fn background_images_are_checked_like_images() {
             "{node}"
         );
     }
+}
+
+#[test]
+fn choice_options_spelling_and_alignment_are_checked_per_kind() {
+    let field = |f: &str| {
+        doc(&format!(
+            r#"{{"type":"field","field":{{"name":"f","font":"Inter-Regular",{f}}}}}"#
+        ))
+    };
+    for f in [
+        r#""kind":"select","options":["b","a"],"sort":true,"edit":true,"noSpell":true,"value":"typed","align":"right""#,
+        r#""kind":"list","options":["b","a"],"sort":true,"align":"center""#,
+        r#""kind":"text","noSpell":true,"align":"left""#,
+    ] {
+        assert_eq!(run(&field(f)), vec![], "{f}");
+    }
+    for (f, path) in [
+        (r#""kind":"text","sort":true"#, "sort"),
+        (r#""kind":"list","options":["a"],"edit":true"#, "edit"),
+        (
+            r#""kind":"select","options":["a"],"noSpell":true"#,
+            "noSpell",
+        ),
+        (r#""kind":"select","options":["a"],"value":"b""#, "value"),
+    ] {
+        assert_eq!(
+            one(&field(f)),
+            (
+                C::InvalidValue,
+                format!("pages[0].children[0].field.{path}")
+            ),
+            "{f}"
+        );
+    }
+    let (code, path) = one(&doc(
+        r#"{"type":"field","field":{"name":"c","kind":"checkbox","align":"center"}}"#,
+    ));
+    assert_eq!(
+        (code, path.as_str()),
+        (C::InvalidValue, "pages[0].children[0].field.align")
+    );
+    // A typed value needs the font's glyphs too.
+    let (code, path) = one(&field(
+        r#""kind":"select","options":["a"],"edit":true,"value":"☃""#,
+    ));
+    assert_eq!(
+        (code, path.as_str()),
+        (C::InvalidValue, "pages[0].children[0].field.value")
+    );
+    // Notes take one of the standard icons.
+    assert_eq!(
+        run(&doc(
+            r#"{"type":"note","note":{"contents":"x","icon":"newParagraph"}}"#
+        )),
+        vec![]
+    );
+    let (code, _) = one(&doc(
+        r#"{"type":"note","note":{"contents":"x","icon":"star"}}"#,
+    ));
+    assert_eq!(code, C::InvalidValue);
 }
 
 #[test]

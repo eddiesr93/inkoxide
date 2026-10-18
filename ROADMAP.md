@@ -28,5 +28,3 @@ or should come sooner.
 - **Colour emoji**: SVG-in-OpenType fonts; COLRv1 sweep gradients and blend modes (a sweep
   gradient draws with its first stop now, and every blend mode as source-over); colour glyphs as
   Type 3 fonts instead of images.
-- **Forms**: `sort`, `edit`, `noSpell` and `align` on fields.
-- **Notes**: an `icon` prop, for the other note icons.

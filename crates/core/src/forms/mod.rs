@@ -7,7 +7,7 @@ use crate::fonts::{FontKey, FontSet, LoadedFont};
 use crate::geom::Rect;
 use crate::layout::{AvailableSpace, Geometry, Size};
 use crate::paint::{ContentCtx, Op, TextGlyph, TextOp};
-use crate::schema::{Color, Field, FieldKind, BLACK};
+use crate::schema::{Color, Field, FieldAlign, FieldKind, BLACK};
 
 /// Inner padding between the widget edge and its text, points.
 pub(crate) const PAD: f32 = 2.0;
@@ -119,6 +119,18 @@ pub(crate) fn paint(
     if ctx.window.is_some_and(|w| !w.starts(y)) {
         return;
     }
+    // Sorted options are the field's options: shown, selected and
+    // written in that order.
+    let sorted;
+    let f = if f.sort {
+        sorted = Field {
+            options: f.ordered_options(),
+            ..f.clone()
+        };
+        &sorted
+    } else {
+        f
+    };
     let rect = Rect::new(cx + ctx.dx, y + ctx.dy, cw.max(0.0), ch.max(0.0));
     let font = f.font.as_deref().and_then(|id| fonts.key(id));
     let mut text = Vec::new();
@@ -187,11 +199,18 @@ pub(crate) fn paint(
                 pen += lf.advance(id) * scale;
             }
             if !glyphs.is_empty() {
+                // The room beside the line, which `align` shares out; a
+                // line wider than the field starts at its left.
+                let room = (cw - pen - PAD).max(0.0);
                 text.push(TextOp {
                     font: key,
                     size: f.size,
                     color,
-                    x: 0.0,
+                    x: match f.align.unwrap_or_default() {
+                        FieldAlign::Left => 0.0,
+                        FieldAlign::Center => room / 2.0,
+                        FieldAlign::Right => room,
+                    },
                     y: baseline,
                     glyphs,
                 });
@@ -333,6 +352,27 @@ mod tests {
                 .extend(edit_glyphs(fonts.get(0)).map(|(g, _)| g));
         }
         (op, glyphs.collect())
+    }
+
+    #[test]
+    fn aligned_text_takes_the_room_beside_it() {
+        let x = |align: &str| {
+            let (op, _) = painted(
+                &format!(
+                    r#"{{"name":"t","kind":"text","font":"Inter-Regular","value":"ab","align":"{align}"}}"#
+                ),
+                "",
+            );
+            let t = &op.text[0];
+            let width = t.glyphs.last().unwrap().x - t.glyphs[0].x;
+            (t.x, width)
+        };
+        let (left, _) = x("left");
+        let (center, w) = x("center");
+        let (right, _) = x("right");
+        assert_eq!(left, 0.0);
+        assert!(right > center && center > 0.0);
+        assert!((right - 2.0 * center).abs() < 1e-3 && right < 100.0 - w);
     }
 
     fn field(json: &str) -> Field {

@@ -1,7 +1,8 @@
 //! Icon annotations: one per painted icon op. A text note is drawn as a
-//! sticky-note icon, and a file attachment as a push pin, a paper clip, a
-//! graph or a tag, each by an appearance stream of its own (PDF/A-2b
-//! requires one, and it looks the same in every viewer).
+//! sticky note, a speech bubble, a key, a question mark, a new paragraph,
+//! a paragraph sign or a caret, and a file attachment as a push pin, a
+//! paper clip, a graph or a tag, each by an appearance stream of its own
+//! (PDF/A-2b requires one, and it looks the same in every viewer).
 
 use pdf_writer::types::{AnnotationFlags, AnnotationIcon, AnnotationType};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
@@ -14,7 +15,7 @@ use super::{
 use crate::geom::Rect;
 use crate::icons::{IconKind, ICON};
 use crate::paint::rounded_rect;
-use crate::schema::{Attachment, Color, FileIcon, Note, ATTACHMENT_BLUE, NOTE_YELLOW};
+use crate::schema::{Attachment, Color, FileIcon, Note, NoteIcon, ATTACHMENT_BLUE, NOTE_YELLOW};
 use crate::InkoxideError;
 
 /// Writes the icon annotations of every page, in page order; appends
@@ -88,7 +89,15 @@ fn write_note(
     a.pair(Name(b"Contents"), Str(&contents));
     a.color_rgb(round_pt(color[0]), round_pt(color[1]), round_pt(color[2]))
         .flags(AnnotationFlags::PRINT | AnnotationFlags::NO_ZOOM | AnnotationFlags::NO_ROTATE)
-        .icon(AnnotationIcon::Note);
+        .icon(match note.icon {
+            NoteIcon::Note => AnnotationIcon::Note,
+            NoteIcon::Comment => AnnotationIcon::Comment,
+            NoteIcon::Key => AnnotationIcon::Key,
+            NoteIcon::Help => AnnotationIcon::Help,
+            NoteIcon::NewParagraph => AnnotationIcon::NewParagraph,
+            NoteIcon::Paragraph => AnnotationIcon::Paragraph,
+            NoteIcon::Insert => AnnotationIcon::Insert,
+        });
     if let Some(author) = &author {
         a.pair(Name(b"T"), Str(author));
     }
@@ -98,7 +107,7 @@ fn write_note(
     tag::struct_parent(&mut a, struct_parent);
     a.appearance().normal().stream(ap);
     a.finish();
-    let content = icon(&color, profile)?;
+    let content = icon(note.icon, &color, profile)?;
     out.form_xobject(pdf, ap, &content, |x| {
         x.bbox(PdfRect::new(0.0, 0.0, ICON, ICON));
     });
@@ -170,14 +179,76 @@ fn body(c: &mut Content, color: &Color) {
     c.fill_nonzero_and_stroke();
 }
 
-/// A sticky note in `color`: the body, and three lines of "text".
-fn icon(color: &Color, profile: Profile) -> Result<Vec<u8>, InkoxideError> {
+/// A note's icon in `color`: the body, and on it three lines of "text",
+/// a speech bubble, a key, a question mark, a triangle over a line, a
+/// paragraph sign or a caret.
+fn icon(icon: NoteIcon, color: &Color, profile: Profile) -> Result<Vec<u8>, InkoxideError> {
     let mut c = Content::new();
     body(&mut c, color);
     c.set_line_width(1.25);
-    for y in [13.5, 10.0, 6.5] {
-        c.move_to(5.0, y);
-        c.line_to(ICON - 5.0, y);
+    match icon {
+        NoteIcon::Note => {
+            for y in [13.5, 10.0, 6.5] {
+                c.move_to(5.0, y);
+                c.line_to(ICON - 5.0, y);
+            }
+        }
+        NoteIcon::Comment => {
+            c.move_to(5.0, 15.0);
+            c.line_to(15.0, 15.0);
+            c.line_to(15.0, 8.0);
+            c.line_to(9.5, 8.0);
+            c.line_to(6.5, 4.5);
+            c.line_to(7.0, 8.0);
+            c.line_to(5.0, 8.0);
+            c.close_path();
+        }
+        NoteIcon::Key => {
+            // A ring, a shaft and two teeth.
+            let k = 2.5 * crate::paint::KAPPA;
+            c.move_to(9.5, 12.5);
+            c.cubic_to(9.5, 12.5 + k, 7.0 + k, 15.0, 7.0, 15.0);
+            c.cubic_to(7.0 - k, 15.0, 4.5, 12.5 + k, 4.5, 12.5);
+            c.cubic_to(4.5, 12.5 - k, 7.0 - k, 10.0, 7.0, 10.0);
+            c.cubic_to(7.0 + k, 10.0, 9.5, 12.5 - k, 9.5, 12.5);
+            c.move_to(8.8, 10.7);
+            c.line_to(15.0, 4.5);
+            c.move_to(13.0, 6.5);
+            c.line_to(14.75, 8.25);
+            c.move_to(11.0, 8.5);
+            c.line_to(12.5, 10.0);
+        }
+        NoteIcon::Help => {
+            c.move_to(7.0, 12.5);
+            c.cubic_to(7.0, 16.5, 13.0, 16.5, 13.0, 12.5);
+            c.cubic_to(13.0, 10.5, 10.0, 10.5, 10.0, 8.0);
+            c.move_to(10.0, 6.25);
+            c.line_to(10.0, 4.75);
+        }
+        NoteIcon::NewParagraph => {
+            c.move_to(10.0, 15.5);
+            c.line_to(6.0, 9.0);
+            c.line_to(14.0, 9.0);
+            c.close_path();
+            c.move_to(6.0, 6.0);
+            c.line_to(14.0, 6.0);
+        }
+        NoteIcon::Paragraph => {
+            // A bowl on two stems.
+            c.move_to(14.5, 15.0);
+            c.line_to(8.5, 15.0);
+            c.cubic_to(5.5, 15.0, 5.5, 10.5, 8.5, 10.5);
+            c.line_to(11.0, 10.5);
+            c.move_to(11.0, 15.0);
+            c.line_to(11.0, 4.5);
+            c.move_to(13.5, 15.0);
+            c.line_to(13.5, 4.5);
+        }
+        NoteIcon::Insert => {
+            c.move_to(5.5, 5.5);
+            c.line_to(10.0, 14.5);
+            c.line_to(14.5, 5.5);
+        }
     }
     c.stroke();
     content_bytes(c, profile)
@@ -343,6 +414,37 @@ mod tests {
             false,
         );
         assert_eq!(rects(&pdf), [[180.0, 0.0, 200.0, 20.0]]);
+    }
+
+    #[test]
+    fn a_note_has_the_icon_it_names_drawn_its_own_way() {
+        let mut drawn = std::collections::BTreeSet::new();
+        for (icon, name) in [
+            ("note", "Note"),
+            ("comment", "Comment"),
+            ("key", "Key"),
+            ("help", "Help"),
+            ("newParagraph", "NewParagraph"),
+            ("paragraph", "Paragraph"),
+            ("insert", "Insert"),
+        ] {
+            let pdf = render(
+                "",
+                &note(&format!(r#"{{"contents":"x","icon":"{icon}"}}"#)),
+                1,
+                true,
+            );
+            assert!(pdf.contains(&format!("/Name /{name}")), "{pdf}");
+            let stream = pdf
+                .split("stream\n")
+                .nth(1)
+                .unwrap()
+                .split("endstream")
+                .next()
+                .unwrap();
+            drawn.insert(stream.to_string());
+        }
+        assert_eq!(drawn.len(), 7);
     }
 
     #[test]
