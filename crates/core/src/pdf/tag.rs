@@ -420,6 +420,23 @@ pub(super) fn write_tree(
         }
     }
 
+    // PDF 2.0: the first and the last child of each element whose
+    // children are all kept elements, for the caption rule below.
+    let ends: Vec<Option<(usize, usize)>> = if pdf_2 {
+        tree.kids
+            .iter()
+            .map(|kids| {
+                let all = kids.iter().all(|k| matches!(*k, Kid::Elem(c) if kept[c]));
+                match (kids.first(), kids.last()) {
+                    (Some(&Kid::Elem(a)), Some(&Kid::Elem(b))) if all => Some((a, b)),
+                    _ => None,
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     // The elements.
     for (id, e) in tree.elems.iter().enumerate() {
         let Some(r) = refs[id] else { continue };
@@ -444,15 +461,7 @@ pub(super) fn write_tree(
         // captions, never of the document; another is a paragraph.
         let kind = match e.parent {
             Some(p) if pdf_2 && e.kind == Kind::Caption => {
-                let siblings: Vec<usize> = tree.kids[p as usize]
-                    .iter()
-                    .filter_map(|k| match *k {
-                        Kid::Elem(c) if kept[c] => Some(c),
-                        _ => None,
-                    })
-                    .collect();
-                let at_end = siblings.first() == Some(&id) || siblings.last() == Some(&id);
-                let edge = at_end && tree.kids[p as usize].len() == siblings.len();
+                let edge = matches!(ends[p as usize], Some((a, b)) if a == id || b == id);
                 if p == 0 || !edge {
                     Kind::P
                 } else {

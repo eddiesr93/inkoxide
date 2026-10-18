@@ -88,7 +88,8 @@ only on demand, from the Actions tab, with the ID of that release run.
   of SVG text, the work budget of one `COLR` glyph, deepest accepted
   nesting on a small stack). Variable font instances render in time
   linear in their number, up to the 64 a document declares, and more are
-  refused before any is made. SVG text at scale (thousands of texts on
+  refused before any is made. Thousands of captions in one element are
+  tagged in linear time under PDF/UA-2. SVG text at scale (thousands of texts on
   one point, of spans with their own paint, of text nodes) renders in
   linear time and bounded memory, measured with a counting allocator;
   its placeholders are bounded before they are written; and validation

@@ -342,8 +342,8 @@ pub(crate) struct Plan {
     /// Text node (by address) → the elements of its runs, when some run
     /// has one.
     runs: HashMap<usize, Box<[RunTag]>>,
-    /// Node id → the element of the first node with that id, for the
-    /// structure destinations of links to it.
+    /// Node id → the element of the first displayed node with that id,
+    /// for the structure destinations of links to it.
     ids: HashMap<String, StructId>,
     /// Node with a bookmark (by address) → its element, for the
     /// structure destination of the bookmark.
@@ -402,7 +402,7 @@ impl Plan {
         self.content.get(&key(node)).copied()
     }
 
-    /// The element of the first node with id `id`.
+    /// The element of the first displayed node with id `id`.
     pub fn anchor(&self, id: &str) -> Option<StructId> {
         self.ids.get(id).copied()
     }
@@ -462,7 +462,10 @@ impl Plan {
     /// Plans `node` under element `parent`; inside an element that holds
     /// its content (`merge`), its content is that element's.
     fn node(&mut self, node: &Node, parent: StructId, merge: Option<StructId>, lang: Option<&str>) {
-        if node.is_decoration() {
+        // What `display: none` hides draws nothing, and is no destination:
+        // an id is that of the first displayed node with it, as in the
+        // page destinations (`Marks`).
+        if node.is_decoration() || node.hidden() {
             return;
         }
         let own = self.node_elems(node, parent, merge, lang);
@@ -620,7 +623,7 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
-    use super::Numbering;
+    use super::{Kind, Numbering, Plan};
 
     #[test]
     fn labels_say_how_a_list_is_numbered() {
@@ -646,5 +649,32 @@ mod tests {
         ] {
             assert_eq!(of(labels), Some(n), "{labels:?}");
         }
+    }
+
+    /// A link's structure destination is where its page destination lands:
+    /// the first displayed node with the id, not one `display: none` hides.
+    #[test]
+    fn anchors_are_the_first_displayed_node_with_the_id() {
+        let text = |extra: &str| {
+            format!(
+                r#"{{"type":"text"{extra},"runs":[{{"text":"x","font":"Inter-Regular","size":9}}]}}"#
+            )
+        };
+        let json = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":200,"height":200}},"children":[{},{},{},{}]}}]}}"#,
+            text(r#","id":"dup","style":{"display":"none"}"#),
+            format!(
+                r#"{{"type":"box","style":{{"display":"none"}},"children":[{}]}}"#,
+                text(r#","id":"inner""#)
+            ),
+            text(r#","id":"dup","role":"h1""#),
+            text(r#","id":"inner","role":"h2""#),
+        );
+        let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+        let plan = Plan::new(&doc, true);
+        let kind = |id: &str| plan.anchor(id).map(|e| plan.elems[e as usize].kind);
+        assert_eq!(kind("dup"), Some(Kind::H(1)));
+        assert_eq!(kind("inner"), Some(Kind::H(2)));
     }
 }

@@ -204,6 +204,15 @@ fn a_view_box_fits_the_box_it_fills_like_css() {
         [40.0, 20.0, 40.0, 40.0],
         false,
     );
+    // Eight bytes but not eight characters: the default too.
+    near(
+        place(
+            r#"viewBox="0 0 100 100" preserveAspectRatio="xMiéYMin""#,
+            (100.0, 100.0),
+        ),
+        [40.0, 20.0, 40.0, 40.0],
+        false,
+    );
 }
 
 #[test]

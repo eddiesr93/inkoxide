@@ -204,9 +204,12 @@ older than PDF 2.0, so part 2 with `pdfA` is refused. In the CLI,
   text it covers, or else where it goes). A box is no element of its own
   unless its [`role`](SCHEMA.md#role) makes it one (`h1`–`h6`,
   `section`, `blockQuote`, `figure`, a list and its parts); a `figure`
-  box that draws only its background and borders is still a figure. A
-  list says how its labels number it (`/ListNumbering`), read from them:
-  `1.`, `a)`, `iv`, `•` and the like.
+  box that draws only its background and borders is still a figure.
+  Under part 2, a box with a `link` holds everything inside it in its
+  link, which PDF 2.0 does not let hold a paragraph: the roles inside it
+  make no elements, as inside a paragraph (a link on a heading's runs
+  keeps the heading). A list says how its labels number it
+  (`/ListNumbering`), read from them: `1.`, `a)`, `iv`, `•` and the like.
 - **Decoration** is marked as artifacts, which screen readers skip:
   headers and footers (pagination artifacts that say which), other
   content painted on every page, repeated table header rows, backgrounds
@@ -233,8 +236,11 @@ older than PDF 2.0, so part 2 with `pdfA` is refused. In the CLI,
   widget is tagged), headings that go down one level at a time from
   `h1`, or lists made of items (a `listItem` inside a `list`, a
   `listBody` inside a `listItem`) fails, at the path of the first thing
-  it lacks. Only `render` reports it. An encrypted file must keep
-  `contentAccessibility`.
+  it lacks. Under part 2, so does a `#id` link to decoration (a `fixed`
+  node, one with the role `artifact`, or a node inside one) or a
+  bookmark on it: part 2 links and bookmarks go to a structure element,
+  which decoration has none of. Only `render` reports it. An encrypted
+  file must keep `contentAccessibility`.
 
 Without these options the output does not change. A tagged file is the
 same on any number of threads, draws the same pixels and extracts the
@@ -286,7 +292,9 @@ password lifts the permissions.
   widths are listed for all its glyphs, not only those used, so neither
   tells which glyphs the file uses. Listing them all adds up to about 5
   bytes a glyph to each font (some 15 KB for a Latin font of 3,000
-  glyphs). Radio buttons, whose states are
+  glyphs). Colour glyphs (emoji) are drawn by fonts of their own, whose
+  widths and number of glyphs are those of the colour glyphs used.
+  Radio buttons, whose states are
   otherwise named after their values, are named by their position in the
   group instead, with the values in `/Opt`, so the values are encrypted
   too.

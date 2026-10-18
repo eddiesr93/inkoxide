@@ -1178,7 +1178,8 @@ and text extraction what each part of the page is, in reading order. `pdfUA` wri
 field (in a `Header` or `fixed` too), headings in order and lists made of items: without one, the
 render fails with `ENGINE_REJECTED` (`engineCode` `UA_CONFLICT`) and the component that lacks it. `pdfUA` and
 `pdfUA="1"` write part 1, on PDF 1.7; `pdfUA="2"` writes **PDF/UA-2** (ISO 14289-2), on PDF 2.0, with
-the same requirements. PDF/A-1, -2 and -3 are older than PDF 2.0, so `pdfUA="2"` with
+the same requirements, and links and bookmarks may not go to decoration (`fixed` or
+`role="artifact"`), which has no element for them. PDF/A-1, -2 and -3 are older than PDF 2.0, so `pdfUA="2"` with
 `conformance` fails the render, naming `options.pdfUA`. `conformance="PDF/A-2a"` or `"PDF/A-3a"` is PDF/A, tagged. The render
 options `tagged` and `pdfUA` do the same and win over the props.
 

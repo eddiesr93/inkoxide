@@ -267,6 +267,18 @@ describe('substituteVars', () => {
     expect(() => substituteVars('var(--none)', lookup)).toThrow(ValueError);
     expect(() => substituteVars('var(--loop)', lookup)).toThrow(/too deep/);
   });
+
+  it('throws ValueError for a var() that grows with each level', () => {
+    // --v0 names --v1 four times, --v1 names --v2 four times, and so on: 4^12 expansions.
+    const levels = (last: string) => (name: string) => {
+      const n = Number(name.slice(3));
+      return n === 12 ? last : Array.from({ length: 4 }, () => `var(--v${n + 1})`).join(' ');
+    };
+    expect(() => substituteVars('var(--v0)', levels('1pt'))).toThrow(/expands more than 10000 times/);
+    expect(() => substituteVars('var(--v0)', levels(''))).toThrow(/expands more than 10000 times/);
+    const long = (name: string) => (name === '--x' ? 'x'.repeat(40_000) : 'var(--x) var(--x)');
+    expect(() => substituteVars('var(--y)', long)).toThrow(/more than 65536 characters/);
+  });
 });
 
 describe('errors', () => {

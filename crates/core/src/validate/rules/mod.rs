@@ -184,8 +184,9 @@ struct Checker<'a> {
     /// Where the node checked is in the structure of tagged output.
     structure: tagging::Structure,
     doc: &'a Document,
-    /// Ids that `#id` links can reach, collected on the first such link.
-    anchors: Option<HashSet<&'a str>>,
+    /// Ids that `#id` links can reach, collected on the first such link:
+    /// whether the first displayed node with each is decoration.
+    anchors: Option<HashMap<&'a str, bool>>,
     /// Inside a header or footer (at any depth).
     in_fixed: bool,
     /// Form field names seen so far, with their kind.
@@ -298,13 +299,15 @@ pub(crate) const MAX_TABLE_SLOTS: usize = 1_000_000;
 
 /// Ids of the nodes that get a destination: the page body (flow and
 /// overlays) that is displayed (not headers or footers, not under
-/// `display: none`). `node` is displayed.
-fn collect_anchors<'a>(node: &'a Node, out: &mut HashSet<&'a str>) {
+/// `display: none`), each with whether its first node is decoration, as
+/// `node` is when `decoration` is set. `node` is displayed.
+fn collect_anchors<'a>(node: &'a Node, decoration: bool, out: &mut HashMap<&'a str, bool>) {
+    let decoration = decoration || node.is_decoration();
     if let Some(id) = &node.id {
-        out.insert(id);
+        out.entry(id.as_str()).or_insert(decoration);
     }
     for c in node.shown_children() {
-        collect_anchors(c, out);
+        collect_anchors(c, decoration, out);
     }
 }
 

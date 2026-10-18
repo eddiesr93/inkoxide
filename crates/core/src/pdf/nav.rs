@@ -6,6 +6,7 @@ use pdf_writer::{Name, Rect as PdfRect, Ref, Str};
 use crate::geom::Rect;
 use crate::pipeline::{Dest, Marks};
 
+use super::out::written_len;
 use super::{round_pt, LinkArea, Profile, Writer};
 
 /// Writes one link annotation as object `r`; `false` (nothing written)
@@ -106,7 +107,7 @@ pub(crate) fn written_uri_len(uri: &str) -> usize {
         .bytes()
         .map(|b| if b.is_ascii_graphic() { 1 } else { 3 })
         .sum();
-    2 + 2 * (bytes + 32)
+    written_len(bytes)
 }
 
 /// PDF URIs are 7-bit ASCII: percent-encode everything else (and spaces).

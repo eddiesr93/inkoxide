@@ -29,16 +29,14 @@ pub(super) fn decode(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
 }
 
 fn woff(bytes: &[u8]) -> Result<Vec<u8>, String> {
-    // Uncompressed tables are copied from `bytes`; compressed ones count
-    // against the budget before anything is allocated for them.
-    let mut budget = MAX_SFNT_SIZE;
-    let mut too_large = false;
+    let too_large = || format!("WOFF font decodes to more than {} MiB", MAX_SFNT_SIZE >> 20);
+    // Every table counts at its declared size before anything is decoded:
+    // stored tables are copied from `bytes`, and several entries of the
+    // directory may point at the same bytes.
+    if declared_size(bytes).is_some_and(|n| n > MAX_SFNT_SIZE as u64) {
+        return Err(too_large());
+    }
     let decoded = wuff::decompress_woff1_with_custom_z(bytes, &mut |table, len| {
-        if len > budget {
-            too_large = true;
-            return Err("table exceeds the size limit".into());
-        }
-        budget -= len;
         let mut out = Vec::with_capacity(len);
         // One byte more than declared, so that a longer stream fails
         // wuff's length check instead of being cut silently.
@@ -47,12 +45,16 @@ fn woff(bytes: &[u8]) -> Result<Vec<u8>, String> {
             .read_to_end(&mut out)?;
         Ok(out)
     });
-    decoded.map_err(|_| {
-        if too_large {
-            format!("WOFF font decodes to more than {} MiB", MAX_SFNT_SIZE >> 20)
-        } else {
-            "not a valid WOFF font".into()
-        }
+    decoded.map_err(|_| "not a valid WOFF font".into())
+}
+
+/// The sum of the sizes a WOFF file's tables declare (`origLength`), or
+/// `None` when its directory is cut short (`wuff` then refuses the file).
+fn declared_size(bytes: &[u8]) -> Option<u64> {
+    let be_u32 = |at: usize| Some(u32::from_be_bytes(bytes.get(at..at + 4)?.try_into().ok()?));
+    let tables = u16::from_be_bytes(bytes.get(12..14)?.try_into().ok()?);
+    (0..usize::from(tables)).try_fold(0u64, |sum, i| {
+        Some(sum + u64::from(be_u32(44 + 20 * i + 12)?))
     })
 }
 
@@ -124,6 +126,31 @@ mod tests {
         let bomb = woff_from_sfnt(&sfnt, true, Some(u32::MAX));
         assert_eq!(
             decode(&bomb).unwrap_err(),
+            "WOFF font decodes to more than 128 MiB"
+        );
+        // Stored tables that each fit, but whose entries all point at the
+        // same bytes: 2,100 copies of 64 KiB add up to more than 128 MiB.
+        let block = 64 << 10;
+        let copies = 2100;
+        let start = 44 + 20 * copies;
+        let mut shared = Vec::new();
+        shared.extend_from_slice(b"wOFF\0\x01\0\0");
+        shared.extend_from_slice(&((start + block) as u32).to_be_bytes());
+        shared.extend_from_slice(&(copies as u16).to_be_bytes());
+        shared.extend_from_slice(&[0; 2]);
+        shared.extend_from_slice(&u32::MAX.to_be_bytes()); // totalSfntSize
+        shared.extend_from_slice(&[0, 1, 0, 0]);
+        shared.extend_from_slice(&[0; 20]);
+        for i in 0..copies {
+            shared.extend_from_slice(&(i as u32).to_be_bytes()); // tag
+            shared.extend_from_slice(&(start as u32).to_be_bytes());
+            shared.extend_from_slice(&(block as u32).to_be_bytes());
+            shared.extend_from_slice(&(block as u32).to_be_bytes());
+            shared.extend_from_slice(&[0; 4]);
+        }
+        shared.resize(start + block, 0);
+        assert_eq!(
+            decode(&shared).unwrap_err(),
             "WOFF font decodes to more than 128 MiB"
         );
         // Tables that inflate to less than they declare.

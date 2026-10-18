@@ -100,7 +100,8 @@ validation_codes! {
     /// language, alternative text on an image or a `figure` box, a label
     /// on a form field, headings that go down one level at a time from
     /// `h1`, or lists made of items (a `listItem` inside a `list`, a
-    /// `listBody` inside a `listItem`). Only [`render`](crate::render) reports it, with
+    /// `listBody` inside a `listItem`); under part 2, a `#id` link or a
+    /// bookmark that goes to decoration. Only [`render`](crate::render) reports it, with
     /// [`RenderOptions::pdf_ua`](crate::RenderOptions::pdf_ua).
     UaConflict = "UA_CONFLICT",
 }

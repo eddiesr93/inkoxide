@@ -63,7 +63,7 @@ impl Checker<'_> {
 
     /// The first thing PDF/UA-1 asks of the document that it lacks: the
     /// render's conflict, at `field` of the node checked.
-    fn lacks(&mut self, field: &str, message: String) {
+    pub(super) fn lacks(&mut self, field: &str, message: String) {
         if self.conflict.is_none() {
             self.conflict = Some(ValidationError {
                 code: Code::UaConflict,

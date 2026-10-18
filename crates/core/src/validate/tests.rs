@@ -2855,6 +2855,26 @@ fn checks_wide_tables_in_linear_time() {
     });
 }
 
+/// Spans at the top of their range are refused, not added past it (on a
+/// 32-bit target the sum would wrap).
+#[test]
+fn the_largest_spans_do_not_fit() {
+    let table = |cells: &str| {
+        doc(&format!(
+            r#"{{"type":"table","columns":[{{"width":10}},{{"width":10}}],"rows":[{{"cells":[{cells}]}}]}}"#
+        ))
+    };
+    let path = "pages[0].children[0].rows[0].cells[1]";
+    assert_eq!(
+        one(&table(r#"{},{"colSpan":4294967295}"#)),
+        (C::InvalidTable, path.into())
+    );
+    assert_eq!(
+        one(&table(r#"{},{"rowSpan":4294967295}"#)),
+        (C::InvalidTable, format!("{path}.rowSpan"))
+    );
+}
+
 /// An integer written with a zero fraction reads as the integer, as JSON
 /// Schema reads it; another fraction is the wrong type.
 #[test]

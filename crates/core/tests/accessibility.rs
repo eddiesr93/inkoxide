@@ -49,6 +49,14 @@ fn pdf_ua_and_the_accessible_pdf_a_levels_pass_verapdf() {
         verapdf(level.as_str(), std::slice::from_ref(&both));
         verapdf("ua1", &[both]);
     }
+    // PDF/A-1b is not tagged of its own, but takes PDF/UA-1: the CIDSets
+    // of its subsets hold every CID the subset maps.
+    let options = RenderOptions::default()
+        .with_pdf_a_level(PdfALevel::A1b)
+        .with_pdf_ua(true);
+    let both = write("1b-ua1", &render(&fixture(), &options).unwrap());
+    verapdf("1b", std::slice::from_ref(&both));
+    verapdf("ua1", &[both]);
 }
 
 /// PDF/UA-2 with what the fixtures lack: a section, a block quotation, a
@@ -104,6 +112,8 @@ fn pdf_ua_2_passes_verapdf_with_every_role() {
     let ua2 = RenderOptions::default().with_pdf_ua_part(PdfUaPart::Ua2);
     let plain = render(doc.as_bytes(), &ua2).unwrap();
     assert!(plain.starts_with(b"%PDF-2.0"));
+    // PDF 2.0 requires a file identifier (ISO 32000-2, 7.5.5).
+    assert!(plain.windows(5).any(|w| w == b"/ID ["), "no /ID");
     let text = String::from_utf8_lossy(
         &render(doc.as_bytes(), &ua2.clone().with_compress(false)).unwrap(),
     )
@@ -382,6 +392,27 @@ fn a_document_without_what_pdf_ua_requires_is_refused() {
         &RenderOptions::default().with_tagged(true),
     )
     .unwrap();
+    // PDF/UA-2 links and bookmarks go to structure elements, which
+    // decoration has none of; PDF/UA-1 takes them.
+    let ua2 = RenderOptions::default().with_pdf_ua_part(PdfUaPart::Ua2);
+    let stamp = |extra: &str| {
+        format!(
+            r#"{{"type":"text"{extra},"break":{{"fixed":true}},"style":{{"position":"absolute"}},"runs":[{{"text":"x","font":"Inter-Regular","size":9}}]}}"#
+        )
+    };
+    let to_stamp = r##"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":9,"link":"#stamp"}]}"##;
+    let linked = doc(meta, &format!("{to_stamp},{}", stamp(r#","id":"stamp""#)));
+    let marked = doc(meta, &stamp(r#","bookmark":{"title":"Stamp"}"#));
+    assert_eq!(
+        refused(linked.clone(), &ua2),
+        ("UA_CONFLICT".into(), "pages[0].children[0].runs[0].link".into())
+    );
+    assert_eq!(
+        refused(marked.clone(), &ua2),
+        ("UA_CONFLICT".into(), "pages[0].children[0].bookmark".into())
+    );
+    render(linked.as_bytes(), &ua).unwrap();
+    render(marked.as_bytes(), &ua).unwrap();
     // Assistive technology must be able to read an encrypted file.
     let locked = ua.with_encryption(
         Encryption::new()

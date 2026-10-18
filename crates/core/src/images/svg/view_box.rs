@@ -43,7 +43,7 @@ impl ViewBox {
             .skip_while(|&w| w == "defer");
         let align = match words.next() {
             Some("none") => None,
-            Some(a) if a.len() == 8 && a.starts_with('x') && a[4..].starts_with('Y') => {
+            Some(a) if a.len() == 8 && a.is_ascii() && a.starts_with('x') && a[4..].starts_with('Y') => {
                 let frac = |s: &str| match s {
                     "Min" => Some(0.0),
                     "Mid" => Some(0.5),

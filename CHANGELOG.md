@@ -105,7 +105,11 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   (Rust), `pdfUA: '2'` (Node, WASM and `@inkoxide/render`; `true` and `'1'` are still PDF/UA-1;
   the type `PdfUaPart` is exported), `<Document pdfUA="2">` and `--pdf-ua=2` write the structure
   elements in PDF 2.0's namespace and link to structure destinations. The checks for a title,
-  a language, alternative text, labels, headings and lists are those of PDF/UA-1 (`UA_CONFLICT`).
+  a language, alternative text, labels, headings and lists are those of PDF/UA-1 (`UA_CONFLICT`);
+  a link within the document or a bookmark that goes to decoration (a fixed node, or one with the
+  role `artifact`) is refused too, as it has no element to go to. A box with a link holds what
+  is inside it in its link, which PDF 2.0 does not let hold a paragraph, so the roles inside it
+  make no elements: a link on a heading's runs keeps the heading.
   PDF/A-1, -2 and -3 are older than PDF 2.0, so PDF/UA-2 does not combine with PDF/A: that is
   refused (`INVALID_ARGUMENT` at `options.pdfUA` in JavaScript). veraPDF checks the output.
 

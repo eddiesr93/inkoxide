@@ -51,7 +51,9 @@ does not do:
   any encrypted PDF. Stream lengths are measured after compression, so they say something about
   the content: the length of a font subset, roughly how many glyphs it holds. The subset tags
   of font names are keyed, and the widths cover every glyph of the font, so neither tells which
-  glyphs the file uses.
+  glyphs the file uses. Colour glyphs (emoji) are the exception: they are drawn by fonts of
+  their own, whose widths, bounding box and number of glyphs are those of the colour glyphs
+  used.
 - **Hide which form choices are made.** PDF writes this state as names and numbers, which are
   never encrypted: whether each checkbox is checked, which radio button of a group is on (by a
   position in the group, not its value), and which options of a list box are selected and

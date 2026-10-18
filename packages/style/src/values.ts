@@ -63,13 +63,31 @@ export function splitTopLevel(s: string, sep = ','): string[] {
 }
 
 /**
+ * Most `var()`s one substitution may expand, and the longest value it may produce. Each `var()` is
+ * expanded again wherever it is used, so a value that names one property several times, at each of
+ * a few levels, grows exponentially; browsers bound it in the same way.
+ */
+const MAX_EXPANSIONS = 10_000;
+const MAX_SUBSTITUTED = 65_536;
+
+/**
  * Replaces every `var(--name, fallback)` with its value, recursively. `lookup` returns the value of
- * a custom property or undefined; an unresolvable `var()` without a fallback throws.
+ * a custom property or undefined; an unresolvable `var()` without a fallback throws, as does a
+ * substitution past {@link MAX_EXPANSIONS} `var()`s or {@link MAX_SUBSTITUTED} characters.
  */
 export function substituteVars(
   value: string,
   lookup: (name: string) => string | undefined,
   depth = 0,
+): string {
+  return substitute(value, lookup, depth, { expansions: 0 });
+}
+
+function substitute(
+  value: string,
+  lookup: (name: string) => string | undefined,
+  depth: number,
+  budget: { expansions: number },
 ): string {
   if (depth > 16) throw new ValueError(`var() nesting too deep in "${value}"`);
   let i = value.indexOf('var(');
@@ -77,6 +95,9 @@ export function substituteVars(
   let out = '';
   let last = 0;
   while (i >= 0) {
+    if (++budget.expansions > MAX_EXPANSIONS) {
+      throw new ValueError(`var() expands more than ${MAX_EXPANSIONS} times`);
+    }
     const close = matchParen(value, i + 3);
     const inner = value.slice(i + 4, close);
     const comma = inner.indexOf(',');
@@ -87,7 +108,10 @@ export function substituteVars(
       if (fallback === undefined) throw new ValueError(`cannot resolve var(${name})`);
       resolved = fallback;
     }
-    out += value.slice(last, i) + substituteVars(resolved, lookup, depth + 1);
+    out += value.slice(last, i) + substitute(resolved, lookup, depth + 1, budget);
+    if (out.length > MAX_SUBSTITUTED) {
+      throw new ValueError(`var() expands to more than ${MAX_SUBSTITUTED} characters`);
+    }
     last = close + 1;
     i = value.indexOf('var(', last);
   }
