@@ -5,15 +5,28 @@
  * the engine runs on the calling thread.
  */
 import * as wasm from '@inkoxide/wasm';
-import type { WasmSource } from '@inkoxide/wasm';
+import type { InitOptions, WasmSource } from '@inkoxide/wasm';
 
 import { type EngineHost, type EngineIssue, type EngineVersion, setEngineHost } from './host.ts';
 import { nodeProcess, onPage } from './runtime.ts';
 import type { Op, Request, Response } from './worker.ts';
 
 export interface BrowserOptions {
-  /** The engine's WebAssembly module, as `@inkoxide/wasm`'s `init` takes it. Default: next to that package. */
+  /**
+   * The engine's WebAssembly module, as `@inkoxide/wasm`'s `init` takes it: the one-thread module
+   * or the module with threads. Default: that package's, the module with threads for a pool.
+   */
   wasm?: WasmSource;
+  /**
+   * The threads renders use in the worker: `'auto'`, `1`, or an integer up to 256. Above 1, the
+   * engine starts that many more workers, which share its memory: that needs a page that is
+   * cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin` and
+   * `Cross-Origin-Embedder-Policy: require-corp`), and a worker (`worker` not `false`). Where
+   * either is missing, renders run on one thread. `'auto'` is the number of cores, at most 8, on
+   * an isolated page, and 1 otherwise. `engineStatus().threads` tells what the engine got when it
+   * started. Default `'auto'`.
+   */
+  threads?: 'auto' | number;
   /**
    * The folder of the bundled fonts and hyphenation patterns (`fonts/`, `hyphenation/`), to serve
    * them from elsewhere: `fonts/` and `hyphenation/` from this package's `assets/`, and the
@@ -97,6 +110,15 @@ async function forWorker(source: WasmSource): Promise<unknown> {
   return WebAssembly.compile(await res.arrayBuffer());
 }
 
+/** The threads to ask the engine for, from the `threads` option: `'auto'` as documented. */
+function threadsFor(inWorker: boolean): number {
+  const { threads = 'auto' } = options;
+  if (!inWorker) return 1;
+  if (threads !== 'auto') return threads;
+  const isolated = (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
+  return isolated ? Math.min(globalThis.navigator?.hardwareConcurrency ?? 1, 8) : 1;
+}
+
 interface Pending {
   message: Request;
   resolve(value: unknown): void;
@@ -106,10 +128,14 @@ interface Pending {
 /**
  * The engine in a worker. What the worker was set up with (the module, fonts and patterns) is
  * kept, to set up the next one: a render that is stopped ends its worker, and the calls waiting
- * for it go to a new one.
+ * for it go to a new one. So does a bug in the engine on one of its pool's threads, which the
+ * worker, waiting for that thread, cannot report: the thread posts on a channel of each worker's
+ * own (`trapChannel`), and the call it was running fails with `INTERNAL`.
  */
 class WorkerEngine implements Engine {
   private worker: Worker | undefined;
+  private channel: BroadcastChannel | undefined;
+  private channels = 0;
   private next = 0;
   private readonly pending = new Map<number, Pending>();
   private readonly setup: Array<{ op: Op; args: unknown[] }> = [];
@@ -147,11 +173,36 @@ class WorkerEngine implements Engine {
 
   private post(message: Request): void {
     this.worker ??= this.spawn();
-    this.worker.postMessage(message);
+    this.worker.postMessage(this.withChannel(message));
+  }
+
+  /** `message`, with `init` given the trap channel of the current worker. */
+  private withChannel(message: Request): Request {
+    if (message.op !== 'init' || !this.channel) return message;
+    const [source, opts] = message.args as [unknown, InitOptions | undefined];
+    return { ...message, args: [source, { ...opts, trapChannel: this.channel.name }] };
   }
 
   private spawn(): Worker {
     const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+    this.channel?.close();
+    this.channel = undefined;
+    if (typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel(
+        `inkoxide-trap-${Math.random().toString(36).slice(2)}-${this.channels++}`,
+      );
+      channel.onmessage = ({ data }: MessageEvent<{ message: string }>) => {
+        if (this.worker !== worker) return;
+        // The call the worker is running: the first of those waiting, which it answers in order.
+        const first = this.pending.entries().next().value;
+        if (first) {
+          this.pending.delete(first[0]);
+          first[1].reject(new EngineError('INTERNAL', '', `the engine stopped: ${data.message}`));
+        }
+        this.restart();
+      };
+      this.channel = channel;
+    }
     worker.onmessage = ({ data }: MessageEvent<Response>) => {
       const p = this.pending.get(data.id);
       if (!p) return;
@@ -168,7 +219,7 @@ class WorkerEngine implements Engine {
       if (this.worker === worker) this.worker = undefined;
     };
     // A new worker is set up as the last one was, before anything else.
-    for (const { op, args } of this.setup) worker.postMessage({ id: -1, op, args } satisfies Request);
+    for (const { op, args } of this.setup) worker.postMessage(this.withChannel({ id: -1, op, args }));
     return worker;
   }
 
@@ -182,6 +233,7 @@ class WorkerEngine implements Engine {
 
 let engine: Engine | undefined;
 let engineVersion: EngineVersion | undefined;
+let engineThreads = 1;
 
 function current(): Engine {
   if (!engine) throw new Error('@inkoxide/render/browser: the engine has not started; call init().');
@@ -223,18 +275,19 @@ const browserHost: EngineHost = {
     const inWorker = options.worker ?? typeof Worker !== 'undefined';
     engine = inWorker ? new WorkerEngine() : direct;
     const { wasm: source } = options;
-    const args: unknown[] = source === undefined ? [] : [inWorker ? await forWorker(source) : source];
+    const init: InitOptions = { threads: threadsFor(inWorker) };
     // The engine's built-in hyphenation patterns are served from `assets` too, when it is set.
-    if (options.assets !== undefined) {
-      args[1] = { hyphenation: assetUrl('hyphenation/')?.href };
-    }
-    await engine.call('init', args);
+    if (options.assets !== undefined) init.hyphenation = assetUrl('hyphenation/')?.href;
+    const module = source === undefined ? undefined : inWorker ? await forWorker(source) : source;
+    await engine.call('init', [module, init]);
     engineVersion = (await engine.call('version', [])) as EngineVersion;
+    engineThreads = (await engine.call('threadCount', [])) as number;
   },
   version() {
     if (!engineVersion) throw new Error('@inkoxide/render/browser: the engine has not started; call init().');
     return engineVersion;
   },
+  threads: () => engineThreads,
   registerFont: async (id, bytes) => void (await current().call('registerFont', [id, bytes])),
   registerHyphenationPatterns: async (lang, bytes) =>
     void (await current().call('registerHyphenationPatterns', [lang, bytes])),

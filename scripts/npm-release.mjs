@@ -7,13 +7,13 @@
 //   node scripts/npm-release.mjs <bin-dir> <staging-dir> --publish --dry-run
 //
 // <bin-dir> must hold inkoxide.<triple>.node for every supported triple, and
-// inkoxide.wasm (scripts/build-wasm.sh).
+// inkoxide.wasm and inkoxide-threads.wasm (scripts/build-wasm.sh, and with --threads).
 // <staging-dir> receives one directory per package:
 //   @inkoxide/<triple>  one per platform, the binary only
 //   inkoxide            the loader and types; optionalDependencies pin
 //                       every platform package to the same version
 //   @inkoxide/schema    a copy of packages/schema/
-//   @inkoxide/wasm      packages/wasm/ with the module, made public
+//   @inkoxide/wasm      packages/wasm/ with the modules, made public
 // --publish publishes platform packages first, then inkoxide, then
 // @inkoxide/schema and @inkoxide/wasm, skipping any name@version already on
 // the registry.
@@ -128,6 +128,9 @@ function stageSchema(stageDir) {
   return { name: pkg.name, version: pkg.version, dir };
 }
 
+/** The modules of @inkoxide/wasm: one thread, and threads (scripts/build-wasm.sh --threads). */
+const WASM_MODULES = ['inkoxide.wasm', 'inkoxide-threads.wasm'];
+
 function stageWasm(stageDir, binDir, version) {
   const src = join(ROOT, 'packages', 'wasm');
   const pkg = readJson(join(src, 'package.json'));
@@ -135,21 +138,23 @@ function stageWasm(stageDir, binDir, version) {
     fail(`@inkoxide/wasm is ${pkg.version}, inkoxide ${version}: they are released together`);
   const dir = join(stageDir, SCOPE, 'wasm');
   mkdirSync(dir, { recursive: true });
-  for (const f of ['index.js', 'index.d.ts']) copyFileSync(join(src, f), join(dir, f));
-  const module = readFileSync(join(binDir, 'inkoxide.wasm'));
-  writeFileSync(join(dir, 'inkoxide.wasm'), module);
-  // The README's CDN example, with this version and the module's Subresource Integrity hash.
-  const readme = readFileSync(join(src, 'README.md'), 'utf8');
-  const sri = `sha384-${createHash('sha384').update(module).digest('base64')}`;
-  for (const marker of ['<version>', 'sha384-<hash of inkoxide.wasm>']) {
+  for (const f of ['index.js', 'index.d.ts', 'thread.js']) copyFileSync(join(src, f), join(dir, f));
+  // The README's CDN example, with this version and each module's Subresource Integrity hash.
+  let readme = readFileSync(join(src, 'README.md'), 'utf8');
+  for (const marker of ['<version>', ...WASM_MODULES.map((m) => `sha384-<hash of ${m}>`)]) {
     if (!readme.includes(marker)) fail(`packages/wasm/README.md has no ${marker} to fill in`);
+  }
+  for (const name of WASM_MODULES) {
+    const module = readFileSync(join(binDir, name));
+    writeFileSync(join(dir, name), module);
+    const sri = `sha384-${createHash('sha384').update(module).digest('base64')}`;
+    readme = readme.replaceAll(`sha384-<hash of ${name}>`, sri);
   }
   writeFileSync(
     join(dir, 'README.md'),
     readme
-      .replace('<version>', version)
-      .replace('sha384-<hash of inkoxide.wasm>', sri)
-      .replace('The README published with each version on npm has its version and hash here.\n\n', ''),
+      .replaceAll('<version>', version)
+      .replace('The README published with each version on npm has its version and hashes here.\n\n', ''),
   );
   // The built-in hyphenation patterns, fetched as documents need them.
   const patterns = join(ROOT, 'crates', 'core', 'hyphenation');
@@ -201,7 +206,7 @@ function main() {
     }
   }
 
-  const missing = [...Object.keys(PLATFORMS).map((t) => `inkoxide.${t}.node`), 'inkoxide.wasm'].filter(
+  const missing = [...Object.keys(PLATFORMS).map((t) => `inkoxide.${t}.node`), ...WASM_MODULES].filter(
     (f) => !existsSync(join(args.binDir, f)),
   );
   if (missing.length) fail(`refusing to stage, missing in ${args.binDir}: ${missing.join(', ')}`);

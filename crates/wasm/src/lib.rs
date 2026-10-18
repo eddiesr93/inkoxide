@@ -1,6 +1,7 @@
 //! WebAssembly binding for Inkoxide (npm `@inkoxide/wasm`). The contract
 //! of the Node binding (`crates/node`), through a small C ABI that
-//! `packages/wasm/index.js` calls; the module imports nothing.
+//! `packages/wasm/index.js` calls. The one-thread module imports nothing;
+//! the one built with threads imports its memory (`threads.rs`).
 //!
 //! - **Input.** Each byte buffer is allocated with [`ink_alloc`], filled
 //!   by JavaScript and passed as a pointer and a length. The call takes it
@@ -18,24 +19,28 @@
 //! - **Options** come as JSON (`options.rs`), images as one buffer
 //!   (`images.rs`).
 //!
-//! A panic aborts the instance: the JavaScript side starts a new one.
+//! A panic aborts the instance: the JavaScript side starts a new one, or,
+//! with threads, a new engine.
 //! Every operation is a safe function of byte slices, tested natively; the
 //! `ink_*` exports only move the bytes.
 
 // Every error is a `Failure` for JavaScript (see `inkoxide-binding`).
 #![allow(clippy::missing_errors_doc)]
 
+// Used by the build with threads only, and tested natively.
+#[cfg_attr(not(target_feature = "atomics"), allow(dead_code))]
+mod alloc;
 mod images;
 mod options;
+#[cfg_attr(not(target_feature = "atomics"), allow(dead_code))]
+mod threads;
 
 use std::cell::RefCell;
 
 use inkoxide::{FontStore, HyphenationStore, InkoxideError, InputFormat};
 use inkoxide_binding::Failure;
 
-/// Threads a render may ask for: WebAssembly here has none to start.
-const MAX_THREADS: u32 = 1;
-
+// Only the render thread, which calls the `ink_*` exports, uses these.
 thread_local! {
     /// Fonts registered through `registerFont`, shared by all renders.
     static FONTS: RefCell<FontStore> = RefCell::default();
@@ -134,7 +139,8 @@ pub fn render(
     } = options::parse(options)?;
     let images = images::parse(images)?;
     let hyphenation = HYPHENATION.with(|h| h.borrow().clone());
-    let (format, core) = options.into_core(hyphenation, MAX_THREADS)?;
+    let (format, mut core) = options.into_core(hyphenation, threads::max_threads())?;
+    core.threads = threads::engine_threads(core.threads);
     let core = core
         .with_deferred_fonts(deferred_fonts)
         .with_attachments(images::parse_files(files)?);

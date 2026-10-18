@@ -108,9 +108,19 @@ const patterns = new Map();
 // The built-in hyphenation patterns loaded, by file (`de`), and where they come from.
 const builtins = new Map();
 let hyphenationBase = null;
+// With the module with threads: the pool's size, its workers and the channel they report a trap
+// on. `workers` is empty while a pool is starting, or when there is none.
+const pool = { size: 1, workers: [], trapChannel: undefined };
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+
+// The memory of the module with threads, which it imports (crates/wasm/build.rs links it so):
+// 16 MiB at first, at most 2 GiB, shared with the pool's workers.
+const SHARED_MEMORY = { initial: 256, maximum: 32768, shared: true };
+
+// The most threads a render or a pool has: MAX_THREADS in crates/wasm/src/threads.rs.
+const MAX_THREADS = 256;
 
 /** A `file:` URL's bytes, in Node, where fetch does not read files; otherwise the URL. */
 async function fromFile(url) {
@@ -137,10 +147,132 @@ async function compile(source) {
   return WebAssembly.compile(source);
 }
 
+// Whether this thread may share memory with workers and wait for them: a page that is
+// cross-origin isolated, in a worker (a page's main thread cannot wait), or Node.
+const canShare = () =>
+  typeof SharedArrayBuffer === 'function' &&
+  globalThis.crossOriginIsolated !== false &&
+  !(typeof window === 'object' && typeof document === 'object');
+
+// Shared memory for the module with threads, of at most `maximum` pages, or null where it cannot
+// be had. The module takes any maximum up to its own.
+function sharedMemory(maximum = SHARED_MEMORY.maximum) {
+  if (typeof SharedArrayBuffer !== 'function' || globalThis.crossOriginIsolated === false) return null;
+  try {
+    return new WebAssembly.Memory({ ...SHARED_MEMORY, maximum });
+  } catch (e) {
+    // A device that cannot reserve the maximum.
+    if (e instanceof RangeError) return null;
+    throw e;
+  }
+}
+
+const importsMemory = (module) => WebAssembly.Module.imports(module).some((i) => i.kind === 'memory');
+
+// The memory of an instance of `module`: none for a module with its own; else `memory`, or new
+// shared memory of the largest maximum the device reserves (after a trap, while the old memory is
+// not freed, it may reserve less).
+function memoryFor(module, memory = null) {
+  if (!importsMemory(module)) return null;
+  for (let max = SHARED_MEMORY.maximum; !memory && max >= SHARED_MEMORY.initial; max /= 2) {
+    memory = sharedMemory(max);
+  }
+  if (!memory) {
+    throw engineError(
+      'INTERNAL',
+      '',
+      'no shared memory for the module with threads: it needs a cross-origin isolated page, and memory the device can reserve',
+    );
+  }
+  return memory;
+}
+
+// The imports of an instance on `memory`, which the module with threads imports.
+const importsOf = (memory) => (memory ? { env: { memory } } : {});
+
+// The exports of an instance, with its memory, which the module with threads imports.
+const exportsOf = (instance, memory) => (memory ? { ...instance.exports, memory } : instance.exports);
+
+function poolSize(threads) {
+  if (threads === undefined) return 1;
+  if (!Number.isInteger(threads) || threads < 1 || threads > MAX_THREADS) {
+    throw engineError('INVALID_ARGUMENT', 'options.threads', `must be an integer from 1 to ${MAX_THREADS}`);
+  }
+  return threads;
+}
+
+/** A worker of the pool, in a page or in Node, running thread.js. */
+function spawnThread() {
+  const nodeThreads = globalThis.process?.getBuiltinModule?.('node:worker_threads');
+  if (nodeThreads) {
+    const w = new nodeThreads.Worker(new URL('./thread.js', import.meta.url));
+    return {
+      send: (m) => w.postMessage(m),
+      onReply: (f) => {
+        w.once('message', f);
+        // Also after it is ready: a thread that traps throws.
+        w.on('error', (e) => f({ error: e.message }));
+      },
+      // Once it runs, it does not keep Node from exiting.
+      detach: () => w.unref(),
+      terminate: () => w.terminate(),
+    };
+  }
+  const w = new Worker(new URL('./thread.js', import.meta.url), { type: 'module' });
+  return {
+    send: (m) => w.postMessage(m),
+    onReply: (f) => {
+      w.onmessage = ({ data }) => f(data);
+      w.onerror = (e) => {
+        e.preventDefault();
+        f({ error: e.message });
+      };
+    },
+    detach: () => {},
+    terminate: () => w.terminate(),
+  };
+}
+
+// Starts the pool of the instance `e` on `memory`: its workers, once each is ready, then the
+// threads in them, unless `live()` says `e` was dropped meanwhile. A worker cannot start while
+// this thread waits, so a render waits for this. A trap here is a RuntimeError, as in any call.
+async function startPool(module, memory, e, live) {
+  const workers = [];
+  try {
+    await Promise.all(
+      Array.from({ length: pool.size }, () => {
+        const at = e.ink_thread_alloc(e.__tls_size.value, e.__tls_align.value);
+        if (at === 0) throw new Error('@inkoxide/wasm: no block for a thread');
+        const w = spawnThread();
+        workers.push(w);
+        return new Promise((resolve, reject) => {
+          w.onReply((m) =>
+            m.ready ? resolve() : reject(new Error(`@inkoxide/wasm: a thread failed: ${m.error}`)),
+          );
+          w.send({ module, memory, at, trapChannel: pool.trapChannel });
+        });
+      }),
+    );
+    if (!live()) throw new Error('@inkoxide/wasm: the engine stopped');
+    outcome(e, e.ink_threads_start(pool.size));
+  } catch (err) {
+    for (const w of workers) w.terminate();
+    throw err;
+  }
+  for (const w of workers) w.detach();
+  pool.workers = workers;
+}
+
+function stopPool() {
+  for (const w of pool.workers) w.terminate();
+  pool.workers = [];
+}
+
 /**
  * Compiles and instantiates the engine once; later calls wait for the first and ignore their
  * arguments. `options.hyphenation` is the folder of the built-in hyphenation patterns
- * (`<file>.bin`), by default the package's `hyphenation/`.
+ * (`<file>.bin`), by default the package's `hyphenation/`. `options.threads` above 1 starts a
+ * pool of that many threads with the module with threads, where memory can be shared.
  */
 export function init(source, options) {
   if (options?.hyphenation !== undefined) {
@@ -151,10 +283,30 @@ export function init(source, options) {
     );
   }
   starting ??= (async () => {
-    const module = await compile(source);
-    const instance = await WebAssembly.instantiate(module, {});
+    const threads = poolSize(options?.threads);
+    // The memory first: where there is none, the module with threads is not downloaded.
+    const shared = threads > 1 && canShare() ? sharedMemory() : null;
+    const module = await compile(
+      source ?? (shared ? new URL('./inkoxide-threads.wasm', import.meta.url) : undefined),
+    );
+    const memory = memoryFor(module, shared);
+    const e = exportsOf(await WebAssembly.instantiate(module, importsOf(memory)), memory);
+    pool.trapChannel = options?.trapChannel;
+    if (memory && threads > 1 && canShare()) {
+      pool.size = threads;
+      try {
+        await startPool(module, memory, e, () => true);
+      } catch (err) {
+        if (err instanceof WebAssembly.RuntimeError) throw err;
+        // Workers that cannot start (a policy, or a bundler that leaves out thread.js): renders
+        // run on one thread.
+        pool.size = 1;
+        console.warn(`${err.message}; rendering on one thread`);
+      }
+    }
+    // Calls wait until here: "call init() and wait for it first".
     compiled = module;
-    exports = instance.exports;
+    exports = e;
   })().catch((e) => {
     starting = null;
     throw e;
@@ -162,11 +314,17 @@ export function init(source, options) {
   return starting;
 }
 
+/** The threads renders use: the pool's, or 1. */
+export const threadCount = () => (pool.workers.length > 0 ? pool.size : 1);
+
 function engine() {
   if (exports) return exports;
   if (!compiled) throw new Error('@inkoxide/wasm: call init() and wait for it first');
-  // After a trap: a new instance, with what the old one had registered.
-  const e = new WebAssembly.Instance(compiled, {}).exports;
+  // After a trap: a new instance, with what the old one had registered. The module with threads
+  // gets new memory, and a new pool once its workers have started; renders until then run on
+  // one thread.
+  const memory = memoryFor(compiled);
+  const e = exportsOf(new WebAssembly.Instance(compiled, importsOf(memory)), memory);
   for (const [id, data] of fonts) callIn(e, () => registerIn(e, 'ink_register_font', id, data));
   for (const [lang, data] of patterns) {
     callIn(e, () => registerIn(e, 'ink_register_hyphenation_patterns', lang, data));
@@ -175,6 +333,13 @@ function engine() {
     callIn(e, () => registerIn(e, 'ink_register_builtin_hyphenation', file, data));
   }
   exports = e;
+  if (memory && pool.size > 1) {
+    startPool(compiled, memory, e, () => exports === e).catch((err) => {
+      // A trap while it started ends the instance, as in a call; other failures leave it on one
+      // thread.
+      if (err instanceof WebAssembly.RuntimeError && exports === e) exports = null;
+    });
+  }
   return e;
 }
 
@@ -207,7 +372,11 @@ function callIn(e, f) {
   } catch (err) {
     if (err instanceof InkoxideError) throw err;
     if (err instanceof WebAssembly.RuntimeError || err instanceof RangeError) {
-      if (exports === e) exports = null;
+      if (exports === e) {
+        exports = null;
+        // Its threads share memory that may be inconsistent.
+        stopPool();
+      }
       throw engineError('INTERNAL', '', `the engine stopped: ${err.message}`, err);
     }
     throw engineError('INTERNAL', '', String(err?.message ?? err), err);
@@ -367,6 +536,8 @@ function renderOnce(doc, options) {
   const bytes = bytesOf(doc);
   checkOptions(options);
   const { images, attachments, deferredFonts, ...rest } = options ?? {};
+  // A pool that is starting again after a trap, or could not: one thread, the same bytes.
+  if (pool.size > 1 && pool.workers.length === 0 && rest.threads > 1) rest.threads = 1;
   // The engine renders without them until a render needs them: it takes their ids.
   if (deferredFonts !== undefined) rest.deferredFonts = Object.keys(deferredFonts);
   const json = encoder.encode(JSON.stringify(rest, finiteOrString));
@@ -422,3 +593,7 @@ export const clearCaches = () => call((e) => e.ink_clear_caches());
 // Test hook, not public API and not in index.d.ts: a panic in the engine, which traps. A
 // non-enumerable property of InkoxideError, so it is not on the module namespace.
 Object.defineProperty(InkoxideError, '__testPanic', { value: () => call((e) => e.ink_test_panic()) });
+// The same on a thread of the pool, which ends the engine: the call never returns.
+Object.defineProperty(InkoxideError, '__testPoolPanic', {
+  value: () => call((e) => e.ink_test_pool_panic()),
+});

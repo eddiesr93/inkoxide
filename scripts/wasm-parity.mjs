@@ -11,27 +11,49 @@
 // - documents at the engine's limits (from crates/core/tests/limits.rs) fail with the same code
 //   and message, or render the same, in at most LIMIT_SECONDS.
 // Needs both builds: scripts/build-node.sh and scripts/build-wasm.sh.
-//   node scripts/wasm-parity.mjs
+//
+// With --threads, the same checks compare the module with threads against the one-thread module
+// instead, on one thread and on pools of 3 and 8, and every render must give exactly the same
+// bytes. Needs scripts/build-wasm.sh and scripts/build-wasm.sh --threads.
+//   node scripts/wasm-parity.mjs [--threads]
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateSync } from 'node:zlib';
 
-import * as native from '../packages/inkoxide/index.js';
-import * as wasm from '../packages/wasm/index.js';
-
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const LIMIT_SECONDS = 20;
 const CREATION_DATE = '2026-10-08T00:00:00Z';
+const withThreads = process.argv.includes('--threads');
 
-await wasm.init();
-// renderSync cannot fetch the built-in hyphenation patterns: all of them, first.
-await wasm.loadHyphenation(
-  readdirSync(join(ROOT, 'crates/core/hyphenation'))
-    .filter((f) => f.endsWith('.bin'))
-    .map((f) => f.slice(0, -'.bin'.length)),
-);
-const bindings = { native, wasm };
+// An instance of @inkoxide/wasm of its own (a query makes another module), started with `init`.
+async function wasmEngine(tag, ...init) {
+  const engine = await import(`../packages/wasm/index.js?${tag}`);
+  await engine.init(...init);
+  // renderSync cannot fetch the built-in hyphenation patterns: all of them, first.
+  await engine.loadHyphenation(
+    readdirSync(join(ROOT, 'crates/core/hyphenation'))
+      .filter((f) => f.endsWith('.bin'))
+      .map((f) => f.slice(0, -'.bin'.length)),
+  );
+  return engine;
+}
+
+// The engines compared, the first against each of the others.
+const threaded = new URL('../packages/wasm/inkoxide-threads.wasm', import.meta.url);
+const bindings = withThreads
+  ? {
+      'one thread': await wasmEngine('single'),
+      'threads, no pool': await wasmEngine('threads-1', threaded, { threads: 1 }),
+      'threads, pool of 3': await wasmEngine('threads-3', undefined, { threads: 3 }),
+      'threads, pool of 8': await wasmEngine('threads-8', undefined, { threads: 8 }),
+    }
+  : { native: await import('../packages/inkoxide/index.js'), wasm: await wasmEngine('wasm') };
+const [first, ...others] = Object.keys(bindings);
+if (withThreads) {
+  const counts = Object.values(bindings).map((b) => b.threadCount());
+  if (counts.join() !== '1,1,3,8') throw new Error(`wasm-parity: pools of ${counts.join(', ')} threads`);
+}
 const failures = [];
 const fail = (what) => failures.push(what);
 
@@ -43,7 +65,7 @@ const read = (...p) => readFileSync(join(ROOT, ...p));
 const stem = (f) => f.replace(/\.[^.]+$/, '');
 
 /** What `f` gives with each binding: `{ ok, bytes }` or `{ code, message }`. */
-function both(f) {
+function withEach(f) {
   return Object.fromEntries(
     Object.entries(bindings).map(([name, b]) => {
       const t = performance.now();
@@ -61,15 +83,17 @@ function both(f) {
 const outcome = (r) => (r.ok ? 'ok' : `${r.code} at ${r.path}: ${r.message}`);
 const sameBytes = (a, b) => a.length === b.length && a.every((v, k) => v === b[k]);
 
-/** Whether the two results agree; renders must give the same bytes. */
+/** Whether the results agree; renders must give the same bytes. */
 function agree(what, r) {
-  if (outcome(r.native) !== outcome(r.wasm)) {
-    fail(`${what}: native ${outcome(r.native)}; wasm ${outcome(r.wasm)}`);
-    return false;
-  }
-  if (r.native.ok && r.native.bytes && !sameBytes(r.native.bytes, r.wasm.bytes)) {
-    fail(`${what}: the bytes differ`);
-    return false;
+  for (const other of others) {
+    if (outcome(r[first]) !== outcome(r[other])) {
+      fail(`${what}: ${first} ${outcome(r[first])}; ${other} ${outcome(r[other])}`);
+      return false;
+    }
+    if (r[first].ok && r[first].bytes && !sameBytes(r[first].bytes, r[other].bytes)) {
+      fail(`${what}: the bytes of ${other} differ`);
+      return false;
+    }
   }
   return true;
 }
@@ -113,8 +137,8 @@ const seeds = [];
 for (const dir of ['fixtures/fonts/woff', 'fixtures/fonts/malformed', 'fixtures/fonts/limits']) {
   for (const f of files(dir, ['.ttf', '.otf', '.woff', '.woff2'])) {
     const bytes = read(dir, f);
-    const r = both((b) => b.registerFont(`seed-${f}`, bytes));
-    if (agree(`register ${dir}/${f}`, r) && r.native.ok) seeds.push(`${dir}/${f}`);
+    const r = withEach((b) => b.registerFont(`seed-${f}`, bytes));
+    if (agree(`register ${dir}/${f}`, r) && r[first].ok) seeds.push(`${dir}/${f}`);
   }
 }
 // Each seed that registers, rendering text: letters, digits, a ligature, accents, Arabic, an
@@ -135,24 +159,31 @@ for (const seed of seeds) {
   });
   agree(
     `render ${seed}`,
-    both((b) => b.renderSync(doc, { creationDate: CREATION_DATE })),
+    withEach((b) => b.renderSync(doc, { creationDate: CREATION_DATE })),
   );
 }
 
-const allowed = JSON.parse(read('fixtures/wasm-parity.json'));
+// Two WebAssembly modules have one math library: they must give the same bytes.
+const allowed = withThreads ? { docs: [], images: [] } : JSON.parse(read('fixtures/wasm-parity.json'));
 let identical = 0;
 
 /** Whether renders `r` agree: the same bytes, or for an `allowed` name the same but numbers. */
 function sameRender(what, name, allow, r) {
-  if (outcome(r.native) !== outcome(r.wasm)) {
-    fail(`${what}: native ${outcome(r.native)}; wasm ${outcome(r.wasm)}`);
-  } else if (!r.native.ok || sameBytes(r.native.bytes, r.wasm.bytes)) {
-    identical++;
-  } else if (!allow.includes(name)) {
-    fail(`${what}: the bytes differ`);
-  } else if (!closeEnough(r.native.bytes, r.wasm.bytes)) {
-    fail(`${what}: differs beyond numbers`);
+  let same = true;
+  for (const other of others) {
+    const [a, b] = [r[first], r[other]];
+    if (outcome(a) !== outcome(b)) {
+      fail(`${what}: ${first} ${outcome(a)}; ${other} ${outcome(b)}`);
+    } else if (!a.ok || sameBytes(a.bytes, b.bytes)) {
+      continue;
+    } else if (!allow.includes(name)) {
+      fail(`${what}: the bytes of ${other} differ`);
+    } else if (!closeEnough(a.bytes, b.bytes)) {
+      fail(`${what}: ${other} differs beyond numbers`);
+    }
+    same = false;
   }
+  if (same) identical++;
 }
 
 // Images: each fixture image alone in a document.
@@ -175,7 +206,7 @@ for (const [id, bytes] of Object.entries(images)) {
     `image ${id}`,
     id,
     allowed.images,
-    both((b) => b.renderSync(doc, opts)),
+    withEach((b) => b.renderSync(doc, opts)),
   );
 }
 
@@ -196,7 +227,7 @@ for (const f of files('fixtures/docs', ['.json'])) {
       name,
       name,
       allowed.docs,
-      both((b) => b.renderSync(doc, opts)),
+      withEach((b) => b.renderSync(doc, opts)),
     );
   } finally {
     for (const b of Object.values(bindings)) {
@@ -211,7 +242,7 @@ sameRender(
   'attachments as PDF/A-3b',
   'attachments',
   allowed.docs,
-  both((b) =>
+  withEach((b) =>
     b.renderSync(read('fixtures/docs', 'attachments.json'), { creationDate: CREATION_DATE, pdfA: '3b' }),
   ),
 );
@@ -301,9 +332,13 @@ for (const f of ['glyph-doubling', 'colr-fanout', 'colr-fanout-empty']) {
   for (const b of Object.values(bindings)) b.registerFont(f, read('fixtures/fonts/limits', `${f}.ttf`));
 }
 for (const [what, [doc, opts = {}]] of Object.entries(limits)) {
-  const r = both((b) => b.renderSync(doc, { creationDate: CREATION_DATE, ...opts }));
+  const r = withEach((b) => b.renderSync(doc, { creationDate: CREATION_DATE, ...opts }));
   agree(`limit: ${what}`, r);
-  if (r.wasm.ms > LIMIT_SECONDS * 1000) fail(`limit: ${what}: took ${(r.wasm.ms / 1000).toFixed(1)} s`);
+  for (const [name, { ms }] of Object.entries(r)) {
+    if (name !== 'native' && ms > LIMIT_SECONDS * 1000) {
+      fail(`limit: ${what}: ${name} took ${(ms / 1000).toFixed(1)} s`);
+    }
+  }
 }
 
 const renders = files('fixtures/docs', ['.json']).length + Object.keys(images).length;
@@ -316,4 +351,8 @@ if (failures.length) {
   console.error(failures.map((f) => `wasm-parity: ${f}`).join('\n'));
   process.exit(1);
 }
-console.log('wasm-parity: the WebAssembly build behaves as the native one');
+console.log(
+  withThreads
+    ? 'wasm-parity: the module with threads behaves as the one-thread module'
+    : 'wasm-parity: the WebAssembly build behaves as the native one',
+);

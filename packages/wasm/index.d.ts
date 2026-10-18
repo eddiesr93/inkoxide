@@ -4,9 +4,11 @@
 // index.js and the `inkoxide` package.
 
 /**
- * Where the engine's WebAssembly module comes from: a URL (by default
- * `inkoxide.wasm` next to this module), a `Response`, its bytes, or the
- * module compiled already.
+ * Where the engine's WebAssembly module comes from: a URL, a `Response`, its
+ * bytes, or the module compiled already. By default `inkoxide.wasm` next to
+ * this module, or `inkoxide-threads.wasm`, the module with threads, for a
+ * pool. A module given is the one used, either of the two: the module with
+ * threads needs a page that can share memory.
  */
 export type WasmSource = URL | string | Response | PromiseLike<Response> | BufferSource | WebAssembly.Module;
 
@@ -16,14 +18,40 @@ export interface InitOptions {
    * them. Default: the package's `hyphenation/`, which bundlers copy.
    */
   hyphenation?: string | URL;
+  /**
+   * The threads renders use, an integer from 1 to 256. Default `1`. Above 1, `init` loads the
+   * module with threads and starts a pool of that many Web Workers (in Node, worker threads)
+   * that share its memory, which needs `SharedArrayBuffer`: a page that is cross-origin isolated
+   * (`Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy:
+   * require-corp`), and a worker, since a page's main thread cannot wait (Node has both). Where
+   * either is missing, or the module's memory (at most 2 GiB) cannot be reserved, it loads the
+   * one-thread module; where the pool's workers cannot start (`thread.js`, next to this module,
+   * must be a script of the page's origin), it renders on one thread. `threadCount()` tells
+   * which. A pool has one 4 MiB stack per thread: more threads than cores gain nothing.
+   */
+  threads?: number;
+  /**
+   * The name of a `BroadcastChannel` a pool thread posts `{ message }` on when it stops on a bug
+   * in the engine. The render waiting for it then never ends, and its thread cannot hear of it:
+   * whoever can end that thread (the page, for a worker) listens, and ends it. A channel reaches
+   * every context of the origin, other tabs included: give each engine a name of its own.
+   */
+  trapChannel?: string;
 }
 
 /**
- * Compiles and instantiates the engine. Every other function throws until
- * the promise resolves. Later calls return the same promise and ignore
- * their arguments.
+ * Compiles and instantiates the engine, and starts its pool of threads.
+ * Every other function throws until the promise resolves. Later calls
+ * return the same promise and ignore their arguments.
  */
 export function init(source?: WasmSource, options?: InitOptions): Promise<void>;
+
+/**
+ * The threads renders use: the size of the pool, or 1 without one. After a
+ * bug in the engine on the calling thread, it is 1 until the new engine's
+ * pool has started.
+ */
+export function threadCount(): number;
 
 /**
  * Fetches the built-in hyphenation patterns for `langs` (BCP-47 tags) that are not loaded,
@@ -73,7 +101,9 @@ export type ValidationCode =
  * (mirrors Rust `InkoxideError::code`), a JS argument of the wrong type
  * or out of range (`INVALID_ARGUMENT`), or a bug inside
  * the engine (`INTERNAL`). After `INTERNAL`, the next call runs in a new
- * instance of the engine, with the fonts and patterns registered so far.
+ * instance of the engine, with the fonts and patterns registered so far
+ * (with threads, on new memory, with a new pool). A bug on a pool thread
+ * does not return: see `InitOptions.trapChannel`.
  */
 export type ErrorCode =
   | ValidationCode
@@ -110,7 +140,11 @@ export interface RenderOptions {
    * Another string is `INVALID_ARGUMENT`.
    */
   creationDate?: string;
-  /** Threads for this render: only `1`. WebAssembly renders on the calling thread. */
+  /**
+   * Threads for this render: `1` renders on the calling thread. With a pool (`init` with
+   * `threads`), another integer up to 256 uses the pool, whatever its size; without one, only
+   * `1` is allowed. Default: the pool, if there is one.
+   */
   threads?: number;
   /** Embed only the glyphs the document uses. Default `true`; `false` embeds whole fonts. */
   subsetFonts?: boolean;

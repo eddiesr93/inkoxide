@@ -101,8 +101,15 @@ jobs:
         run: |
           cargo test -p inkoxide --no-default-features --locked --test fixtures msgpack
           cargo test -p inkoxide --no-default-features --locked --test builtin_hyphenation
+      - name: Install the nightly toolchain of the module with threads
+        # With the sources of the standard library, which scripts/build-wasm.sh --threads rebuilds.
+        run: >-
+          rustup toolchain install "$(scripts/build-wasm.sh --toolchain)"
+          --profile minimal --component rust-src --no-self-update
       - name: Build the WebAssembly engine
-        run: scripts/build-wasm.sh
+        run: |
+          scripts/build-wasm.sh
+          scripts/build-wasm.sh --threads
       - name: Size
         run: node scripts/wasm-size.mjs
       - name: Build the native binding
@@ -111,12 +118,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Binding tests
-        # The tests of packages/inkoxide, against @inkoxide/wasm.
+        # The tests of packages/inkoxide, against @inkoxide/wasm and against its module with
+        # threads, and the package's own.
         working-directory: packages/wasm
-        run: pnpm test
+        run: |
+          pnpm test
+          pnpm test:threads
       - name: Parity with the native build
-        # Fixtures, fuzz seeds and documents at the limits (scripts/wasm-parity.mjs).
-        run: node scripts/wasm-parity.mjs
+        # Fixtures, fuzz seeds and documents at the limits (scripts/wasm-parity.mjs), and the
+        # module with threads against the one-thread module, byte for byte.
+        run: |
+          node scripts/wasm-parity.mjs
+          node scripts/wasm-parity.mjs --threads
       - name: Install the browsers
         working-directory: examples/browser
         run: pnpm exec playwright install --with-deps chromium firefox webkit
