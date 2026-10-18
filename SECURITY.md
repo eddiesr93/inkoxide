@@ -62,10 +62,12 @@ does not do:
 - **Resist weak passwords.** Anyone with the file can test password guesses offline, at the
   cost revision 6 sets, which is low. Use a long, random user password.
 - **Detect changes.** PDF encryption has no integrity check: a changed file still opens.
-- **Hide equal documents.** The keys, salts and IVs are derived from the document and the
-  passwords rather than drawn at random, so the same input gives the same file. A service that
-  encrypts documents it is asked to, with a fixed password, lets whoever asks confirm a guess
-  of another file encrypted with that password by comparing the bytes.
+- **Hide equal documents, without `entropy`.** The keys, salts and IVs are derived from the
+  document and the passwords rather than drawn at random, so the same input gives the same file.
+  A service that encrypts documents it is asked to, with a fixed password, lets whoever asks
+  confirm a guess of another file encrypted with that password by comparing the bytes. The
+  `entropy` option (`entropy: true` in JavaScript) mixes random bytes into the keys, so that
+  each render differs; use it for such a service.
 
 The derivation is not the standard's random one. It has been reviewed internally but has not
 had an independent cryptography review yet; [docs/ENCRYPTION_REVIEW.md](docs/ENCRYPTION_REVIEW.md)

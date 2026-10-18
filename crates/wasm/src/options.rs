@@ -89,7 +89,22 @@ fn encryption(o: &Object, at: &str) -> Result<EncryptionOptions, Failure> {
         user_password: string(o, at, "userPassword")?,
         owner_password: string(o, at, "ownerPassword")?,
         permissions,
+        entropy: bytes(o, at, "entropy")?,
     })
+}
+
+/// An array of byte values, as the JS wrapper writes a `Uint8Array`.
+fn bytes(o: &Object, at: &str, key: &str) -> Result<Option<Vec<u8>>, Failure> {
+    match o.get(key) {
+        None => Ok(None),
+        Some(Value::Array(a)) => a
+            .iter()
+            .map(|v| v.as_u64().and_then(|b| u8::try_from(b).ok()))
+            .collect::<Option<_>>()
+            .map(Some)
+            .ok_or_else(|| wrong(at, key, "bytes")),
+        Some(_) => Err(wrong(at, key, "bytes")),
+    }
 }
 
 fn wrong(at: &str, key: &str, what: &str) -> Failure {

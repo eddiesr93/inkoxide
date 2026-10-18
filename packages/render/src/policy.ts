@@ -94,12 +94,17 @@ export function checkOptionTypes(opts: RenderOpts & Abortable): void {
 
 /**
  * The types of an `encryption` option, the render option's or the one `<Document>` props make:
- * the passwords strings, the permissions booleans (`printing` a string).
+ * the passwords strings, the permissions booleans (`printing` a string), the entropy a boolean
+ * or bytes.
  */
 export function checkEncryptionTypes(encryption: unknown): void {
   if (absent(encryption)) return;
   if (!isObject(encryption)) rejectType('encryption', 'an object', encryption);
   checkTypes(encryption, { userPassword: 'string', ownerPassword: 'string' }, 'encryption.', false);
+  const entropy = encryption.entropy;
+  if (entropy !== undefined && typeof entropy !== 'boolean' && !(entropy instanceof Uint8Array)) {
+    rejectType('encryption.entropy', 'a boolean or a Uint8Array', entropy);
+  }
   const permissions = encryption.permissions;
   if (permissions === undefined) return;
   if (!isObject(permissions)) rejectType('encryption.permissions', 'an object', permissions);

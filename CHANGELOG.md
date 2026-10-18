@@ -175,6 +175,17 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   (`PDFA_CONFLICT`, `UA_CONFLICT`), attachments missing from them, and their invalid
   `creationDate` or `encryption`. The CLI's `validate` takes `--pdf-a`, `--pdf-ua`,
   `--flatten-alpha` and `--attachments` for the same.
+- Unicode passwords. A password is prepared with SASLprep (RFC 4013), as PDF 2.0 asks, and
+  written as UTF-8, at most 127 bytes once prepared: letters of any script work, and a password
+  typed composed or decomposed (`ä`, `a` + `◌̈`) is the same. Passwords were printable ASCII.
+  Text SASLprep refuses (control, private-use or unassigned characters, mixed-direction text)
+  is `INVALID_VALUE` at its path, without the password. Its Unicode tables add about 50 kB with
+  brotli to the WebAssembly module.
+- An `entropy` encryption option (`Encryption::with_entropy` in Rust, `encryption.entropy` and
+  `<Document entropy>` in JavaScript): 16 to 256 random bytes mixed into the derived keys, so
+  renders of the same document and passwords differ and cannot be compared. `entropy: true`
+  draws 32 bytes with `crypto.getRandomValues` for each render. Without it, encrypted output
+  stays deterministic.
 
 ### Changed
 

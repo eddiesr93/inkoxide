@@ -94,6 +94,10 @@ function checkOptions(options) {
   if (encryption === undefined) return;
   checkObject(encryption, 'options.encryption');
   checkTypes(encryption, { userPassword: 'string', ownerPassword: 'string' }, 'options.encryption');
+  const { entropy } = encryption;
+  if (entropy !== undefined && typeof entropy !== 'boolean' && !(entropy instanceof Uint8Array)) {
+    throw engineError('INVALID_ARGUMENT', 'options.encryption.entropy', 'must be a boolean or a Uint8Array');
+  }
   if (encryption.permissions === undefined) return;
   checkObject(encryption.permissions, 'options.encryption.permissions');
   checkTypes(encryption.permissions, PERMISSION_TYPES, 'options.encryption.permissions');
@@ -429,6 +433,21 @@ function imagesBuffer(images) {
 // range checks report them (crates/wasm/src/options.rs).
 const finiteOrString = (_key, v) => (typeof v === 'number' && !Number.isFinite(v) ? String(v) : v);
 
+// `encryption.entropy`: `true` is 32 random bytes, drawn once per render, `false` none.
+function resolveEntropy(options) {
+  const entropy = options?.encryption?.entropy;
+  if (typeof entropy !== 'boolean') return options;
+  const random = entropy ? crypto.getRandomValues(new Uint8Array(32)) : undefined;
+  return { ...options, encryption: { ...options.encryption, entropy: random } };
+}
+
+// The options the engine reads as JSON; the entropy bytes go as an array of numbers.
+function optionsJson(rest) {
+  const entropy = rest.encryption?.entropy;
+  if (entropy !== undefined) rest.encryption = { ...rest.encryption, entropy: Array.from(entropy) };
+  return encoder.encode(JSON.stringify(rest, finiteOrString));
+}
+
 export function registerFont(id, data) {
   stringOf(id);
   if (!(data instanceof Uint8Array)) throw argumentError('expected a Uint8Array');
@@ -466,12 +485,12 @@ export function validate(doc, format, images, options) {
   }
   checkOptions(options);
   const withOptions = options !== undefined && options !== null;
-  const { images: optionImages, attachments, deferredFonts, ...rest } = options ?? {};
+  const { images: optionImages, attachments, deferredFonts, ...rest } = resolveEntropy(options) ?? {};
   images ??= optionImages;
   const has = images !== undefined && images !== null;
   const buf = has ? imagesBuffer(images) : new Uint8Array();
   if (deferredFonts !== undefined) rest.deferredFonts = Object.keys(deferredFonts);
-  const json = withOptions ? encoder.encode(JSON.stringify(rest, finiteOrString)) : new Uint8Array();
+  const json = withOptions ? optionsJson(rest) : new Uint8Array();
   const files = attachments === undefined ? new Uint8Array() : imagesBuffer(attachments);
   return call((e) => {
     const status = e.ink_validate(
@@ -556,7 +575,7 @@ function renderOnce(doc, options) {
   if (pool.size > 1 && pool.workers.length === 0 && rest.threads > 1) rest.threads = 1;
   // The engine renders without them until a render needs them: it takes their ids.
   if (deferredFonts !== undefined) rest.deferredFonts = Object.keys(deferredFonts);
-  const json = encoder.encode(JSON.stringify(rest, finiteOrString));
+  const json = optionsJson(rest);
   const buf = images === undefined ? new Uint8Array() : imagesBuffer(images);
   const files = attachments === undefined ? new Uint8Array() : imagesBuffer(attachments);
   return call((e) => {
@@ -580,7 +599,8 @@ function notLoaded({ fonts, hyphenation }) {
  * `NOT_LOADED`.
  */
 export function renderSync(doc, options) {
-  const { pdf, needs } = renderOnce(doc, options);
+  checkOptions(options);
+  const { pdf, needs } = renderOnce(doc, resolveEntropy(options));
   if (needs) throw notLoaded(needs);
   return pdf;
 }
@@ -590,6 +610,9 @@ export function renderSync(doc, options) {
  * document needs: those of its `deferredFonts` it draws with, and built-in hyphenation patterns.
  */
 export async function render(doc, options) {
+  checkOptions(options);
+  // Drawn once: the render after loading what the first needed uses the same bytes.
+  options = resolveEntropy(options);
   const first = renderOnce(doc, options);
   if (!first.needs) return first.pdf;
   await Promise.all([

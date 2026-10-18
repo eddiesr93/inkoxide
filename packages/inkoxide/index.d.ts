@@ -124,8 +124,8 @@ export interface RenderOptions {
 /** Mirrors Rust `Encryption`. */
 export interface EncryptionOptions {
   /**
-   * The password that opens the file. Printable ASCII, at most 127 bytes.
-   * Default: none (anyone opens it).
+   * The password that opens the file: text SASLprep (RFC 4013) accepts,
+   * at most 127 bytes of UTF-8 once prepared. Default: none (anyone opens it).
    */
   userPassword?: string;
   /**
@@ -136,6 +136,12 @@ export interface EncryptionOptions {
   ownerPassword?: string;
   /** What a reader without the owner password may do. Needs an `ownerPassword` other than `userPassword`. */
   permissions?: Permissions;
+  /**
+   * Random bytes (16 to 256) mixed into the keys, so each render of the same
+   * document gets other keys; `true`: 32 from `crypto.getRandomValues`. Default:
+   * none, and the same document and passwords give the same file.
+   */
+  entropy?: boolean | Uint8Array;
 }
 
 /**

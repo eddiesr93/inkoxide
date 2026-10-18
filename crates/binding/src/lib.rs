@@ -162,6 +162,8 @@ pub struct EncryptionOptions {
     pub user_password: Option<String>,
     pub owner_password: Option<String>,
     pub permissions: Option<PermissionOptions>,
+    /// Random bytes mixed into the keys.
+    pub entropy: Option<Vec<u8>>,
 }
 
 /// `options.encryption.permissions`: mirrors Rust `Permissions`; a field
@@ -220,6 +222,7 @@ fn encryption(o: EncryptionOptions) -> Result<Encryption, Failure> {
     let mut e = Encryption::new();
     e.user_password = o.user_password;
     e.owner_password = o.owner_password;
+    e.entropy = o.entropy;
     if let Some(p) = o.permissions {
         let mut perms = Permissions::new().with_printing(match p.printing.as_deref() {
             None => None,

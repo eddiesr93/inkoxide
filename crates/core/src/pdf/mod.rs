@@ -241,7 +241,8 @@ impl PdfWriterSink {
         // unencrypted, so documents that differ anywhere get different
         // keys.
         let plain = self.emit(doc, &fonts, Out::plain())?.pdf.finish();
-        let (crypt, dict) = crypt::Crypt::new(params, &crypt::digest(&plain));
+        let (crypt, dict) =
+            crypt::Crypt::new(params, &crypt::digest(&plain, params.entropy.as_deref()));
         drop(plain);
         let Writer {
             mut pdf, mut alloc, ..

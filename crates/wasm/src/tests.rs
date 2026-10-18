@@ -124,6 +124,14 @@ fn options_are_checked_at_their_path() {
             "options.encryption.permissions.copying",
         ),
         (r#"{"creationDate":"yesterday"}"#, "options.creationDate"),
+        (
+            r#"{"encryption":{"userPassword":"u","entropy":"random"}}"#,
+            "options.encryption.entropy",
+        ),
+        (
+            r#"{"encryption":{"userPassword":"u","entropy":[1,256]}}"#,
+            "options.encryption.entropy",
+        ),
     ] {
         let f = path(json);
         assert_eq!(
@@ -137,6 +145,26 @@ fn options_are_checked_at_their_path() {
     assert!(path(r#"{"threads":"NaN"}"#).message.ends_with("found NaN"));
     let secret = path(r#"{"encryption":{"userPassword":"hunter2","permissions":{"copying":1}}}"#);
     assert!(!secret.message.contains("hunter2"));
+    // Entropy is an array of byte values, of 16 at least.
+    let short = failed(render(
+        EMPTY,
+        br#"{"encryption":{"userPassword":"u","entropy":[1,2,3]}}"#,
+        b"",
+        b"",
+    ));
+    assert_eq!(
+        (short.code.as_str(), short.path.as_str()),
+        ("INVALID_ARGUMENT", "options.encryption.entropy")
+    );
+    let with = |byte: u8| {
+        let json = format!(
+            r#"{{"encryption":{{"userPassword":"u","entropy":[{byte}{}]}}}}"#,
+            ",7".repeat(15)
+        );
+        render(EMPTY, json.as_bytes(), b"", b"").unwrap()
+    };
+    assert_eq!(with(1), with(1));
+    assert_ne!(with(1), with(2));
 }
 
 #[test]

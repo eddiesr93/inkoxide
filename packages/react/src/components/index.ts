@@ -450,15 +450,21 @@ export interface DocumentProps {
    */
   flattenAlpha?: boolean;
   /**
-   * Encrypts the PDF (AES-256): the password that opens it. Printable ASCII, at most 127 bytes.
-   * Not part of the document tree, and never in the render result. The render option
-   * `encryption` replaces these three props.
+   * Encrypts the PDF (AES-256): the password that opens it. Any text SASLprep (RFC 4013)
+   * accepts, at most 127 bytes of UTF-8 once prepared. Not part of the document tree, and never
+   * in the render result. The render option `encryption` replaces these four props.
    */
   userPassword?: string;
   /** The password that lifts `permissions`. Default: the user password. */
   ownerPassword?: string;
   /** What a reader without the owner password may do; needs an `ownerPassword` other than `userPassword`. */
   permissions?: Permissions;
+  /**
+   * Random bytes (16 to 256) mixed into the encryption keys, so each render of the same document
+   * gets other keys; `true`: 32 drawn for each render. Default: none, and the same document and
+   * passwords give the same file.
+   */
+  entropy?: boolean | Uint8Array;
   /**
    * Write tagged PDF: a structure tree with the reading order (the order of the template) and
    * what each element is (headings, paragraphs, figures with their `alt`, tables, lists), for

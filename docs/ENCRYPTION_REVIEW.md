@@ -59,8 +59,10 @@ subject of this review.**
 
 ## Inputs
 
-- **Passwords.** Printable ASCII (`0x20..=0x7E`), at most 127 bytes each, so no SASLprep or UTF-8
-  normalisation is involved.
+- **Passwords.** Prepared with SASLprep (RFC 4013, as ISO 32000-2, 7.6.4.3.3 asks: mapping, NFKC,
+  prohibited characters, bidirectional text, unassigned code points refused) and taken as UTF-8, at
+  most 127 bytes each once prepared; a longer one is refused rather than truncated. Printable ASCII
+  is unchanged by the preparation.
   - At least one of the two is non-empty.
   - An empty owner password is replaced by the user password, so there is never a file whose owner
     password is empty while the user password is not.
@@ -74,6 +76,10 @@ subject of this review.**
     passes are deterministic and differ only in what `out.rs` does to strings and streams, and in
     the font subset tags and widths below.
   - The plain file is never returned or stored; it is dropped once `D` is computed.
+- **E** (optional, the `entropy` option): 16 to 256 bytes the caller draws at random (the JavaScript
+  packages draw 32 with `crypto.getRandomValues` for `entropy: true`). With it, `D` is
+  `HMAC(E, SHA-256(plain file))` instead, and everything below follows from that `D`; renders of the
+  same input then differ, and the determinism limitation below does not apply.
 
 ## The derivation
 
@@ -165,9 +171,10 @@ permissions, when there is nothing for the owner password to guard).
 
 ## Accepted limitations (documented in SECURITY.md)
 
-- **Determinism.** The same input and passwords give the same bytes. Anyone who can make the system
-  encrypt a chosen document with the victim's passwords can confirm a guess of another such file by
-  comparing them.
+- **Determinism.** Without `entropy`, the same input and passwords give the same bytes. Anyone who
+  can make the system encrypt a chosen document with the victim's passwords can confirm a guess of
+  another such file by comparing them. With `entropy`, the keys depend on the caller's random bytes
+  as well, and this comparison fails.
 - **Structure stays visible**, as in any revision 6 file: page count and sizes, object structure,
   annotation rectangles, font names, and the length of every string and stream. Streams are
   compressed before encryption, so their lengths depend on the content: the length of a font
@@ -236,5 +243,5 @@ permissions, when there is nothing for the owner password to guard).
   qpdf --qdf --object-streams=disable --password='owner-pw' target/fixtures-encrypted/text-v1-1.pdf /tmp/decrypted.pdf
   ```
 
-Dependencies: RustCrypto `aes` 0.9.3 (AES-NI or ARMv8 AES where the CPU has it, otherwise its constant-time fixsliced software path) and `sha2` 0.11.1; HMAC,
+Dependencies: RustCrypto `aes` 0.9.3 (AES-NI or ARMv8 AES where the CPU has it, otherwise its constant-time fixsliced software path) and `sha2` 0.11.1, and `stringprep` 0.1.5 for SASLprep; HMAC,
 CBC and `H2B` are implemented in `crypt.rs` (about 80 lines).

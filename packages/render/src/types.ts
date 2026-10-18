@@ -35,8 +35,8 @@ export interface RenderOpts {
    */
   flattenAlpha?: boolean;
   /**
-   * Encrypt the PDF with AES-256: `{ userPassword, ownerPassword, permissions }` (see the
-   * guide). Replaces `<Document userPassword ownerPassword permissions>` as a whole. Not with
+   * Encrypt the PDF with AES-256: `{ userPassword, ownerPassword, permissions, entropy }` (see
+   * the guide). Replaces `<Document userPassword ownerPassword permissions entropy>` as a whole. Not with
    * `pdfA`. A bad value fails the render with `ENGINE_REJECTED` at its path, never with the
    * password in the message.
    */

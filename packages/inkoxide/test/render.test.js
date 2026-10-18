@@ -147,7 +147,9 @@ test('encryption encrypts with passwords and permissions, and never echoes them'
   };
   for (const [options, path] of [
     [{ encryption: {} }, 'options.encryption'],
-    [{ encryption: { userPassword: `${secret}é` } }, 'options.encryption.userPassword'],
+    [{ encryption: { userPassword: `${secret}\u{E000}` } }, 'options.encryption.userPassword'],
+    [{ encryption: { userPassword: secret, entropy: new Uint8Array(8) } }, 'options.encryption.entropy'],
+    [{ encryption: { userPassword: secret, entropy: [secret] } }, 'options.encryption.entropy'],
     [
       { encryption: { userPassword: secret, ownerPassword: 'x'.repeat(128) } },
       'options.encryption.ownerPassword',
@@ -176,6 +178,28 @@ test('encryption encrypts with passwords and permissions, and never echoes them'
     assert.throws(() => ink.renderSync(doc, options), rejected(path));
     await assert.rejects(ink.render(doc, options), rejected(path));
   }
+});
+
+test('encryption takes Unicode passwords, and entropy makes each render differ', async () => {
+  const doc = fixture('docs/invoice.json');
+  const render = (encryption) => Buffer.from(ink.renderSync(doc, { encryption })).toString('latin1');
+  // SASLprep: the same password, composed or not, gives the same file.
+  assert.strictEqual(render({ userPassword: 'ärger' }), render({ userPassword: 'a\u0308rger' }));
+  assert.match(render({ userPassword: 'parolă', ownerPassword: 'סיסמה' }), /\/R 6/);
+  const bytes = new Uint8Array(32).fill(7);
+  const fixed = render({ userPassword: 'u', entropy: bytes });
+  assert.strictEqual(render({ userPassword: 'u', entropy: bytes.slice() }), fixed);
+  assert.notStrictEqual(fixed, render({ userPassword: 'u' }));
+  assert.strictEqual(render({ userPassword: 'u', entropy: false }), render({ userPassword: 'u' }));
+  const random = render({ userPassword: 'u', entropy: true });
+  assert.notStrictEqual(random, render({ userPassword: 'u', entropy: true }));
+  assert.notStrictEqual(random, render({ userPassword: 'u' }));
+  const viaRender = Buffer.from(await ink.render(doc, { encryption: { userPassword: 'u', entropy: true } }));
+  assert.notStrictEqual(viaRender.toString('latin1'), random);
+  assert.deepStrictEqual(
+    ink.validate(doc, 'json', undefined, { encryption: { userPassword: 'u', entropy: true } }),
+    [],
+  );
 });
 
 test('images are passed per render', async () => {

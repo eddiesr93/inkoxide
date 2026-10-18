@@ -890,8 +890,26 @@ describe('pages, images and structure', () => {
       { fonts },
     );
     expect(plain.output.encryption).toBeUndefined();
+    // Entropy: true, or a copy of the bytes; false is none.
+    const entropy = (value: boolean | Uint8Array) =>
+      renderTemplate(
+        <Document userPassword="u" entropy={value}>
+          <Page />
+        </Document>,
+        { fonts },
+      ).output.encryption?.entropy;
+    expect(entropy(true)).toBe(true);
+    expect(entropy(false)).toBeUndefined();
+    const bytes = new Uint8Array(16).fill(3);
+    expect(entropy(bytes)).toEqual(bytes);
+    expect(entropy(bytes)).not.toBe(bytes);
     // Wrong types fail without showing the value.
-    for (const props of [{ userPassword: 12345 }, { ownerPassword: [secret] }, { permissions: secret }]) {
+    for (const props of [
+      { userPassword: 12345 },
+      { ownerPassword: [secret] },
+      { permissions: secret },
+      { entropy: secret },
+    ]) {
       const e = thrown(() =>
         renderTemplate(
           <Document {...(props as object)}>
@@ -900,7 +918,7 @@ describe('pages, images and structure', () => {
           { fonts },
         ),
       );
-      expect(e.message).toMatch(/<Document (userPassword|ownerPassword|permissions)> must be/);
+      expect(e.message).toMatch(/<Document (userPassword|ownerPassword|permissions|entropy)> must be/);
       expect(e.message).not.toContain(secret);
     }
   });

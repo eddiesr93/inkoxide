@@ -12,6 +12,5 @@ or should come sooner.
   theme's `@source` directives (Vite, Rollup, Rolldown and esbuild have it now).
 - **Accessibility**: PDF/UA-2 (PDF 2.0, with structure destinations); structure elements in
   object streams, so tagged files grow less; tagging the parts of SVG images.
-- **Encryption**: an `entropy` option, for output that cannot be linked to its input; Unicode
-  passwords, prepared with SASLprep (passwords are printable ASCII now); and an independent
-  review of the key derivation by cryptographers. It has had an internal review only.
+- **Encryption**: an independent review of the key derivation by cryptographers. It has had an
+  internal review only.
