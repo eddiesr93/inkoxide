@@ -71,7 +71,7 @@ impl ViewBox {
 
     /// The part of `size` (the viewport, from the origin) the `viewBox`
     /// covers.
-    pub(super) fn fit(&self, (x, y, w, h): (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
+    pub(crate) fn fit(&self, (x, y, w, h): (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
         let [_, _, vw, vh] = self.rect;
         let Some((ax, ay)) = self.align else {
             return (x, y, w, h);

@@ -1,11 +1,14 @@
-//! Colour glyphs: `COLR` layers (versions 0 and 1) written as SVG, and
-//! PNG bitmaps from `CBDT` or `sbix`. The text painter draws them as
-//! images in place of the glyphs.
+//! Colour glyphs: `COLR` layers (versions 0 and 1) written as SVG, the
+//! SVG documents of an `SVG ` table, and PNG bitmaps from `CBDT` or
+//! `sbix`. The text painter draws them as images in place of the glyphs.
 //!
 //! The SVG keeps what the PDF can show: outlines filled with solid
 //! colours and linear and radial gradients, clips, and transforms. A
-//! sweep gradient fills with its first stop, and every composite mode
-//! draws as source-over. Fonts are untrusted, and `COLR` v1 glyphs nest
+//! sweep gradient, which SVG and PDF lack, is drawn as wedges of solid
+//! colour, a degree or less each. Composites blend with the PDF's blend
+//! modes, and the Porter-Duff operators are built from alpha masks; `plus`
+//! draws as `screen`, the nearest of the PDF's. Fonts are untrusted, and
+//! `COLR` v1 glyphs nest
 //! (a layer can paint another colour glyph, whose layers paint others),
 //! so the work per glyph is bounded: a glyph whose paint graph reaches
 //! more than [`MAX_PAINT_OPS`] paint tables (each counted as often as it
@@ -14,7 +17,14 @@
 //!
 //! Layers in the foreground colour (palette index 0xFFFF) take the text
 //! colour, as in browsers: such a glyph is painted once per text colour
-//! it is drawn in.
+//! it is drawn in. So do the parts of an SVG glyph in `currentColor`,
+//! `context-fill` or `context-stroke`.
+//!
+//! An SVG glyph is drawn from its document without the document's other
+//! glyphs, in font units with y down from the baseline, the root
+//! `viewBox` fitted to the em square, as the `SVG ` table says. Its
+//! document is parsed with the limits of an SVG image; a compressed one is
+//! inflated to at most [`MAX_SVG_BYTES`].
 
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -49,7 +59,7 @@ pub(crate) const BLACK_TEXT: TextColor = [0, 0, 0];
 
 impl LoadedFont<'_> {
     /// Glyph `gid` in colour: its `COLR` layers (those in the foreground
-    /// colour black), else its largest PNG bitmap. `None` for a glyph
+    /// colour black), else its SVG document, else its largest PNG bitmap. `None` for a glyph
     /// without colour, or whose colour data is malformed or over the
     /// limits.
     #[cfg(test)]
@@ -91,6 +101,11 @@ impl LoadedFont<'_> {
                 return None;
             }
             return colr_svg(&self.face, id, text);
+        }
+        if let Some(doc) = self.face.glyph_svg_image(id) {
+            if let Some(glyph) = svg_table_glyph(&doc, gid, text, self.metrics().units_per_em) {
+                return Some(glyph);
+            }
         }
         let img = self.face.glyph_raster_image(id, u16::MAX)?;
         if img.format != RasterImageFormat::PNG
@@ -314,6 +329,115 @@ impl Reader<'_> {
     }
 }
 
+/// The text of an `SVG ` table document, inflated when compressed; `None`
+/// over [`MAX_SVG_BYTES`].
+fn svg_document_text(data: &[u8]) -> Option<std::borrow::Cow<'_, [u8]>> {
+    use std::io::Read;
+    if !data.starts_with(&[0x1F, 0x8B]) {
+        return (data.len() <= MAX_SVG_BYTES).then_some(std::borrow::Cow::Borrowed(data));
+    }
+    let mut out = Vec::new();
+    flate2::read::GzDecoder::new(data)
+        .take(MAX_SVG_BYTES as u64 + 1)
+        .read_to_end(&mut out)
+        .ok()?;
+    (out.len() <= MAX_SVG_BYTES).then_some(std::borrow::Cow::Owned(out))
+}
+
+/// Whether `n` is an element of another glyph than `id` (`glyph` and a
+/// number).
+fn other_glyph(n: usvg::roxmltree::Node<'_, '_>, id: &str) -> bool {
+    n.is_element()
+        && n.attribute("id").is_some_and(|i| {
+            i != id
+                && i.strip_prefix("glyph")
+                    .is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()))
+        })
+}
+
+/// Glyph `gid` from `doc`, a document of the `SVG ` table, in a font of
+/// `upem` units per em, its parts in the text colour in `text`, and
+/// whether it has such parts. `None` when the document has no element for
+/// the glyph (and is not the glyph's alone), cannot be parsed or drawn, or
+/// is over the limits.
+fn svg_table_glyph(
+    doc: &ttf_parser::svg::SvgDocument<'_>,
+    gid: u16,
+    text: TextColor,
+    upem: f32,
+) -> Option<(ColorGlyph, bool)> {
+    use crate::images::svg::{ViewBox, SVG_NS, XLINK_NS};
+    let data = svg_document_text(doc.data)?;
+    let xml = crate::images::svg::parse_document(&data).ok()?;
+    let source = xml.input_text();
+    let root = xml.root_element();
+    let id = format!("glyph{gid}");
+    let target = xml
+        .descendants()
+        .find(|n| n.attribute("id") == Some(id.as_str()));
+    let alone = doc.start_glyph_id == doc.end_glyph_id;
+    let mut content = String::new();
+    match target {
+        // Deep in the document: drawn by reference, the rest only defined.
+        Some(n) if n != root && n.parent() != Some(root) => {
+            let _ = write!(
+                content,
+                r##"<defs>{}</defs><use href="#{id}"/>"##,
+                &source[root.range()]
+            );
+        }
+        // The root's content, without the other glyphs.
+        Some(_) => {}
+        None if alone => {}
+        None => return None,
+    }
+    if content.is_empty() {
+        for child in root.children().filter(|&c| !other_glyph(c, &id)) {
+            content.push_str(&source[child.range()]);
+        }
+    }
+    let lower = content.to_ascii_lowercase();
+    let tinted = ["currentcolor", "context-fill", "context-stroke"]
+        .iter()
+        .any(|k| lower.contains(k));
+    let mut attrs = String::new();
+    if tinted {
+        let [r, g, b] = text;
+        let _ = write!(attrs, r#" color="rgb({r},{g},{b})""#);
+        content = content
+            .replace("context-fill", "currentColor")
+            .replace("context-stroke", "currentColor");
+    }
+    // The root `viewBox` fits the em square.
+    if let Some(vb) = ViewBox::of(root) {
+        let [vx, vy, vw, vh] = vb.rect;
+        let (fx, fy, fw, fh) = vb.fit((0.0, 0.0, upem, upem));
+        let (sx, sy) = (fw / vw, fh / vh);
+        let (e, f) = (fx - vx * sx, fy - vy * sy);
+        let _ = write!(attrs, r#" transform="matrix({sx} 0 0 {sy} {e} {f})""#);
+    }
+    let svg = |[x, y, w, h]: [f32; 4]| {
+        format!(
+            r#"<svg xmlns="{SVG_NS}" xmlns:xlink="{XLINK_NS}" viewBox="{x} {y} {w} {h}" width="{w}" height="{h}"><g{attrs}>{content}</g></svg>"#
+        )
+    };
+    // Its box, from what it draws.
+    let (tree, _) = crate::images::svg::parse(svg([0.0, 0.0, 1.0, 1.0]).as_bytes()).ok()?;
+    let b = tree.root().abs_stroke_bounding_box();
+    let (x, y, w, h) = (b.x(), b.y(), b.width(), b.height());
+    if !([x, y, w, h].iter().all(|v| v.is_finite()) && w > 0.0 && h > 0.0) {
+        return None;
+    }
+    let svg = svg([x, y, w, h]);
+    (svg.len() <= MAX_SVG_BYTES).then_some((
+        ColorGlyph::Svg {
+            svg,
+            bbox: [x, -(y + h), x + w, -y],
+        },
+        tinted,
+    ))
+}
+
 /// Glyph `id` of `face` as SVG, its layers in the foreground colour in
 /// `text`, and whether anything was painted in `text`.
 fn colr_svg(
@@ -381,9 +505,56 @@ struct SvgPainter<'a, 'f> {
     /// The text colour, and whether a fill or a stop was in it.
     text: TextColor,
     text_seen: bool,
+    /// The layers open, innermost last: where each starts in `body`, and
+    /// how it composites.
+    layers: Vec<(usize, CompositeMode)>,
 }
 
 const IDENTITY: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+
+/// Wedges a sweep gradient is sampled in: one a degree.
+const SWEEP_STEPS: usize = 360;
+
+/// The region of a composite's masks, in font units: wider than any glyph.
+const MASK_REGION: &str =
+    r#"maskUnits="userSpaceOnUse" x="-100000" y="-100000" width="200000" height="200000""#;
+const MASK_RECT: &str = r#"x="-100000" y="-100000" width="200000" height="200000""#;
+
+/// The colour of a colour line, `[r, g, b, a]` from 0 to 1, at `t` (0 at
+/// the first stop's offset of the gradient's range, 1 at its end), extended
+/// past its stops as `extend` says. `stops` are sorted and not empty.
+fn sweep_color(stops: &[ttf_parser::colr::ColorStop], extend: GradientExtend, t: f32) -> [f32; 4] {
+    let rgba = |c: RgbaColor| [c.red, c.green, c.blue, c.alpha].map(|v| f32::from(v) / 255.0);
+    let (first, last) = (stops[0], stops[stops.len() - 1]);
+    let (o0, o1) = (first.stop_offset, last.stop_offset);
+    let t = if t.is_nan() { 0.0 } else { t };
+    let t = match extend {
+        GradientExtend::Pad => t,
+        _ if o1 <= o0 => o0,
+        GradientExtend::Repeat => o0 + (t - o0).rem_euclid(o1 - o0),
+        GradientExtend::Reflect => {
+            let u = ((t - o0) / (o1 - o0)).rem_euclid(2.0);
+            o0 + (o1 - o0) * if u > 1.0 { 2.0 - u } else { u }
+        }
+    };
+    if t <= o0 {
+        return rgba(first.color);
+    }
+    if t >= o1 {
+        return rgba(last.color);
+    }
+    let k = stops.partition_point(|s| s.stop_offset <= t);
+    let (a, b) = (stops[k - 1], stops[k]);
+    let span = b.stop_offset - a.stop_offset;
+    let f = if span > 0.0 {
+        (t - a.stop_offset) / span
+    } else {
+        1.0
+    };
+    let (ca, cb) = (rgba(a.color), rgba(b.color));
+    // Rounded to the 8 bits colours have, so that equal wedges merge.
+    [0, 1, 2, 3].map(|i| ((ca[i] + (cb[i] - ca[i]) * f) * 255.0).round() / 255.0)
+}
 
 impl<'a, 'f> SvgPainter<'a, 'f> {
     fn new(face: &'f ttf_parser::Face<'a>, text: TextColor) -> Self {
@@ -402,6 +573,7 @@ impl<'a, 'f> SvgPainter<'a, 'f> {
             over: false,
             text,
             text_seen: false,
+            layers: Vec::new(),
         }
     }
 
@@ -435,16 +607,7 @@ impl<'a, 'f> SvgPainter<'a, 'f> {
         if self.path.is_empty() {
             return;
         }
-        if let Some([x0, y0, x1, y1]) = self.path_bounds {
-            let m = self.path_transform;
-            for corner in [(x0, y0), (x1, y0), (x0, y1), (x1, y1)] {
-                let (x, y) = apply(m, corner);
-                self.bounds = Some(match self.bounds {
-                    Some([a, b, c, d]) => [a.min(x), b.min(y), c.max(x), d.max(y)],
-                    None => [x, y, x, y],
-                });
-            }
-        }
+        self.add_path_bounds();
         let _ = write!(self.body, r#"<path d="{}" fill="{fill}""#, self.path);
         if opacity < 1.0 {
             let _ = write!(self.body, r#" fill-opacity="{opacity}""#);
@@ -452,6 +615,209 @@ impl<'a, 'f> SvgPainter<'a, 'f> {
         let m = self.path_transform;
         self.transform_attr("transform", m);
         self.body.push_str("/>");
+    }
+
+    /// Adds the last outline's box, under its transform, to `bounds`.
+    fn add_path_bounds(&mut self) {
+        for (x, y) in self.path_corners() {
+            self.bounds = Some(match self.bounds {
+                Some([a, b, c, d]) => [a.min(x), b.min(y), c.max(x), d.max(y)],
+                None => [x, y, x, y],
+            });
+        }
+    }
+
+    /// The corners of the last outline's box, in glyph space.
+    fn path_corners(&self) -> Vec<(f32, f32)> {
+        let Some([x0, y0, x1, y1]) = self.path_bounds else {
+            return Vec::new();
+        };
+        let m = self.path_transform;
+        [(x0, y0), (x1, y0), (x0, y1), (x1, y1)]
+            .into_iter()
+            .map(|c| apply(m, c))
+            .collect()
+    }
+
+    /// Fills the last outline with sweep gradient `g`: wedges around its
+    /// centre, in paint space, each in the colour at its middle, clipped to
+    /// the outline. Wedges of one colour merge. An opaque wedge reaches a
+    /// degree into the next, which is drawn over it, and starts a little
+    /// behind the centre, so that no seam shows between them.
+    fn sweep(&mut self, g: &ttf_parser::colr::SweepGradient<'_>) {
+        if self.path.is_empty() {
+            return;
+        }
+        let mut stops: Vec<_> = g.stops(0, &[]).collect();
+        if stops.is_empty() {
+            return;
+        }
+        stops.sort_by(|a, b| a.stop_offset.total_cmp(&b.stop_offset));
+        for s in &stops {
+            let c = s.color;
+            self.text_seen |= [c.red, c.green, c.blue] == self.text;
+        }
+        // Far enough from the centre to cover the outline, in paint space.
+        let Some(inverse) = invert(self.transform) else {
+            return;
+        };
+        let (cx, cy) = (g.center_x, g.center_y);
+        let reach = self
+            .path_corners()
+            .into_iter()
+            .map(|p| {
+                let (x, y) = apply(inverse, p);
+                (x - cx).hypot(y - cy)
+            })
+            .fold(0.0f32, f32::max);
+        if !(reach.is_finite() && reach > 0.0) {
+            return;
+        }
+        let radius = reach * 1.01 + 1.0;
+        // Angles in degrees, counter-clockwise in the font's y-up space.
+        let (a0, a1) = (g.start_angle * 180.0, g.end_angle * 180.0);
+        let color_at = |angle: f32| sweep_color(&stops, g.extend, (angle - a0) / (a1 - a0));
+        let mut wedges: Vec<(f32, f32, [f32; 4])> = Vec::new();
+        for step in 0..SWEEP_STEPS {
+            let (from, to) = (step as f32, step as f32 + 1.0);
+            let mut c = color_at(from + 0.5);
+            if a0 == a1 {
+                // No range: the first stop before it, the last after.
+                c = sweep_color(&stops, g.extend, if from + 0.5 < a0 { 0.0 } else { 1.0 });
+            }
+            match wedges.last_mut() {
+                Some(last) if last.2 == c => last.1 = to,
+                _ => wedges.push((from, to, c)),
+            }
+        }
+        self.add_path_bounds();
+        let path = std::mem::take(&mut self.path);
+        let m = self.path_transform;
+        self.clip(&path, m);
+        self.path = path;
+        let mut out = String::new();
+        let back = reach * 0.003;
+        for (k, (from, to, [r, gr, b, a])) in wedges.into_iter().enumerate() {
+            if a <= 0.0 {
+                continue;
+            }
+            let (mut from, mut to, mut apex) = (from, to, (cx, cy));
+            if a >= 1.0 {
+                if k == 0 {
+                    from -= 1.0;
+                }
+                to = (to + 1.0).min(360.0);
+                let mid = f32::midpoint(from, to).to_radians();
+                apex = (cx - back * mid.cos(), cy - back * mid.sin());
+            }
+            let _ = write!(out, "<path d=\"M{} {}", apex.0, apex.1);
+            // A point every 45° at most keeps the polygon around the arc.
+            let n = ((to - from) / 45.0).ceil().max(1.0) as usize;
+            for k in 0..=n {
+                let t = (from + (to - from) * k as f32 / n as f32).to_radians();
+                let _ = write!(out, "L{} {}", cx + radius * t.cos(), cy + radius * t.sin());
+            }
+            let rgb = format!(
+                "rgb({},{},{})",
+                (r * 255.0).round(),
+                (gr * 255.0).round(),
+                (b * 255.0).round()
+            );
+            let _ = write!(out, "Z\" fill=\"{rgb}\"");
+            if a < 1.0 {
+                let _ = write!(out, " fill-opacity=\"{a}\"");
+            }
+            self.body.push_str(&out);
+            out.clear();
+            let t = self.transform;
+            self.transform_attr("transform", t);
+            self.body.push_str("/>");
+        }
+        self.body.push_str("</g>");
+    }
+
+    /// Composites `source` onto `backdrop` (markup in the same space) as
+    /// `mode` says. Each is defined once and drawn by reference, however
+    /// often the operator uses it.
+    fn composite(&mut self, mode: CompositeMode, backdrop: &str, source: &str) -> String {
+        use CompositeMode as M;
+        let (b, s) = (self.next_id('b'), self.next_id('s'));
+        let mut out = format!(r#"<defs><g id="{b}">{backdrop}</g><g id="{s}">{source}</g></defs>"#);
+        let draw = |id: &str| format!(r##"<use href="#{id}"/>"##);
+        // `what` where `shape` is (alpha), or where it is not.
+        let masked = |this: &mut Self, out: &mut String, what: &str, shape: &str, inside: bool| {
+            let m = this.next_id('m');
+            let _ = write!(
+                out,
+                r#"<mask id="{m}" mask-type="alpha" {MASK_REGION}>{}</mask>"#,
+                draw(shape)
+            );
+            let m = if inside {
+                m
+            } else {
+                // White everywhere, black where the shape is: a luminance
+                // mask of what it leaves.
+                let n = this.next_id('m');
+                let _ = write!(
+                    out,
+                    r#"<mask id="{n}" {MASK_REGION}><rect {MASK_RECT} fill="white"/><g mask="url(#{m})"><rect {MASK_RECT} fill="black"/></g></mask>"#
+                );
+                n
+            };
+            let _ = write!(out, r#"<g mask="url(#{m})">{}</g>"#, draw(what));
+        };
+        let blend = |name: &str| {
+            format!(
+                r#"<g style="isolation:isolate">{}<g style="mix-blend-mode:{name}">{}</g></g>"#,
+                draw(&b),
+                draw(&s)
+            )
+        };
+        match mode {
+            M::Clear => return String::new(),
+            M::Source => out.push_str(&draw(&s)),
+            M::Destination => out.push_str(&draw(&b)),
+            M::SourceOver => {
+                out.push_str(&draw(&b));
+                out.push_str(&draw(&s));
+            }
+            M::DestinationOver => {
+                out.push_str(&draw(&s));
+                out.push_str(&draw(&b));
+            }
+            M::SourceIn => masked(self, &mut out, &s, &b, true),
+            M::DestinationIn => masked(self, &mut out, &b, &s, true),
+            M::SourceOut => masked(self, &mut out, &s, &b, false),
+            M::DestinationOut => masked(self, &mut out, &b, &s, false),
+            M::SourceAtop => {
+                out.push_str(&draw(&b));
+                masked(self, &mut out, &s, &b, true);
+            }
+            M::DestinationAtop => {
+                masked(self, &mut out, &s, &b, false);
+                masked(self, &mut out, &b, &s, true);
+            }
+            M::Xor => {
+                masked(self, &mut out, &s, &b, false);
+                masked(self, &mut out, &b, &s, false);
+            }
+            M::Plus | M::Screen => out.push_str(&blend("screen")),
+            M::Overlay => out.push_str(&blend("overlay")),
+            M::Darken => out.push_str(&blend("darken")),
+            M::Lighten => out.push_str(&blend("lighten")),
+            M::ColorDodge => out.push_str(&blend("color-dodge")),
+            M::ColorBurn => out.push_str(&blend("color-burn")),
+            M::HardLight => out.push_str(&blend("hard-light")),
+            M::SoftLight => out.push_str(&blend("soft-light")),
+            M::Difference => out.push_str(&blend("difference")),
+            M::Exclusion => out.push_str(&blend("exclusion")),
+            M::Multiply => out.push_str(&blend("multiply")),
+            M::Hue => out.push_str(&blend("hue")),
+            M::Saturation => out.push_str(&blend("saturation")),
+            M::Color => out.push_str(&blend("color")),
+            M::Luminosity => out.push_str(&blend("luminosity")),
+        }
+        out
     }
 
     fn stops(&mut self, stops: impl Iterator<Item = ttf_parser::colr::ColorStop>) {
@@ -597,16 +963,7 @@ impl<'a> Painter<'a> for SvgPainter<'a, '_> {
                 self.body.push_str("</radialGradient>");
                 self.fill_path(&format!("url(#{id})"), 1.0);
             }
-            Paint::SweepGradient(g) => {
-                let first = g
-                    .stops(0, &[])
-                    .min_by(|a, b| a.stop_offset.total_cmp(&b.stop_offset));
-                if let Some(s) = first {
-                    let c = s.color;
-                    let fill = self.rgb(c);
-                    self.fill_path(&fill, f32::from(c.alpha) / 255.0);
-                }
-            }
+            Paint::SweepGradient(g) => self.sweep(&g),
         }
     }
 
@@ -640,18 +997,32 @@ impl<'a> Painter<'a> for SvgPainter<'a, '_> {
         self.body.push_str("</g>");
     }
 
-    fn push_layer(&mut self, _mode: CompositeMode) {
+    /// `ttf-parser` paints a composite as a layer holding its backdrop,
+    /// then a layer in its mode holding its source.
+    fn push_layer(&mut self, mode: CompositeMode) {
         if !self.spend() {
             return;
         }
-        self.body.push_str("<g>");
+        self.layers.push((self.body.len(), mode));
     }
 
     fn pop_layer(&mut self) {
         if !self.spend() {
             return;
         }
-        self.body.push_str("</g>");
+        let Some((start, mode)) = self.layers.pop() else {
+            return;
+        };
+        let source = self.body.split_off(start);
+        // The backdrop: what the enclosing layer holds before this one.
+        let from = self.layers.last().map_or(start, |&(at, _)| at);
+        let backdrop = self.body.split_off(from);
+        let out = if mode == CompositeMode::SourceOver {
+            format!("{backdrop}<g>{source}</g>")
+        } else {
+            self.composite(mode, &backdrop, &source)
+        };
+        self.body.push_str(&out);
     }
 
     fn push_transform(&mut self, transform: Transform) {
@@ -678,7 +1049,8 @@ mod tests {
     use crate::fonts::{FontSet, FontStore};
 
     /// Runs `f` with the fixture fonts `EmojiTest-COLR`, `-CBDT`, `-sbix`,
-    /// `limits/colr-fanout` and `limits/colr-fanout-empty`, keyed 0 to 4.
+    /// `limits/colr-fanout`, `limits/colr-fanout-empty` and
+    /// `EmojiTest-SVG`, keyed 0 to 5.
     fn with_fonts(f: impl FnOnce(&FontSet<'_>)) {
         let mut store = FontStore::new();
         let files = [
@@ -687,13 +1059,15 @@ mod tests {
             ("sbix", "EmojiTest-sbix.ttf"),
             ("fanout", "limits/colr-fanout.ttf"),
             ("fanout-empty", "limits/colr-fanout-empty.ttf"),
+            ("svg", "EmojiTest-SVG.ttf"),
         ];
         for (id, file) in files {
             let bytes = crate::test_fixtures::fixture(&format!("fonts/{file}"));
             store.register(id, bytes).unwrap();
         }
         let json = r#"{"version":1,"fonts":[{"id":"colr","family":"a"},{"id":"cbdt","family":"b"},
-            {"id":"sbix","family":"c"},{"id":"fanout","family":"d"},{"id":"fanout-empty","family":"e"}],"pages":[]}"#;
+            {"id":"sbix","family":"c"},{"id":"fanout","family":"d"},{"id":"fanout-empty","family":"e"},
+            {"id":"svg","family":"f"}],"pages":[]}"#;
         let doc: crate::schema::Document = serde_json::from_str(json).unwrap();
         f(&FontSet::load(&doc, &store).unwrap());
     }
@@ -736,9 +1110,15 @@ mod tests {
             );
             // No clip box: the bounds of what is filled.
             assert_eq!(bbox, [100.0, -100.0, 1000.0, 800.0]);
-            // A sweep gradient draws with its first stop.
+            // A sweep gradient: wedges of a degree around its centre, from
+            // purple to green, merged where the colour is the same, clipped
+            // to the outline; past its end angle, the last stop.
             let (woman, _) = svg(colr, '👩');
             assert!(woman.contains(r#"fill="rgb(90,30,140)""#), "{woman}");
+            assert!(woman.contains(r#"fill="rgb(40,160,90)""#), "{woman}");
+            let wedges = woman.matches("<path d=\"M5").count();
+            assert!((100..=360).contains(&wedges), "{wedges}");
+            assert!(woman.contains("<clipPath"), "{woman}");
             // A composite and a rotation.
             let (laptop, _) = svg_of(colr, LAPTOP);
             assert!(laptop.contains("<g>"), "{laptop}");
@@ -751,6 +1131,115 @@ mod tests {
             );
             assert!(coder.contains(r#"fill="rgb(150,155,165)""#), "{coder}");
         });
+    }
+
+    /// The glyphs of an `SVG ` table: from a compressed document of their
+    /// own, its `viewBox` fitted to the em; from a document of several,
+    /// without the others; nested in a group, by reference.
+    #[test]
+    fn svg_table_glyphs_are_drawn_alone_in_font_units() {
+        with_fonts(|fonts| {
+            let font = fonts.get(5);
+            assert!(font.has_color());
+            // Half size in a viewBox half the em: x 100..1000, y -100..800.
+            let (grin, bbox) = svg(font, '😀');
+            assert_eq!(bbox, [100.0, -100.0, 1000.0, 800.0], "{grin}");
+            assert!(grin.contains("<radialGradient"), "{grin}");
+            assert!(
+                grin.contains(r#"transform="matrix(2 0 0 2 0 0)""#),
+                "{grin}"
+            );
+            assert!(!grin.contains("<?xml"), "{grin}");
+            // The heart keeps the gradient it shares, not the star.
+            let (heart, bbox) = svg(font, '\u{2764}');
+            assert!(heart.contains("<linearGradient"), "{heart}");
+            assert!(
+                !heart.contains("context-fill") && !heart.contains("<circle"),
+                "{heart}"
+            );
+            assert_eq!(bbox[3], 640.0, "{heart}");
+            // The star takes the text colour.
+            let star = font.glyph('\u{2B50}').unwrap();
+            assert!(font.color_glyph_tinted(star).unwrap().1);
+            assert!(
+                !font
+                    .color_glyph_tinted(font.glyph('😀').unwrap())
+                    .unwrap()
+                    .1
+            );
+            let Some(ColorGlyph::Svg { svg: red, .. }) = font.color_glyph_in(star, [255, 0, 0])
+            else {
+                panic!("no colour")
+            };
+            assert!(red.contains(r#"color="rgb(255,0,0)""#), "{red}");
+            assert!(red.contains(r#"fill="currentColor""#), "{red}");
+            // Nested: drawn by reference; its box is its own.
+            let (thumbs, bbox) = svg(font, '👍');
+            assert!(thumbs.contains(r##"<use href="#glyph5"/>"##), "{thumbs}");
+            assert_eq!(bbox, [250.0, -100.0, 650.0, 500.0]);
+            let (_, bbox) = svg(font, '\u{1F3C1}');
+            assert_eq!(bbox, [50.0, 0.0, 1050.0, 700.0]);
+            assert_eq!(font.color_glyph(font.glyph(' ').unwrap()), None);
+        });
+    }
+
+    #[test]
+    fn svg_documents_inflate_within_the_limit() {
+        let small = b"<svg/>";
+        assert_eq!(svg_document_text(small).as_deref(), Some(&small[..]));
+        let gz = |data: &[u8]| {
+            use std::io::Write;
+            let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            e.write_all(data).unwrap();
+            e.finish().unwrap()
+        };
+        assert_eq!(svg_document_text(&gz(small)).as_deref(), Some(&small[..]));
+        let big = vec![b' '; MAX_SVG_BYTES + 1];
+        assert_eq!(svg_document_text(&gz(&big)), None);
+        assert_eq!(svg_document_text(&big), None);
+        assert_eq!(
+            svg_document_text(&gz(&big[1..])).map(|t| t.len()),
+            Some(MAX_SVG_BYTES)
+        );
+    }
+
+    /// Composites blend with the PDF's blend modes, and the Porter-Duff
+    /// operators mask the source or the backdrop with the other.
+    #[test]
+    fn composites_blend_and_mask() {
+        with_fonts(|fonts| {
+            let colr = fonts.get(0);
+            let (art, _) = svg(colr, '\u{1F3A8}');
+            // Multiply, in a group of its own.
+            assert!(art.contains("isolation:isolate"), "{art}");
+            assert!(art.contains("mix-blend-mode:multiply"), "{art}");
+            // Source-in: the source in the backdrop's alpha.
+            assert!(art.contains(r#"mask-type="alpha""#), "{art}");
+            // Destination-out: the backdrop where the source is not.
+            assert!(art.contains(r#"fill="white""#), "{art}");
+            assert_eq!(art.matches("<mask ").count(), 3, "{art}");
+            // Each part is written once, and drawn by reference.
+            assert_eq!(art.matches(r#"fill="rgb(220,30,60)""#).count(), 1, "{art}");
+            assert!(crate::images::svg::parse(art.as_bytes()).is_ok());
+        });
+    }
+
+    #[test]
+    fn sweep_colours_extend_past_the_stops() {
+        let stop = |offset: f32, v: u8| ttf_parser::colr::ColorStop {
+            stop_offset: offset,
+            color: RgbaColor::new(v, 0, 0, 255),
+        };
+        let stops = [stop(0.25, 0), stop(0.75, 255)];
+        let red = |extend, t| (sweep_color(&stops, extend, t)[0] * 255.0).round();
+        assert_eq!(red(GradientExtend::Pad, 0.5), 128.0);
+        assert_eq!(red(GradientExtend::Pad, -3.0), 0.0);
+        assert_eq!(red(GradientExtend::Pad, 3.0), 255.0);
+        // Repeat starts again at the first stop; reflect turns back.
+        assert_eq!(red(GradientExtend::Repeat, 0.875), 64.0);
+        assert_eq!(red(GradientExtend::Reflect, 0.875), 191.0);
+        assert_eq!(red(GradientExtend::Reflect, 0.25 - 0.125), 64.0);
+        assert_eq!(red(GradientExtend::Pad, f32::NAN), 0.0);
     }
 
     /// Layers in the foreground colour take the text colour; the others

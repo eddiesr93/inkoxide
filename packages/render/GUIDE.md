@@ -268,18 +268,18 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   colour font in `fallbackFonts` that has it, then to the run's font, then to the other
   fallbacks. Followed by U+FE0E (text presentation), or as a character that is text by default
   (`❤`, `©`), it is text like any other. Colour glyphs come from the font's `COLR` table
-  (versions 0 and 1) or its PNG bitmaps (`CBDT`, as in Noto Color Emoji's bitmap build, or
-  `sbix`); a font with bitmaps and no outlines works too, but cannot be a form field's font. They
-  are drawn as images that copy and search as their text. `COLR` layers in the foreground colour
-  take the run's `color`, as in browsers (in the text of an SVG image, black); the colour's alpha
-  fades the whole glyph. Gradients that sweep around a point
-  draw with their first colour, and blend modes draw as normal. A colour glyph that is malformed
+  (versions 0 and 1, with their gradients, sweeps and blend modes), its `SVG` table or its
+  PNG bitmaps (`CBDT`, as in Noto Color Emoji's bitmap
+  build, or `sbix`); a font with bitmaps and no outlines works too, but cannot be a form field's
+  font. They are drawn as the glyphs of Type 3 fonts, so each glyph's image is in the PDF once,
+  and copy and search as their text. `COLR` layers in the foreground colour, and `SVG` glyphs in
+  `currentColor` or `context-fill`, take the run's `color`, as in browsers (in the text of an SVG
+  image, black); the colour's alpha fades the whole glyph. A colour glyph that is malformed
   or takes too much work to draw (over 10 000 drawing steps) draws without colour, and so do
   colour glyphs past the first 4096 of a render (one that takes the run's colour counts once per
   colour) or its first 32 MB of colour glyph images. In a
   font with bitmaps and no outlines, which has nothing else to draw them with, such glyphs are
-  not drawn, but they still copy and search as their text. Fonts
-  with only `SVG` glyphs are not drawn in colour. PDF/A-1b forbids transparency: there, a colour glyph that needs it (a bitmap with an
+  not drawn, but they still copy and search as their text. PDF/A-1b forbids transparency: there, a colour glyph that needs it (a bitmap with an
   alpha channel, as in every emoji bitmap font, or a layer with an opacity) fails the render with
   `PDFA_CONFLICT` at the path of its run (at the `src` of an SVG whose text has it), and inline
   images and emoji images that need it fail it at their `src` or `emojiImages` key. Opaque `COLR` glyphs draw in colour there.

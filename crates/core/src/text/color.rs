@@ -1,10 +1,13 @@
 //! Colour glyphs drawn as images. After shaping, the glyphs that text
 //! uses from colour fonts are turned into images once per render
-//! ([`ColorGlyphs::load`]); the painter then draws each as an image in
-//! place of the glyph ([`ColorGlyphs::push`]), inside a span whose
-//! `ActualText` is the glyph's text, with an invisible space as wide as
-//! the glyph (of the run's font, or another with outlines) so text
-//! extraction and selection still find it.
+//! ([`ColorGlyphs::load`]), and each image is a glyph of a Type 3 font
+//! (256 to a font, in glyph order) whose procedure draws it. The page
+//! painter draws a colour glyph as that glyph ([`ColorGlyphs::push`]),
+//! inside a span whose `ActualText` is its text, so that text extraction
+//! and selection find it as text. In SVG text, which draws in a form of its
+//! own, a colour glyph is the image itself, in such a span with an
+//! invisible space as wide as the glyph (of the run's font, or another
+//! with outlines).
 //!
 //! A `COLR` glyph with layers in the foreground colour takes the text
 //! colour: it becomes one image per text colour it is drawn in (the
@@ -25,7 +28,7 @@ use crate::geom::Rect;
 use crate::images::{
     DecodedImage, ImageCrateDecoder, ImageData, ImageKey, ImagePlacement, ImageSet,
 };
-use crate::paint::{InvisibleGlyph, Op, TextOp};
+use crate::paint::{ColorGlyphOp, InvisibleGlyph, Op, TextOp};
 
 /// Most distinct colour glyphs one render draws in colour; the others draw
 /// as glyphs without colour (in glyph order, by font). Glyphs of colour
@@ -53,10 +56,31 @@ pub(crate) fn text_color(c: [f32; 4]) -> TextColor {
     [0, 1, 2].map(|i| (c[i].clamp(0.0, 1.0) * 255.0).round() as u8)
 }
 
-/// A colour glyph's image and the box it fills, in font units, y up.
+/// A colour glyph's image, the box it fills, in font units, y up, and its
+/// Type 3 font and code.
 struct Placed {
     key: ImageKey,
     bbox: [f32; 4],
+    slot: (u16, u8),
+}
+
+/// Most glyphs of a Type 3 font: its codes are bytes, and code 0 is none
+/// of them (`pdf::type3`).
+const TYPE3_GLYPHS: usize = 255;
+
+/// A Type 3 font of colour glyphs: images of glyphs of `font`, the procedure
+/// of code `i + 1` drawing `glyphs[i]`.
+pub(crate) struct Type3Font {
+    pub font: FontKey,
+    pub glyphs: Vec<Type3Glyph>,
+}
+
+/// The glyph of a Type 3 font: an image, the box it fills and the
+/// advance, in font units, y up.
+pub(crate) struct Type3Glyph {
+    pub image: ImageKey,
+    pub bbox: [f32; 4],
+    pub advance: f32,
 }
 
 /// The images of a colour glyph: one, or one per text colour for a glyph
@@ -70,6 +94,7 @@ enum Images {
 #[derive(Default)]
 pub(crate) struct ColorGlyphs {
     glyphs: HashMap<(FontKey, u16), Images>,
+    type3: Vec<Type3Font>,
 }
 
 /// The image bytes of colour glyph `glyph` (SVG or PNG), and the box they
@@ -228,10 +253,17 @@ impl ColorGlyphs {
             };
             for (glyph, color, image, bbox) in decoded {
                 let Some(image) = image else { continue };
-                let placed = Placed {
-                    key: images.add(image),
-                    bbox,
-                };
+                let key = images.add(image);
+                let advance = fonts.get(glyph.0).advance(glyph.1);
+                let slot = out.slot(
+                    glyph.0,
+                    Type3Glyph {
+                        image: key,
+                        bbox,
+                        advance,
+                    },
+                );
+                let placed = Placed { key, bbox, slot };
                 match color {
                     None => {
                         out.glyphs.insert(glyph, Images::One(placed));
@@ -252,6 +284,32 @@ impl ColorGlyphs {
             }
         }
         out
+    }
+
+    /// Code `glyph` in a Type 3 font of glyphs of `font`: the last one,
+    /// or a new one when that one is full or of another font.
+    fn slot(&mut self, font: FontKey, glyph: Type3Glyph) -> (u16, u8) {
+        let full = self
+            .type3
+            .last()
+            .is_none_or(|t| t.font != font || t.glyphs.len() >= TYPE3_GLYPHS);
+        if full {
+            self.type3.push(Type3Font {
+                font,
+                glyphs: Vec::new(),
+            });
+        }
+        let index = self.type3.len() - 1;
+        let t = &mut self.type3[index];
+        t.glyphs.push(glyph);
+        // At most `MAX_COLOR_GLYPHS` glyphs, so at most 17 fonts.
+        (index as u16, t.glyphs.len() as u8)
+    }
+
+    /// The Type 3 fonts of the colour glyphs, indexed by
+    /// [`ColorGlyphOp::font`].
+    pub fn type3(&self) -> &[Type3Font] {
+        &self.type3
     }
 
     /// Whether glyph `gid` of `font` is drawn in colour.
@@ -284,11 +342,13 @@ impl ColorGlyphs {
     }
 
     /// Pushes text op `t`: as it is, or, in a colour font, with its colour
-    /// glyphs as images, each in a span with its text from `texts` (one
-    /// for each glyph of `t`; none past its end) and an invisible space
-    /// of font `strut` as wide as the glyph. The other glyphs of a font
-    /// without outlines, which has nothing to draw them with, keep only
-    /// such a span, with nothing drawn: their text still copies.
+    /// glyphs each in a span with its text from `texts` (one for each
+    /// glyph of `t`; none past its end): as glyphs of their Type 3 fonts
+    /// when `type3`, else as images with an invisible space of font
+    /// `strut` as wide as the glyph. The other glyphs of a font without
+    /// outlines, which has nothing to draw them with, keep only such a
+    /// span, with a space and nothing drawn: their text still copies.
+    #[allow(clippy::too_many_arguments)]
     pub fn push(
         &self,
         t: TextOp,
@@ -296,6 +356,7 @@ impl ColorGlyphs {
         fonts: &FontSet<'_>,
         images: &ImageSet,
         texts: &[Option<&str>],
+        type3: bool,
         ops: &mut Vec<Op>,
     ) {
         let font = fonts.get(t.font);
@@ -325,6 +386,20 @@ impl ColorGlyphs {
                 }
                 continue;
             };
+            if type3 {
+                let glyph = Op::ColorGlyph(ColorGlyphOp {
+                    font: p.slot.0,
+                    code: p.slot.1,
+                    size: t.size,
+                    x,
+                    y,
+                });
+                match text {
+                    Some((text, _)) => crate::paint::span(ops, text, None, |ops| ops.push(glyph)),
+                    None => ops.push(glyph),
+                }
+                continue;
+            }
             let [x0, y0, x1, y1] = p.bbox;
             let rect = Rect::new(
                 x + x0 * scale,
@@ -344,16 +419,21 @@ impl ColorGlyphs {
 mod tests {
     use super::*;
 
-    /// The colour test fonts, keyed 0 to 2: `EmojiTest-COLR`, `-CBDT` and
-    /// `-sbix`.
+    /// The colour test fonts, keyed 0 to 3: `EmojiTest-COLR`, `-CBDT`,
+    /// `-sbix` and `-SVG`.
     fn with_fonts(f: impl FnOnce(&FontSet<'_>)) {
         let mut store = crate::FontStore::new();
-        for id in ["EmojiTest-COLR", "EmojiTest-CBDT", "EmojiTest-sbix"] {
+        for id in [
+            "EmojiTest-COLR",
+            "EmojiTest-CBDT",
+            "EmojiTest-sbix",
+            "EmojiTest-SVG",
+        ] {
             let bytes = crate::test_fixtures::fixture(&format!("fonts/{id}.ttf"));
             store.register(id, bytes).unwrap();
         }
         let json = r#"{"version":1,"fonts":[{"id":"EmojiTest-COLR","family":"a"},
-            {"id":"EmojiTest-CBDT","family":"b"},{"id":"EmojiTest-sbix","family":"c"}],"pages":[]}"#;
+            {"id":"EmojiTest-CBDT","family":"b"},{"id":"EmojiTest-sbix","family":"c"},{"id":"EmojiTest-SVG","family":"d"}],"pages":[]}"#;
         let doc: crate::schema::Document = serde_json::from_str(json).unwrap();
         f(&FontSet::load(&doc, &store).unwrap());
     }
@@ -407,7 +487,7 @@ mod tests {
     #[test]
     fn every_colour_glyph_of_the_test_fonts_decodes() {
         with_fonts(|fonts| {
-            for (key, want) in [(0, 11), (1, 4), (2, 4)] {
+            for (key, want) in [(0, 12), (1, 4), (2, 4), (3, 5)] {
                 let used = BTreeMap::from([(key, (0..64).collect::<BTreeSet<u16>>())]);
                 let mut images = no_images();
                 let colors = ColorGlyphs::load(fonts, &black(&used), &mut images, false);
@@ -423,12 +503,12 @@ mod tests {
     fn colour_glyphs_past_the_most_of_a_render_have_no_colour() {
         with_fonts(|fonts| {
             let all = |n: usize| (0..n as u16).collect::<BTreeSet<u16>>();
-            // The COLR font's eleven and the CBDT font's four, however many
+            // The COLR font's twelve and the CBDT font's four, however many
             // glyphs without colour come first.
             let used = BTreeMap::from([(0, all(MAX_COLOR_GLYPHS - 1)), (1, all(64))]);
             let colors = ColorGlyphs::load(fonts, &black(&used), &mut no_images(), false);
             let glyphs = loaded(&colors);
-            assert_eq!(glyphs.len(), 15, "{glyphs:?}");
+            assert_eq!(glyphs.len(), 16, "{glyphs:?}");
             for parallel in [false, true] {
                 let budget = Budget {
                     glyphs: 12,
@@ -520,7 +600,7 @@ mod tests {
             let mut ops = Vec::new();
             let texts = [Some("😀"), Some(" ")];
             let images = no_images();
-            ColorGlyphs::default().push(text, Some(0), fonts, &images, &texts, &mut ops);
+            ColorGlyphs::default().push(text, Some(0), fonts, &images, &texts, true, &mut ops);
             let spans: Vec<&str> = ops
                 .iter()
                 .filter_map(|op| match op {

@@ -14,19 +14,20 @@ use crate::InkoxideError;
 
 use super::{
     alpha_key, attach, deflate, font, font_name, forms, gs_name, image, image_name, key_alpha,
-    notes, pdfa, round_pt, svg, svg_text_uses, tag, text_ink, write_link, write_outline,
-    DocumentOut, FontPrograms, Out, PdfWriterSink, Writer, MAX_NUMBER,
+    notes, pdfa, round_pt, svg, svg_text_uses, tag, text_ink, type3, type3_name, write_link,
+    write_outline, DocumentOut, FontPrograms, Out, PdfWriterSink, Writer, MAX_NUMBER,
 };
 
 /// Maximum kids per page-tree node (keeps viewers fast on long documents).
 pub(super) const PAGE_TREE_FANOUT: usize = 50;
 
 /// The shared resources of the pages: graphics states by opacity key,
-/// fonts and images.
+/// fonts, images, and the Type 3 fonts of colour glyphs by index.
 struct Resources {
     opacities: BTreeMap<u16, Ref>,
     fonts: BTreeMap<FontKey, Ref>,
     images: BTreeMap<ImageKey, Ref>,
+    type3: BTreeMap<u16, Ref>,
 }
 
 impl PdfWriterSink {
@@ -59,10 +60,12 @@ impl PdfWriterSink {
         let opacities = self.write_opacities(&mut w, doc)?;
         let font_refs = self.write_fonts(&mut w, doc, fonts)?;
         let image_refs = self.write_images(&mut w, doc, &font_refs)?;
+        let type3 = self.write_type3(&mut w, doc, &image_refs)?;
         let res = Resources {
             opacities,
             fonts: font_refs,
             images: image_refs,
+            type3,
         };
         let files = attach::write_files(&mut w, doc.files);
         let mut tags = doc.plan.map(|_| tag::AnnotTags::new(doc.pages.len()));
@@ -183,11 +186,16 @@ impl PdfWriterSink {
         let mut image_refs: BTreeMap<ImageKey, Ref> = BTreeMap::new();
         let text_images: BTreeSet<ImageKey> =
             svg_text_uses(doc).flat_map(|(_, images)| images).collect();
+        // And those the Type 3 fonts of colour glyphs draw.
+        let type3 = doc.colors.type3();
+        let glyph_images = type3_used(doc)
+            .flat_map(|i| &type3[usize::from(i)].glyphs)
+            .map(|g| g.image);
         let on_pages: BTreeSet<ImageKey> = doc
             .pages
             .iter()
-            .flat_map(|p| &p.images)
-            .copied()
+            .flat_map(|p| p.images.iter().copied())
+            .chain(glyph_images)
             .filter(|k| !text_images.contains(k))
             .collect();
         for key in text_images.into_iter().chain(on_pages) {
@@ -200,6 +208,38 @@ impl PdfWriterSink {
             image_refs.insert(key, r);
         }
         Ok(image_refs)
+    }
+
+    /// The Type 3 fonts of colour glyphs the pages use, by index.
+    fn write_type3(
+        &self,
+        w: &mut Writer,
+        doc: &DocumentOut<'_>,
+        image_refs: &BTreeMap<ImageKey, Ref>,
+    ) -> Result<BTreeMap<u16, Ref>, InkoxideError> {
+        let mut refs = BTreeMap::new();
+        for index in type3_used(doc) {
+            let glyphs = &doc.colors.type3()[usize::from(index)];
+            // The text of each code, from the first page that draws it.
+            let mut text = BTreeMap::new();
+            for page in doc.pages {
+                let codes = page.type3_text.range((index, 0)..=(index, u8::MAX));
+                for (&(_, code), t) in codes {
+                    text.entry(code).or_insert_with(|| t.clone());
+                }
+            }
+            let t = type3::Type3 {
+                glyphs,
+                font: doc.fonts.get(glyphs.font),
+                index,
+                images: doc.images,
+                image_refs,
+                text: &text,
+                tagged: doc.plan.is_some(),
+            };
+            refs.insert(index, type3::write_type3(w, &t, self.profile)?);
+        }
+        Ok(refs)
     }
 
     /// The annotations of each page, in page order: links, then icons,
@@ -485,10 +525,13 @@ fn write_pages(
                 gs.pair(Name(gs_name(*key).as_bytes()), res.opacities[key]);
             }
         }
-        if !page.glyphs.is_empty() {
+        if !page.glyphs.is_empty() || !page.type3.is_empty() {
             let mut f = r.fonts();
             for key in page.glyphs.keys() {
                 f.pair(Name(font_name(*key).as_bytes()), res.fonts[key]);
+            }
+            for index in &page.type3 {
+                f.pair(Name(type3_name(*index).as_bytes()), res.type3[index]);
             }
         }
         if !page.images.is_empty() {
@@ -517,6 +560,15 @@ fn write_pages(
                 }
             });
     }
+}
+
+/// The Type 3 fonts of colour glyphs the pages use, by index.
+fn type3_used(doc: &DocumentOut<'_>) -> impl Iterator<Item = u16> {
+    doc.pages
+        .iter()
+        .flat_map(|p| p.type3.iter().copied())
+        .collect::<BTreeSet<u16>>()
+        .into_iter()
 }
 
 /// The page mode the document opens in: by default, with the bookmarks

@@ -159,6 +159,7 @@ fn image_ops(text: &LaidText, paint: Option<u32>, res: TextInk<'_, '_>) -> Vec<(
             res.fonts,
             res.images,
             &[text.glyph_text(g)],
+            false,
             &mut ops,
         );
         out.push((Frame::of(g.x, g.y, g.rotate, g.scale_x), ops));

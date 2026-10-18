@@ -369,6 +369,13 @@ fn colour_emoji_and_images_extract_as_text() {
                 "😀 ❤\u{FE0F} 👍 🇫🇷",
             ],
         ),
+        (
+            "emoji-svg",
+            &[
+                "smile 😀 heart ❤\u{FE0F} star ⭐ thumbs 👍 flag 🏁 end",
+                "😀❤\u{FE0F}⭐👍🏁",
+            ],
+        ),
         ("emoji-images", &["smile 😀 flag 🇫🇷 heart ❤\u{FE0F}"]),
         ("text-inline-images", &["Logo"]),
         ("images-jpeg-png", &["Harbour photo"]),

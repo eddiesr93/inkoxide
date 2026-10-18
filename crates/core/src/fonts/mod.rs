@@ -180,8 +180,8 @@ pub(crate) struct Instance {
 }
 
 impl FontData {
-    /// Whether the font has colour glyphs the engine draws: `COLR` layers
-    /// or PNG bitmaps (`CBDT` or `sbix`).
+    /// Whether the font has colour glyphs the engine draws: `COLR` layers,
+    /// SVG documents, or PNG bitmaps (`CBDT` or `sbix`).
     pub(crate) fn has_color(&self) -> bool {
         self.metrics.color
     }
@@ -219,7 +219,7 @@ impl FontData {
         let tables = face.tables();
         // Parsed only with their companion tables (`CBLC`, `CPAL`).
         let bitmaps = tables.cbdt.is_some() || tables.sbix.is_some();
-        let color = bitmaps || tables.colr.is_some();
+        let color = bitmaps || tables.colr.is_some() || tables.svg.is_some();
         let outlines = outlines(&face, &bytes).map_err(err)?;
         if outlines == Outlines::None && !bitmaps {
             return Err(err(
@@ -1222,6 +1222,7 @@ mod tests {
             ("colr", "EmojiTest-COLR.ttf", Outlines::TrueType),
             ("cbdt", "EmojiTest-CBDT.ttf", Outlines::None),
             ("sbix", "EmojiTest-sbix.ttf", Outlines::None),
+            ("svg", "EmojiTest-SVG.ttf", Outlines::TrueType),
         ] {
             s.register(id, fixture(file)).unwrap();
             let data = s.get(id).unwrap();

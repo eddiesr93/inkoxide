@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use rayon::prelude::*;
 
-pub(crate) use color::ColorGlyphs;
+pub(crate) use color::{ColorGlyphs, Type3Font};
 pub(crate) use emoji::sequences as emoji_sequences;
 pub(crate) use objects::{emoji_key, run_key, InlineObjects, Source as ObjectSource};
 pub(crate) use paint::{PageNumbers, TextPainter, WAVES_PER_GLYPH};

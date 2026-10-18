@@ -45,6 +45,7 @@ generated=(
   fixtures/fonts/EmojiTest-COLR.ttf
   fixtures/fonts/EmojiTest-CBDT.ttf
   fixtures/fonts/EmojiTest-sbix.ttf
+  fixtures/fonts/EmojiTest-SVG.ttf
   fixtures/fonts/limits/colr-fanout.ttf
   fixtures/fonts/limits/colr-fanout-empty.ttf
   fixtures/docs/variable-fonts.json

@@ -1,5 +1,5 @@
 {
-  "//": "Fixtures whose WebAssembly render may differ from the native one in the last digits of numbers (scripts/wasm-parity.mjs): usvg computes marker angles, and text on a path its glyphs' angles, with trigonometry, which on WebAssembly is Rust's port of libm, not the platform's.",
-  "docs": ["svg-markers", "svg-text-path"],
+  "//": "Fixtures whose WebAssembly render may differ from the native one in the last digits of numbers (scripts/wasm-parity.mjs): usvg computes marker angles, text on a path its glyphs' angles, and the colour glyphs of fonts their sweep gradients' wedges, with trigonometry, which on WebAssembly is Rust's port of libm, not the platform's.",
+  "docs": ["emoji-colr", "emoji-images", "svg-markers", "svg-text-path"],
   "images": ["markers", "text-path"]
 }

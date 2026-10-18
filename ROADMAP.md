@@ -25,6 +25,3 @@ or should come sooner.
 - **SVG text**: vertical text on a path; `Identity-V` fonts for vertical text, so that each
   glyph needs no text matrix of its own; font properties passed through `use`; `style` and
   `className` on the primitives inside `<Svg>`.
-- **Colour emoji**: SVG-in-OpenType fonts; COLRv1 sweep gradients and blend modes (a sweep
-  gradient draws with its first stop now, and every blend mode as source-over); colour glyphs as
-  Type 3 fonts instead of images.

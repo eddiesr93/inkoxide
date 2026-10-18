@@ -502,7 +502,7 @@ fn paint_line(
                 None
             };
             ink.colors
-                .push(text, strut, fonts, ink.images, &piece.texts, ops);
+                .push(text, strut, fonts, ink.images, &piece.texts, true, ops);
         }
         if let Some(dec) = run.decoration.filter(|d| *d != Decoration::None) {
             let font = fonts.get(piece.font);
