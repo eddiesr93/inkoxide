@@ -87,7 +87,9 @@ the text's ink, or a group of probes, one per paint style of its spans.
 - `font-stretch` and font properties passed through `use`, also added since, stay in our
   cascade: `font-stretch` selects a face's width, and a `use` that gives the text it names
   other font properties gets a copy of that element, laid out with the `use`'s cascade and
-  written into the SVG under an id of its own (`UseCopy`, at most 64 an SVG).
+  written into the SVG under an id of its own (`UseCopy`, at most 64 an SVG). A `use` that an
+  XML entity writes has its `href` in the DTD and gets no copy: the text keeps its own
+  properties there.
 
 ## Alternatives
 

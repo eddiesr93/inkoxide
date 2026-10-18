@@ -6,7 +6,7 @@
 //! is converted to RGB samples). PNG, GIF (its first frame) and WebP are
 //! decoded behind [`ImageDecoder`] and written as Flate-compressed samples
 //! plus an optional alpha `SMask`. SVG is parsed into a `usvg` tree, with
-//! limits for untrusted input (`svg.rs`), and written as a vector form
+//! limits for untrusted input (`svg/`), and written as a vector form
 //! `XObject`.
 
 pub(crate) mod base64;

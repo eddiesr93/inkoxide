@@ -73,8 +73,8 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   characters standing across it. A column of upright characters is one run of PDF text, in a
   vertical (`Identity-V`) font over the same embedded font. The text paths of an SVG with more
   than 100,000 segments in all fail with `INVALID_IMAGE`, as does an SVG's text with more than
-  64 different sets of font features; the SVGs of a render with more than 64 in all fail with
-  `IMAGE_ERROR`.
+  64 different sets of font features or a span with more than 32 features; the SVGs of a render
+  with more than 64 sets in all fail with `IMAGE_ERROR`.
 
 - Font properties set on an SVG `<use>` reach the text it copies, as in browsers: the copy is
   laid out with them (up to 64 such copies an SVG).
@@ -129,8 +129,8 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   other than one path), a part is a figure only when it is all the group draws, as a shape with
   `opacity` is. Each placement of such an image is a form XObject of its own. An image that is no figure of its own (inside a
   paragraph's box, say) keeps its alternative text as before and its parts are not tagged.
-  An element with an empty `id`, or from an entity, is no part. Untagged output draws the
-  same. veraPDF checks PDF/UA-1, PDF/UA-2 and PDF/A-2a.
+  An element with an empty `id`, or one from an entity without an `id`, is no part. Untagged
+  output draws the same. veraPDF checks PDF/UA-1, PDF/UA-2 and PDF/A-2a.
 
 - File attachments. A document's `attachments` are files the PDF carries (from the render
   option `attachments`, or base64 `data`), listed in the viewer's attachments panel; `attachment`
@@ -309,6 +309,13 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 - A hyphen at the end of a line follows the word it breaks, in that word's direction: a
   left-to-right word broken in a right-to-left paragraph reads `docu-`, not `-docu`, and a
   right-to-left word in a left-to-right paragraph takes its hyphen on its left.
+- The root `viewBox` and `preserveAspectRatio` of an SVG are read as `usvg` reads them: a
+  `viewBox` whose numbers have no separator before a sign (`-0-0 20 20`) is used instead of
+  ignored, and a `preserveAspectRatio` that is not a valid value, in any characters, is the
+  default (`xMidYMid meet`).
+- An SVG whose `viewBox` width or height is zero or negative fails with `INVALID_IMAGE`, as one
+  under 0.00001 did, instead of being drawn as if it had no `viewBox`; a nested SVG image is
+  left out.
 
 ### Repository
 

@@ -35,8 +35,6 @@ impl TextSource {
         })
     }
 
-    /// Adds the different lists of OpenType features its text and its
-    /// nested SVGs' use to `sets`.
     /// Calls `f` on each span of its text, its nested SVGs' included.
     pub fn spans(&self, f: &mut dyn FnMut(&crate::images::svg_text::SvgSpan)) {
         for s in self.text.texts.iter().flat_map(|t| &t.spans) {
@@ -47,6 +45,8 @@ impl TextSource {
         }
     }
 
+    /// Adds the different lists of OpenType features its text and its
+    /// nested SVGs' use to `sets`.
     pub fn feature_sets(&self, sets: &mut HashSet<Arc<[FontFeature]>>) {
         let spans = self.text.texts.iter().flat_map(|t| &t.spans);
         sets.extend(
@@ -147,7 +147,7 @@ pub(crate) fn parse_with_text(
     if let Some(e) = meter.error.get() {
         return Err(e.clone());
     }
-    let tree = Arc::new(parsed?.0);
+    let tree = Arc::new(parsed?.tree);
     // A tree is several times larger than its source.
     let size = size.saturating_mul(9);
     TEXT_TREES.insert(key, tree.clone(), size);

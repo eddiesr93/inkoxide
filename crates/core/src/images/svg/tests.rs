@@ -43,6 +43,12 @@ fn refuses_sizes_and_view_boxes_too_small_to_scale() {
             assert_eq!(nested_images(t.root()), (0, 0), "{attrs}");
         }
     }
+    // A viewBox of no size or a negative one, which `usvg` ignores, and
+    // one whose numbers have no separator before a sign.
+    for vb in ["0 0 0 10", "0 0 10 -1", "-0-0 1e-6 10"] {
+        let e = rejected(&root(&format!(r#"width="10" height="10" viewBox="{vb}""#)));
+        assert!(e.contains("at least"), "{vb}: {e}");
+    }
     // The smallest and largest sizes are accepted.
     let t = parse(root(r#"width="1e-5" height="100000""#).as_bytes())
         .unwrap()
@@ -56,17 +62,21 @@ fn refuses_sizes_and_view_boxes_too_small_to_scale() {
 #[test]
 fn reads_text_and_rejects_garbage() {
     // The tree leaves text out; it comes with what drawing it needs.
-    let (_, _, text, _) = parse_text(svg("<text x='1' y='5'>Hi</text>").as_bytes()).unwrap();
+    let text = parse_text(svg("<text x='1' y='5'>Hi</text>").as_bytes())
+        .unwrap()
+        .text;
     assert_eq!(text.unwrap().text.texts.len(), 1);
     // Empty text elements are no text.
-    let (_, _, text, _) = parse_text(svg("<text x='1' y='5'> </text>").as_bytes()).unwrap();
+    let text = parse_text(svg("<text x='1' y='5'> </text>").as_bytes())
+        .unwrap()
+        .text;
     assert!(text.is_none());
     assert!(parse(b"<svg").is_err());
     assert!(parse(b"<html/>").is_err());
     assert!(parse(&[0xFF, 0xFE, 0x3C]).is_err());
     // Text in a nested SVG comes with the outer one.
     let outer = image_of(&svg("<text x='1' y='5'>Hi</text>"), 1, 0);
-    let (_, _, text, _) = parse_text(outer.as_bytes()).unwrap();
+    let text = parse_text(outer.as_bytes()).unwrap().text;
     let text = text.unwrap();
     assert!(text.text.texts.is_empty());
     assert_eq!(text.nested[0].text.texts.len(), 1);
@@ -77,7 +87,7 @@ fn reads_text_and_rejects_garbage() {
         "<text writing-mode='tb'>Hi</text>",
         "<path id='p' d='M0 0H9'/><text writing-mode='tb'><textPath href='#p'>Hi</textPath></text>",
     ] {
-        let (_, _, text, _) = parse_text(svg(body).as_bytes()).unwrap();
+        let text = parse_text(svg(body).as_bytes()).unwrap().text;
         assert_eq!(text.unwrap().text.texts.len(), 1, "{body}");
     }
 }
@@ -150,6 +160,9 @@ fn a_view_box_fits_the_box_it_fills_like_css() {
     assert_eq!(view_box(r#"viewBox="0 0 0 10""#), None);
     let vb = view_box(r#"viewBox="0,0 100 100""#).unwrap();
     assert_eq!((vb.align, vb.slice), (Some((0.5, 0.5)), false));
+    // Numbers need no separator before a sign, as `usvg` reads them.
+    let compact = view_box(r#"viewBox="-0-0 20 20""#).unwrap();
+    assert_eq!(compact.rect, [0.0, 0.0, 20.0, 20.0]);
     let bx = Rect::new(10.0, 20.0, 100.0, 40.0);
     let near = |(r, clip): (Rect, bool), want: [f32; 4], clipped: bool| {
         let got = [r.x, r.y, r.w, r.h];
@@ -204,15 +217,18 @@ fn a_view_box_fits_the_box_it_fills_like_css() {
         [40.0, 20.0, 40.0, 40.0],
         false,
     );
-    // Eight bytes but not eight characters: the default too.
-    near(
-        place(
-            r#"viewBox="0 0 100 100" preserveAspectRatio="xMiéYMin""#,
-            (100.0, 100.0),
-        ),
-        [40.0, 20.0, 40.0, 40.0],
-        false,
-    );
+    // So is a value that is not ASCII, of any length: eight bytes but not
+    // eight characters among them.
+    for value in ["xMiéYMin", "xMiéMax", "xMinYMié", "é"] {
+        near(
+            place(
+                format!(r#"viewBox="0 0 100 100" preserveAspectRatio="{value}""#).as_str(),
+                (100.0, 100.0),
+            ),
+            [40.0, 20.0, 40.0, 40.0],
+            false,
+        );
+    }
 }
 
 #[test]

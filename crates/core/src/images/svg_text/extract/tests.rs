@@ -493,6 +493,16 @@ fn reads_font_features() {
         let _ = write!(many, r#"<text font-feature-settings="'tnum' {i}">a</text>"#);
     }
     assert!(error(&many).contains("different sets of font features"));
+    // At most 32 features on a span, as on a document's run.
+    let tags: Vec<String> = (0..33).map(|i| format!("'a{i:03}'")).collect();
+    let settings = |n: usize| {
+        format!(
+            r#"<text font-feature-settings="{}">a</text>"#,
+            tags[..n].join(", ")
+        )
+    };
+    assert_eq!(one(&settings(32)).spans[0].features.len(), 32);
+    assert!(error(&settings(33)).contains("more than 32 font features"));
 }
 
 /// The text in what a `use` copies inherits from the `use`, as in a
@@ -543,4 +553,67 @@ fn copies_by_use_go_into_the_source_under_ids_of_their_own() {
         .unwrap();
     assert_eq!(used.attribute("href"), Some("#inkoxide-use-0_"));
     assert!(out.len() <= src.len() + super::super::rewrite::most_bytes(&doc_text));
+}
+
+/// With two elements of one id, a `use` copies the first, as `usvg` and
+/// browsers draw it, whether or not it gives the text other fonts.
+#[test]
+fn copies_by_use_take_the_first_element_of_an_id() {
+    let t = texts(
+        r##"<defs><text id="a" y="20">First</text><text id="a" y="20">Second</text></defs>
+           <use href="#a" y="50" font-size="30"/>"##,
+    );
+    // The two texts where they are, and the copy of the first.
+    assert_eq!(t.len(), 3);
+    assert_eq!(string(&t[2]), "First");
+    assert_eq!(t[2].spans[0].size, 30.0);
+}
+
+/// A `use` that an entity writes has its `href` in the DTD: it gets no
+/// copy, and the text keeps its own fonts there.
+#[test]
+fn a_use_from_an_entity_gets_no_copy() {
+    let src = r#"<!DOCTYPE svg [<!ENTITY u "<use href='#t' font-size='30'/>"><!ENTITY v "<use href='#t' font-size='20'/>">]><svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><text id="t" y="20">Hi</text>&u;&u;&v;&u;</svg>"#;
+    let opts = usvg::roxmltree::ParsingOptions {
+        allow_dtd: true,
+        ..Default::default()
+    };
+    let doc = Document::parse_with_options(src, opts).unwrap();
+    let (doc_text, _) = extract(&doc, usize::MAX).unwrap();
+    assert!(doc_text.copies.is_empty());
+    assert_eq!(doc_text.texts.len(), 1);
+    // The DTD is left as it is.
+    let out = super::super::rewrite::worst_case(src, &doc_text);
+    let dtd = &src[..src.find("<svg").unwrap()];
+    assert!(out.starts_with(dtd), "{out}");
+}
+
+/// `most_bytes` bounds what the placeholders of every form take: bare
+/// probes in a clip path, a group of probes and one probe, with paint
+/// and effects escaped as they are written.
+#[test]
+fn most_bytes_bounds_every_placeholder_form() {
+    let quotes = "\"".repeat(100);
+    let src = format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg"><style>text {{ stroke: none }}</style>
+           <clipPath id="c"><text opacity="0.5" fill="red">a<tspan fill='{quotes}'>b</tspan></text></clipPath>
+           <text clip-path='url("#c")' fill="red">a<tspan fill="blue">b</tspan><tspan fill='{quotes}'>c</tspan></text>
+           <text fill='{quotes}'>d</text></svg>"##
+    );
+    let doc = Document::parse(&src).unwrap();
+    let (doc_text, _) = extract(&doc, usize::MAX).unwrap();
+    let t = &doc_text.texts;
+    assert!(t[0].in_clip && t[0].paints.len() == 2);
+    assert!(!t[1].in_clip && t[1].paints.len() == 3);
+    assert_eq!(t[2].paints.len(), 1);
+    let out = super::super::rewrite::worst_case(&src, &doc_text);
+    // The source but its texts, which the placeholders replace.
+    let replaced: usize = t.iter().map(|t| t.range.len()).sum();
+    let most = super::super::rewrite::most_bytes(&doc_text);
+    assert!(
+        out.len() <= src.len() - replaced + most,
+        "{} > {}",
+        out.len(),
+        src.len() - replaced + most
+    );
 }

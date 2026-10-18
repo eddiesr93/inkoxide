@@ -82,7 +82,8 @@ fn escaped_len(v: &str) -> usize {
     v.len()
         + v.bytes()
             .map(|b| match b {
-                b'&' | b'"' => 4,
+                b'"' => 5,
+                b'&' => 4,
                 b'<' | b'>' => 3,
                 _ => 0,
             })

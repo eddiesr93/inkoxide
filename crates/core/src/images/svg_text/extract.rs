@@ -34,7 +34,8 @@ const DPI: f32 = 96.0;
 /// Why text cannot be read.
 #[derive(Debug)]
 pub(crate) enum TextError {
-    /// Text this version does not lay out (vertical text on a path).
+    /// Text this version does not read (a `<text>` that an XML entity
+    /// expands to).
     Unsupported(String),
     /// Text whose properties take more than the bytes allowed.
     Limit(String),
@@ -206,11 +207,18 @@ fn use_copy<'a, 'i>(
     let href = u
         .attribute("href")
         .or_else(|| u.attribute((XLINK_NS, "href")));
-    let Some(target) = href.and_then(iri).and_then(|id| cascade.element(id)) else {
+    // A `use` names the first element with the id, as in `usvg`.
+    let Some((target, _)) = href.and_then(iri).and_then(|id| cascade.element(id)) else {
         return Ok(None);
     };
+    // What an XML entity writes has its source in the DTD, before the
+    // root element: there the `href` cannot name a copy, nor the element
+    // be copied from where it is.
+    let root_start = u.document().root_element().range().start;
     if !matches!(target.tag_name().namespace(), None | Some(SVG_NS))
         || u.ancestors().any(|a| a == target)
+        || u.range().start < root_start
+        || target.range().start < root_start
     {
         return Ok(None);
     }
@@ -348,9 +356,9 @@ struct Cascade<'a, 'i> {
     max_kept: usize,
     work: Work,
     root: Node<'a, 'i>,
-    /// Elements by id, the last of each (as `usvg` follows a link), once
-    /// a `textPath` needs them.
-    ids: Option<HashMap<&'a str, Node<'a, 'i>>>,
+    /// Elements by id, the first and the last of each (`usvg` follows a
+    /// `use` to the first and other links to the last), once needed.
+    ids: Option<HashMap<&'a str, (Node<'a, 'i>, Node<'a, 'i>)>>,
     /// The geometry of each element a `textPath` refers to, by side.
     geoms: HashMap<(NodeId, bool), Option<Arc<TextPathGeom>>>,
     /// Segments the text paths may still have.
@@ -466,10 +474,14 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
                 set(&tag, value);
             }
         }
+        if tags.len() > MAX_FONT_FEATURES {
+            return Err(TextError::Limit(format!(
+                "its text sets more than {MAX_FONT_FEATURES} font features on one span"
+            )));
+        }
         tags.sort_unstable();
         let list: Arc<[FontFeature]> = tags
             .into_iter()
-            .take(MAX_FONT_FEATURES)
             .map(|(tag, value)| FontFeature {
                 tag: String::from_utf8_lossy(&tag).into_owned(),
                 value,
@@ -499,14 +511,18 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
         Ok(list)
     }
 
-    /// The element with id `id`.
-    fn element(&mut self, id: &str) -> Option<Node<'a, 'i>> {
+    /// The first and the last element with id `id`.
+    fn element(&mut self, id: &str) -> Option<(Node<'a, 'i>, Node<'a, 'i>)> {
         let root = self.root;
         self.ids
             .get_or_insert_with(|| {
-                root.descendants()
-                    .filter_map(|n| Some((n.attribute("id")?, n)))
-                    .collect()
+                let mut ids: HashMap<&'a str, (Node<'a, 'i>, Node<'a, 'i>)> = HashMap::new();
+                for n in root.descendants() {
+                    if let Some(id) = n.attribute("id") {
+                        ids.entry(id).and_modify(|e| e.1 = n).or_insert((n, n));
+                    }
+                }
+                ids
             })
             .get(id)
             .copied()
@@ -528,7 +544,7 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
             let href = n
                 .attribute("href")
                 .or_else(|| n.attribute((XLINK_NS, "href")));
-            let Some(target) = href.and_then(iri).and_then(|id| self.element(id)) else {
+            let Some((_, target)) = href.and_then(iri).and_then(|id| self.element(id)) else {
                 return Ok(None);
             };
             if !matches!(target.tag_name().namespace(), None | Some(SVG_NS)) {
@@ -552,10 +568,7 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
         let start = n
             .attribute("startOffset")
             .and_then(|v| Length::from_str(v).ok())
-            .map_or(0.0, |l| match l.unit {
-                LengthUnit::Percent => geom.length() * l.number as f32 / 100.0,
-                _ => absolute(l, self.font_size(n)),
-            });
+            .map_or(0.0, |l| length(l, self.font_size(n), geom.length()));
         // A start past f32 is as far past the path's end (or before its
         // start) as one within it.
         Ok(Some(TextPathSpec {
@@ -701,8 +714,7 @@ impl<'a, 'i: 'a> Cascade<'a, 'i> {
                 continue;
             };
             size = match Length::from_str(&v) {
-                Ok(l) if l.unit == LengthUnit::Percent => l.number as f32 * size / 100.0,
-                Ok(l) => absolute(l, size),
+                Ok(l) => length(l, size, size),
                 Err(_) => named_size(&v, size),
             };
         }

@@ -1014,9 +1014,10 @@ In an SVG, whether in `<Svg>` or an image file:
   laid out as described above, and read in their order when the PDF's text is copied or
   extracted; a column of upright characters is one run of PDF text, in a vertical
   (`Identity-V`) font. The text paths of an SVG that has more than 100,000 path segments in
-  all fail the render with `INVALID_IMAGE`: convert them to outlines in your design tool. An
-  SVG's text uses at most 64 different sets of font features, and so do the SVGs of a
-  document in all. Font properties set on a `<use>` reach the text it copies, as in browsers;
+  all fail the render with `INVALID_IMAGE`: convert them to outlines in your design tool. A
+  span of an SVG's text takes at most 32 font features, as a run does, and an SVG's text uses
+  at most 64 different sets of them, and so do the SVGs of a document in all. Font properties
+  set on a `<use>` reach the text it copies, as in browsers;
   past the 64th `<use>` of an SVG that sets other fonts than the text's own, and in a `<use>` or
   element with text that an XML entity writes, the copy keeps the text's own. A `<text>`
   element that an XML entity expands to fails with `INVALID_IMAGE`:

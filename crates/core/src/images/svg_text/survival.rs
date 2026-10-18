@@ -125,7 +125,7 @@ fn probes_of(body: &str) -> Vec<Found> {
         format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">{body}</svg>"#);
     let source = parse_text(svg.as_bytes())
         .unwrap()
-        .2
+        .text
         .expect("no text found");
     let (tree, probed) = parse_with_text(&source, size(), &mut stub).unwrap();
     let mut out = Vec::new();
@@ -310,7 +310,7 @@ fn nested_svgs_have_their_own_probes() {
 #[test]
 fn reuses_a_conversion_of_the_same_layout() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text>reused</text></svg>"#;
-    let source = parse_text(svg.as_bytes()).unwrap().2.unwrap();
+    let source = parse_text(svg.as_bytes()).unwrap().text.unwrap();
     let (a, _) = parse_with_text(&source, size(), &mut stub).unwrap();
     let (b, _) = parse_with_text(&source, size(), &mut stub).unwrap();
     assert!(std::sync::Arc::ptr_eq(&a, &b));
@@ -334,7 +334,7 @@ fn texts_with_the_same_box_get_their_own_probes() {
 #[test]
 fn text_without_ink_keeps_its_id() {
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text id="t"> </text><use href="#t"/></svg>"##;
-    let source = parse_text(svg.as_bytes()).unwrap().2;
+    let source = parse_text(svg.as_bytes()).unwrap().text;
     // An empty text is no text at all.
     assert!(source.is_none());
 }

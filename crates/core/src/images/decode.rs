@@ -181,7 +181,12 @@ pub(crate) struct ImageCrateDecoder;
 impl ImageDecoder for ImageCrateDecoder {
     fn decode(&self, bytes: &[u8]) -> Result<DecodedImage, String> {
         if super::svg::is_svg(bytes) {
-            let (tree, view_box, text, parts) = super::svg::parse_text(bytes)?;
+            let super::svg::Parsed {
+                tree,
+                view_box,
+                text,
+                parts,
+            } = super::svg::parse_text(bytes)?;
             let s = tree.size();
             return Ok(DecodedImage {
                 width: s.width().ceil() as u32,
