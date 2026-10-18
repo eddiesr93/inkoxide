@@ -15,7 +15,7 @@ export default defineConfig({
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
   webServer: {
-    command: `vite build && vite preview --port ${PORT} --strictPort`,
+    command: `vite build --configLoader runner && vite preview --configLoader runner --port ${PORT} --strictPort`,
     port: PORT,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

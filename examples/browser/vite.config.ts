@@ -1,3 +1,4 @@
+import { inkoxideTailwind } from '@inkoxide/tailwind/plugin';
 import { defineConfig } from 'vite';
 
 /**
@@ -16,6 +17,8 @@ export const CSP = [
 ].join('; ');
 
 export default defineConfig({
+  // The page's classes come from a table built here, not from Tailwind's compiler.
+  plugins: [inkoxideTailwind()],
   resolve: {
     // The invoice imports from `@inkoxide/render`, as it would in Node: the browser entry here.
     alias: [{ find: /^@inkoxide\/render$/, replacement: '@inkoxide/render/browser' }],

@@ -1,3 +1,13 @@
+/** The value of `key` in `map`, made with `make` and kept the first time it is asked for. */
+export function memo<K, V>(map: Map<K, V>, key: K, make: (key: K) => V): V {
+  let value = map.get(key);
+  if (value === undefined) {
+    value = make(key);
+    map.set(key, value);
+  }
+  return value;
+}
+
 /** A small LRU: a Map whose insertion order is the recency order. */
 export class Lru<V> {
   private readonly map = new Map<string, V>();
