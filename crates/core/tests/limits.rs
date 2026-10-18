@@ -383,6 +383,41 @@ fn link_targets_repeated_on_every_page_are_counted() {
     repeated_past_the_limit("links", &every, &once);
 }
 
+/// In tagged output, a link repeated on every page also has an element and
+/// says where it goes (`/Contents`): it counts about twice as much.
+#[test]
+fn tagged_links_repeated_on_every_page_count_their_elements() {
+    let target = format!("https://example.com/{}", "x".repeat(2000));
+    let linked = format!(
+        r#"{{"type":"box","break":{{"fixed":true}},"link":"{target}","style":{{"width":10,"height":10}}}}"#
+    );
+    let d = doc(&format!("{},{TALL},{TALL}", vec![linked; 20].join(",")));
+    let estimate = |options: RenderOptions| {
+        let options = options.with_threads(1);
+        let err = inkoxide::render(
+            d.as_bytes(),
+            InputFormat::Json,
+            &options,
+            &fonts(),
+            &ImageStore::new(),
+        )
+        .unwrap_err();
+        assert_eq!(err.code(), "LAYOUT_ERROR", "{err}");
+        let msg = err.to_string();
+        let mb = msg
+            .split("add about ")
+            .nth(1)
+            .and_then(|m| m.split(' ').next());
+        mb.and_then(|m| m.parse::<u64>().ok()).expect(&msg)
+    };
+    let plain = estimate(RenderOptions::default());
+    let tagged = estimate(RenderOptions::default().with_tagged(true));
+    assert!(
+        tagged * 10 >= plain * 19,
+        "{plain} MB, then {tagged} MB tagged"
+    );
+}
+
 /// A form field taller than a page is sliced across pages like any atomic
 /// node, but it is one widget, on the page it starts on: not one per page.
 #[test]

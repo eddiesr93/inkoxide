@@ -72,6 +72,7 @@
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
 | `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
 | `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image, inline image, emoji image or background image with an alpha channel, an SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip path other than one path, or a colour glyph that needs transparency: a bitmap with an alpha channel or a layer with an opacity); under PDF/A-1b and 2b, `attachments` (at `attachments[0]`). Only a render reports it, at the first such use |
+| `UA_CONFLICT` | With the render option `pdfUA`: the document lacks something PDF/UA-1 requires (`meta.title`, `meta.lang`, `alt` on an image or a `figure` box, `label` on a field, headings that go down one level at a time from `h1`). Only a render reports it, at the first such thing |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100
@@ -120,6 +121,12 @@ Document outline entry pointing at the top of its node. Entries appear in docume
 A development aid: draws the element's boxes on top of the page, its margin (orange), border (yellow) and padding (green) as light fills and its content box as a blue outline, with its border-box size in points as a small label. On a text node it also outlines each line: its line box (dashed), its baseline, and the glyphs of each run on it, from the run font's ascender to its descender. The label is drawn with lines, so no text is added to the document. A box split across pages is drawn on each page it crosses. It changes the output: leave it off in production.
 
 Type: `boolean` (default `false`)
+
+### Role
+
+What the node is in tagged output (render option `tagged` or `pdfUA`): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first.
+
+Type: `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"h6"` \| `"p"` \| `"section"` \| `"blockQuote"` \| `"caption"` \| `"figure"` \| `"list"` \| `"listItem"` \| `"label"` \| `"listBody"` \| `"artifact"`
 
 ### Meta
 
@@ -411,7 +418,7 @@ An image in a line of text, as wide as `width` and as high as `height`, in point
 | `height` | `number` |  | > 0, ≤ 14400 |
 | `fit` | `"fill"` \| `"contain"` \| `"cover"` \| `"none"` |  | default `"fill"` |
 | `objectPosition` | [`ObjectPosition`](#objectposition) |  | Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred. |
-| `alt` | `string` |  | max length 1024; Alternative text: what copying, searching and screen readers get for the image. |
+| `alt` | `string` |  | max length 1024; Alternative text: what copying, searching and screen readers get for the image. In tagged output, `""` makes the image decoration; PDF/UA requires `alt` on every image that is not. |
 
 ### ColumnSpec
 
@@ -429,6 +436,7 @@ An image in a line of text, as wide as `width` and as high as `height`, in point
 | `rowSpan` | `integer` |  | ≥ 1, ≤ 4294967295, default `1` |
 | `style` | [`Style`](#style) |  | The table places and sizes the cell: its columns set the width, and `height` and `minHeight` are minimums (the row grows to fit the content). The cell's own placement, size and effects are `STYLE_NOT_APPLICABLE`: `width`, `minWidth`, `maxWidth`, `maxHeight`, `margin`, `position`, `inset`, `alignSelf`, `justifySelf`, `flexGrow`, `flexShrink`, `flexBasis`, `gridRow`, `gridColumn`, `gridArea`, `overflow`, `opacity`, `rotate`, `transform`, `transformOrigin`, `zIndex`, `float` and `clear`. |
 | `children` | array of [`Node`](#node) |  |  |
+| `header` | `boolean` |  | default `false`; In tagged output, a header of its row (`TH`, scope row); the cells of the header rows are headers of their columns. |
 
 ### TableRow
 
@@ -458,6 +466,8 @@ An image in a line of text, as wide as `width` and as high as `height`, in point
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
+| `role` | [`Role`](#role) |  |  |
+| `alt` | `string` |  | max length 1024; A `figure` box's alternative text: what screen readers say for it. Only with the role `figure`. |
 | `children` | array of [`Node`](#node) |  |  |
 | `backgroundImage` | [`BackgroundImage`](#backgroundimage) |  |  |
 
@@ -473,6 +483,7 @@ An image in a line of text, as wide as `width` and as high as `height`, in point
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
+| `role` | [`Role`](#role) |  |  |
 | `runs` | array of [`TextRun`](#textrun) | yes |  |
 
 ### ImageNode
@@ -487,11 +498,12 @@ An image in a line of text, as wide as `width` and as high as `height`, in point
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
+| `role` | [`Role`](#role) |  |  |
 | `src` | [`Id`](#id) |  | Key into the render option `images`. |
 | `data` | `string` |  | Inline image bytes (JPEG, PNG, GIF, WebP or SVG; the first frame of an animation), base64-encoded; a `data:<mime>;base64,` URL is also accepted. |
 | `fit` | `"fill"` \| `"contain"` \| `"cover"` \| `"none"` |  | default `"fill"` |
 | `objectPosition` | [`ObjectPosition`](#objectposition) |  | Where the image sits in its box with `fit` `contain`, `cover` or `none` (CSS `object-position`); `fill` ignores it. Default centred. |
-| `alt` | `string` |  | max length 1024; Alternative text: what copying, searching and screen readers get for the image. |
+| `alt` | `string` |  | max length 1024; Alternative text: what copying, searching and screen readers get for the image. In tagged output, `""` makes the image decoration; PDF/UA requires `alt` on every image that is not. |
 
 ### ObjectPosition
 
@@ -586,6 +598,7 @@ Fields with the same `name` are one field with several widgets (for example a fi
 | `size` | `number` |  | > 0, ≤ 1000, default `10`; font size; also the mark size of checkboxes and radio buttons |
 | `color` | [`Color`](#color) |  | text and mark colour; default black |
 | `format` | [`FieldFormat`](#fieldformat) |  |  |
+| `label` | `string` |  | min length 1, max length 1024; What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it. |
 
 ### FieldFormat
 

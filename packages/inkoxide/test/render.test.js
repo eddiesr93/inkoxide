@@ -67,9 +67,47 @@ test('pdfA writes PDF/A metadata and an output intent', () => {
   );
   assert.ok(ink.renderSync(veiled, { pdfA: '2b' }).length > 0);
   assert.doesNotMatch(render(false), /GTS_PDFA1/);
+  assert.match(render('2a'), /<pdfaid:conformance>A<\/pdfaid:conformance>/);
   assert.throws(
-    () => render('2a'),
-    (e) => e.code === 'INVALID_ARGUMENT' && e.path === 'options.pdfA' && /2a/.test(e.message),
+    () => render('2u'),
+    (e) => e.code === 'INVALID_ARGUMENT' && e.path === 'options.pdfA' && /2u/.test(e.message),
+  );
+});
+
+test('tagged writes a structure tree, and pdfUA PDF/UA-1 or the first thing it lacks', () => {
+  const doc = (meta, field = { name: 'agree', kind: 'checkbox', label: 'Agree' }) =>
+    JSON.stringify({
+      version: 1,
+      meta,
+      pages: [
+        {
+          size: { width: 200, height: 200 },
+          children: [{ type: 'field', style: { width: 12, height: 12 }, field }],
+        },
+      ],
+    });
+  const render = (input, options) => Buffer.from(ink.renderSync(input, options)).toString('latin1');
+  const ok = doc({ title: 'Form', lang: 'en' });
+  assert.doesNotMatch(render(ok), /StructTreeRoot/);
+  assert.match(render(ok, { tagged: true }), /\/StructTreeRoot/);
+  const ua = render(ok, { pdfUA: true });
+  assert.match(ua, /\/StructTreeRoot/);
+  assert.match(ua, /<pdfuaid:part>1<\/pdfuaid:part>/);
+  // validate does not know the output: PDF/UA's needs are the render's.
+  const bare = doc({ title: 'Form', lang: 'en' }, { name: 'agree', kind: 'checkbox' });
+  assert.deepStrictEqual(ink.validate(bare), []);
+  assert.ok(ink.renderSync(bare).length > 0);
+  assert.throws(
+    () => ink.renderSync(bare, { pdfUA: true }),
+    (e) => e.code === 'UA_CONFLICT' && e.path === 'pages[0].children[0].field.label',
+  );
+  assert.throws(
+    () => ink.renderSync(doc({ lang: 'en' }), { pdfUA: true }),
+    (e) => e.code === 'UA_CONFLICT' && e.path === 'meta.title',
+  );
+  assert.throws(
+    () => ink.renderSync(ok, { tagged: 'yes' }),
+    (e) => e.code === 'INVALID_ARGUMENT' && e.path === 'options.tagged',
   );
 });
 

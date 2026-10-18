@@ -51,7 +51,8 @@ browser, are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 - **Content.** JPEG, PNG, GIF, WebP and SVG images, vector drawing, links, bookmarks,
   fillable form fields and text notes.
 - **Output.** Font subsetting (TrueType and CFF), variable fonts as static instances, PDF/A-1b,
-  2b and 3b, AES-256 encryption with passwords and permissions, parallel rendering across pages,
+  2b, 2a, 3b and 3a, tagged PDF and PDF/UA-1, AES-256 encryption with passwords and permissions,
+  parallel rendering across pages,
   and byte-identical output for identical input.
 - **Validation.** Every document is checked against a JSON Schema, with the path of each error.
   In React, errors carry the component stack.

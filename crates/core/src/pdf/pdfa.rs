@@ -35,22 +35,41 @@ pub(crate) mod limits {
 }
 
 /// What the output's conformance asks of the writer: plain PDF, or
-/// PDF/A. Every part of the writer that differs between them asks this.
+/// PDF/A, and PDF/UA. Every part of the writer that differs between them asks this.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct Profile {
     level: Option<PdfALevel>,
+    ua: bool,
 }
 
 impl Profile {
     /// PDF/A at `level`; `None` is plain PDF.
     pub fn new(level: Option<PdfALevel>) -> Self {
-        Self { level }
+        Self { level, ua: false }
+    }
+
+    /// The profile, and PDF/UA-1 with `ua`.
+    #[must_use]
+    pub fn with_ua(self, ua: bool) -> Self {
+        Self { ua, ..self }
+    }
+
+    /// Writing PDF/UA-1.
+    pub fn ua(self) -> bool {
+        self.ua
     }
 
     /// Writing PDF/A: XMP metadata, an output intent, a file identifier,
     /// annotations that print, no `.notdef` glyphs, no CMYK.
     pub fn is_pdf_a(self) -> bool {
         self.level.is_some()
+    }
+
+    /// Whether `.notdef` glyphs are left out of the text drawn, the next
+    /// glyph keeping its position: PDF/A and PDF/UA forbid them
+    /// (ISO 19005-2, 6.2.11.8; ISO 14289-1, 7.21.8).
+    pub fn skips_notdef(self) -> bool {
+        self.is_pdf_a() || self.ua
     }
 
     /// The PDF/A level written; `None` for plain PDF.
@@ -327,22 +346,32 @@ pub(crate) fn srgb_icc() -> Vec<u8> {
     p
 }
 
-/// The XMP packet for the catalog `/Metadata` stream. Every entry mirrors
-/// the information dictionary, as PDF/A requires. The properties of
-/// `meta.xmpExtensions` follow, with the PDF/A extension schema that declares them
-/// (ISO 19005-2, 6.6.2.3).
+/// The XMP packet for the catalog `/Metadata` stream, at PDF/A `level`
+/// and, with `ua`, PDF/UA-1. Every entry mirrors the information
+/// dictionary, as PDF/A requires. The properties of `meta.xmpExtensions`
+/// follow, with the PDF/A extension schema that declares them (ISO
+/// 19005-2, 6.6.2.3), and that of PDF/UA's identification under PDF/A.
 pub(crate) fn xmp(
     meta: &Meta,
     producer: &str,
     created: Option<Timestamp>,
-    level: PdfALevel,
+    level: Option<PdfALevel>,
+    ua: bool,
 ) -> Vec<u8> {
     let mut d = String::new();
     let mut prop = |name: &str, value: &str| {
         let _ = writeln!(d, "<{name}>{}</{name}>", escape(value));
     };
-    prop("pdfaid:part", part(level));
-    prop("pdfaid:conformance", "B");
+    if let Some(level) = level {
+        prop("pdfaid:part", &level.part().to_string());
+        prop(
+            "pdfaid:conformance",
+            if level.accessible() { "A" } else { "B" },
+        );
+    }
+    if ua {
+        prop("pdfuaid:part", "1");
+    }
     prop("dc:format", "application/pdf");
     prop("pdf:Producer", producer);
     if let Some(v) = &meta.keywords {
@@ -379,7 +408,7 @@ pub(crate) fn xmp(
          <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n\
          <rdf:Description rdf:about=\"\" \
          xmlns:pdfaid=\"http://www.aiim.org/pdfa/ns/id/\" \
-         xmlns:dc=\"http://purl.org/dc/elements/1.1/\" \
+         {}xmlns:dc=\"http://purl.org/dc/elements/1.1/\" \
          xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" \
          xmlns:pdf=\"http://ns.adobe.com/pdf/1.3/\">\n\
          {d}</rdf:Description>\n\
@@ -387,16 +416,24 @@ pub(crate) fn xmp(
          </rdf:RDF>\n\
          </x:xmpmeta>\n\
          <?xpacket end=\"w\"?>",
-        extension_descriptions(meta.xmp_extensions.as_deref().unwrap_or(&[]))
+        if ua {
+            "xmlns:pdfuaid=\"http://www.aiim.org/pdfua/ns/id/\" "
+        } else {
+            ""
+        },
+        extension_descriptions(
+            meta.xmp_extensions.as_deref().unwrap_or(&[]),
+            ua && level.is_some()
+        )
     )
     .into_bytes()
 }
 
 /// The `rdf:Description`s of `extensions`: the PDF/A extension schema
-/// that declares their properties (all Text, external), and each schema's
-/// values.
-fn extension_descriptions(extensions: &[XmpSchema]) -> String {
-    if extensions.is_empty() {
+/// that declares their properties (all Text, external), with PDF/UA's
+/// identification schema when `ua`, and each schema's values.
+fn extension_descriptions(extensions: &[XmpSchema], ua: bool) -> String {
+    if extensions.is_empty() && !ua {
         return String::new();
     }
     let mut d = String::from(
@@ -406,6 +443,23 @@ fn extension_descriptions(extensions: &[XmpSchema]) -> String {
          xmlns:pdfaProperty=\"http://www.aiim.org/pdfa/ns/property#\">\n\
          <pdfaExtension:schemas><rdf:Bag>\n",
     );
+    if ua {
+        d.push_str(
+            "<rdf:li rdf:parseType=\"Resource\">\n\
+             <pdfaSchema:schema>PDF/UA identification schema</pdfaSchema:schema>\n\
+             <pdfaSchema:namespaceURI>http://www.aiim.org/pdfua/ns/id/</pdfaSchema:namespaceURI>\n\
+             <pdfaSchema:prefix>pdfuaid</pdfaSchema:prefix>\n\
+             <pdfaSchema:property><rdf:Seq>\n\
+             <rdf:li rdf:parseType=\"Resource\">\n\
+             <pdfaProperty:name>part</pdfaProperty:name>\n\
+             <pdfaProperty:valueType>Integer</pdfaProperty:valueType>\n\
+             <pdfaProperty:category>internal</pdfaProperty:category>\n\
+             <pdfaProperty:description>The part of ISO 14289 the file conforms to</pdfaProperty:description>\n\
+             </rdf:li>\n\
+             </rdf:Seq></pdfaSchema:property>\n\
+             </rdf:li>\n",
+        );
+    }
     for s in extensions {
         let _ = write!(
             d,
@@ -448,15 +502,6 @@ fn extension_descriptions(extensions: &[XmpSchema]) -> String {
         d.push_str("</rdf:Description>\n");
     }
     d
-}
-
-/// The ISO 19005 part of `level` (`pdfaid:part`).
-fn part(level: PdfALevel) -> &'static str {
-    match level {
-        PdfALevel::A1b => "1",
-        PdfALevel::A2b => "2",
-        PdfALevel::A3b => "3",
-    }
 }
 
 /// `2026-01-31T12:00:00+02:00`, the same instant as the info dictionary's
@@ -601,13 +646,21 @@ mod tests {
     }
 
     #[test]
+    fn pdf_a_and_pdf_ua_leave_notdef_out() {
+        assert!(!Profile::default().skips_notdef());
+        assert!(Profile::default().with_ua(true).skips_notdef());
+        assert!(Profile::new(Some(PdfALevel::A2b)).skips_notdef());
+    }
+
+    #[test]
     fn xmp_names_the_part() {
         for (level, part) in [
             (PdfALevel::A1b, 1),
             (PdfALevel::A2b, 2),
             (PdfALevel::A3b, 3),
         ] {
-            let x = String::from_utf8(xmp(&Meta::default(), "P", None, level)).unwrap();
+            let x =
+                String::from_utf8(xmp(&Meta::default(), "P", None, Some(level), false)).unwrap();
             assert!(
                 x.contains(&format!("<pdfaid:part>{part}</pdfaid:part>")),
                 "{x}"
@@ -652,7 +705,7 @@ mod tests {
             },
             offset_minutes: -150,
         };
-        let x = String::from_utf8(xmp(&meta, "P", Some(t), PdfALevel::A2b)).unwrap();
+        let x = String::from_utf8(xmp(&meta, "P", Some(t), Some(PdfALevel::A2b), false)).unwrap();
         assert!(x.contains(">A &amp; &lt;B&gt;</rdf:li>"), "{x}");
         assert!(x.contains("<xmp:CreateDate>2026-03-04T05:06:07-02:30</xmp:CreateDate>"));
         assert_eq!(

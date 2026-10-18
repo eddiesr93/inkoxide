@@ -253,6 +253,29 @@ export type Link = string;
 export type PageFilter =
   ('first' | 'last' | 'notFirst' | 'notLast' | 'odd' | 'even') | [number, ...number[]];
 /**
+ * What the node is in tagged output (render option `tagged` or `pdfUA`): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first.
+ *
+ * This interface was referenced by `Document`'s JSON-Schema
+ * via the `definition` "Role".
+ */
+export type Role =
+  | 'h1'
+  | 'h2'
+  | 'h3'
+  | 'h4'
+  | 'h5'
+  | 'h6'
+  | 'p'
+  | 'section'
+  | 'blockQuote'
+  | 'caption'
+  | 'figure'
+  | 'list'
+  | 'listItem'
+  | 'label'
+  | 'listBody'
+  | 'artifact';
+/**
  * A flexible size, a share of the free space, of at most 1000000fr, like `"1fr"`.
  */
 export type Fr1 = string;
@@ -626,6 +649,11 @@ export interface BoxNode {
   bookmark?: Bookmark;
   pages?: PageFilter;
   debug?: Debug;
+  role?: Role;
+  /**
+   * A `figure` box's alternative text: what screen readers say for it. Only with the role `figure`.
+   */
+  alt?: string;
   children?: Node[];
   backgroundImage?: BackgroundImage;
 }
@@ -941,6 +969,7 @@ export interface TextNode {
   bookmark?: Bookmark;
   pages?: PageFilter;
   debug?: Debug;
+  role?: Role;
   runs: TextRun[];
 }
 /**
@@ -1020,7 +1049,7 @@ export interface InlineImage {
    */
   objectPosition?: ObjectPosition;
   /**
-   * Alternative text: what copying, searching and screen readers get for the image.
+   * Alternative text: what copying, searching and screen readers get for the image. In tagged output, `""` makes the image decoration; PDF/UA requires `alt` on every image that is not.
    */
   alt?: string;
 }
@@ -1081,6 +1110,7 @@ export interface ImageNode {
   bookmark?: Bookmark;
   pages?: PageFilter;
   debug?: Debug;
+  role?: Role;
   /**
    * Key into the render option `images`.
    */
@@ -1095,7 +1125,7 @@ export interface ImageNode {
    */
   objectPosition?: ObjectPosition;
   /**
-   * Alternative text: what copying, searching and screen readers get for the image.
+   * Alternative text: what copying, searching and screen readers get for the image. In tagged output, `""` makes the image decoration; PDF/UA requires `alt` on every image that is not.
    */
   alt?: string;
 }
@@ -1151,6 +1181,10 @@ export interface TableCell {
    */
   style?: Style;
   children?: Node[];
+  /**
+   * In tagged output, a header of its row (`TH`, scope row); the cells of the header rows are headers of their columns.
+   */
+  header?: boolean;
 }
 /**
  * Starts a new page when in-flow content follows it: at the end of the flow it adds no page. Flowing content only: in a header, a footer, a table cell or a fixed overlay, and inside a row, grid, wrapping or reversed box, or inside an absolutely positioned, rotated, transformed, floated or fixed node, it is `INVALID_NODE`.
@@ -1252,6 +1286,10 @@ export interface Field {
    */
   color?: Color;
   format?: FieldFormat;
+  /**
+   * What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it.
+   */
+  label?: string;
 }
 /**
  * Single-line, non-password text fields only: how the field shows and takes its value. The field shows `value` formatted; viewers format what the user types with the standard form scripts (`AFNumber_Format` and the like), which PDF/A leaves out (the formatted text and value stay). `value` must fit the format (`INVALID_VALUE`): a number or percent is `-?digits[.digits]` (at most 15 digits on each side; a percent is a fraction, `0.125` shows `12.50%`), a date `YYYY-MM-DD` with an optional `THH:MM[:SS]`, a time `HH:MM[:SS]` or a date with a time, `zip` 5 digits, `zipPlus4` 9, `phone` 10 and `ssn` 9. A key that does not apply to the `type` is `INVALID_VALUE`.

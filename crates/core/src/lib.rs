@@ -30,6 +30,7 @@ mod pdf;
 mod pipeline;
 mod pool;
 mod schema;
+mod tag;
 #[cfg(test)]
 mod test_fixtures;
 #[cfg(test)]
@@ -75,8 +76,9 @@ pub enum InputFormat {
 }
 
 /// The PDF/A part and conformance level [`RenderOptions::pdf_a`] writes.
-/// Every level is "b" (basic): the pages look the same in every reader,
-/// with no structure tree for accessibility.
+/// The "b" (basic) levels make the pages look the same in every reader;
+/// the "a" (accessible) levels are tagged as well, with a structure tree
+/// (see [`RenderOptions::tagged`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
 pub enum PdfALevel {
@@ -89,21 +91,41 @@ pub enum PdfALevel {
     /// PDF/A-3b (ISO 19005-3): PDF/A-2b that may also carry embedded
     /// files of any kind.
     A3b,
+    /// PDF/A-2a: PDF/A-2b, tagged.
+    A2a,
+    /// PDF/A-3a: PDF/A-3b, tagged.
+    A3a,
 }
 
 impl PdfALevel {
     /// Every level, from the oldest part.
-    pub const ALL: [Self; 3] = [Self::A1b, Self::A2b, Self::A3b];
+    pub const ALL: [Self; 5] = [Self::A1b, Self::A2b, Self::A2a, Self::A3b, Self::A3a];
 
     /// The level's short name, as the Node binding and the CLI take it:
-    /// `"1b"`, `"2b"`, `"3b"`.
+    /// `"1b"`, `"2b"`, `"2a"`, `"3b"`, `"3a"`.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::A1b => "1b",
             Self::A2b => "2b",
+            Self::A2a => "2a",
             Self::A3b => "3b",
+            Self::A3a => "3a",
         }
+    }
+
+    /// The part of ISO 19005: 1, 2 or 3.
+    pub(crate) fn part(self) -> u8 {
+        match self {
+            Self::A1b => 1,
+            Self::A2b | Self::A2a => 2,
+            Self::A3b | Self::A3a => 3,
+        }
+    }
+
+    /// Whether the level is "a" (accessible): tagged.
+    pub(crate) fn accessible(self) -> bool {
+        matches!(self, Self::A2a | Self::A3a)
     }
 
     /// The level named `s` ([`as_str`](Self::as_str)).
@@ -113,14 +135,17 @@ impl PdfALevel {
     }
 }
 
-/// Parses a level's short name (`"1b"`, `"2b"`, `"3b"`), with an error
-/// that lists them.
+/// Parses a level's short name (`"1b"`, `"2b"`, `"2a"`, `"3b"`, `"3a"`),
+/// with an error that lists them.
 ///
 /// ```
 /// use inkoxide::PdfALevel;
 /// assert_eq!("3b".parse(), Ok(PdfALevel::A3b));
-/// let err = "2a".parse::<PdfALevel>().unwrap_err();
-/// assert_eq!(err.to_string(), "unsupported PDF/A level `2a` (expected one of 1b, 2b, 3b)");
+/// let err = "4".parse::<PdfALevel>().unwrap_err();
+/// assert_eq!(
+///     err.to_string(),
+///     "unsupported PDF/A level `4` (expected one of 1b, 2b, 2a, 3b, 3a)"
+/// );
 /// ```
 impl std::str::FromStr for PdfALevel {
     type Err = ParsePdfALevelError;
@@ -202,6 +227,17 @@ pub struct RenderOptions {
     /// tried for a character), fails with [`InkoxideError::NotLoaded`]
     /// naming it; one that does not renders as if it were registered.
     pub deferred_fonts: Vec<String>,
+    /// Write tagged PDF (default `false`): a structure tree that gives the
+    /// reading order (document order) and what each part of the content
+    /// is (paragraphs, headings, figures with their `alt`, tables, lists),
+    /// and marks the rest as decoration, for screen readers, reflow and
+    /// extraction. The PDF/A "a" levels and [`pdf_ua`](Self::pdf_ua) imply
+    /// it.
+    pub tagged: bool,
+    /// Write PDF/UA-1 (ISO 14289-1, default `false`): tagged, with the
+    /// metadata, title, language and alternative texts it requires; a
+    /// document without them fails with `UA_CONFLICT`.
+    pub pdf_ua: bool,
     /// Files that the document's `attachments` name by `src` (default:
     /// none). Validation cannot see them: a `src` missing from here is
     /// reported by [`render`] (`ATTACHMENT_NOT_REGISTERED`).
@@ -222,6 +258,8 @@ impl Default for RenderOptions {
             encryption: None,
             deferred_fonts: Vec::new(),
             attachments: AttachmentStore::new(),
+            tagged: false,
+            pdf_ua: false,
         }
     }
 }
@@ -291,6 +329,26 @@ impl RenderOptions {
     pub fn with_hyphenation(mut self, store: HyphenationStore) -> Self {
         self.hyphenation = store;
         self
+    }
+
+    /// Sets [`tagged`](Self::tagged).
+    #[must_use]
+    pub fn with_tagged(mut self, tagged: bool) -> Self {
+        self.tagged = tagged;
+        self
+    }
+
+    /// Sets [`pdf_ua`](Self::pdf_ua).
+    #[must_use]
+    pub fn with_pdf_ua(mut self, pdf_ua: bool) -> Self {
+        self.pdf_ua = pdf_ua;
+        self
+    }
+
+    /// Whether the output is tagged: [`tagged`](Self::tagged), PDF/UA or
+    /// an accessible PDF/A level.
+    fn is_tagged(&self) -> bool {
+        self.tagged || self.pdf_ua || (self.pdf_a && self.pdf_a_level.accessible())
     }
 
     /// Sets [`attachments`](Self::attachments).
@@ -416,7 +474,8 @@ fn render_inner(
     images: &ImageStore,
     parallel: bool,
 ) -> Result<Vec<u8>, InkoxideError> {
-    let profile = Profile::new(options.pdf_a.then_some(options.pdf_a_level));
+    let profile =
+        Profile::new(options.pdf_a.then_some(options.pdf_a_level)).with_ua(options.pdf_ua);
     let document = validate::parse(doc, format)?;
     // A deferred font may be missing: it stands in until a render needs it.
     let checked = validate::check(
@@ -456,6 +515,19 @@ fn render_inner(
                 message: "PDF/A does not allow encryption".into(),
             }));
         }
+        // Assistive technology reads the content (ISO 14289-1, 7.16).
+        Some(e)
+            if options.pdf_ua
+                && e.permissions
+                    .as_ref()
+                    .is_some_and(|p| !p.content_accessibility) =>
+        {
+            return Err(InkoxideError::Validation(ValidationError {
+                code: ValidationCode::InvalidValue,
+                path: "options.encryption.permissions.contentAccessibility".into(),
+                message: "PDF/UA needs content accessibility on".into(),
+            }));
+        }
         Some(e) => Some(e.params()?),
     };
 
@@ -482,14 +554,15 @@ fn render_inner(
         encryption,
         parallel,
     };
+    let plan = options.is_tagged().then(|| tag::Plan::new(&document));
     let laid_out = pipeline::run(
         &document,
         &font_set,
         &mut text,
         &mut image_set,
         parallel,
-        profile,
-        |page| sink.encode_page(&page, &font_set),
+        (profile, plan.as_ref()),
+        |page| sink.encode_page(&page, &font_set, plan.as_ref()),
     );
     // Text left unshaped may have failed layout another way.
     if let Some(e) = text.shaping_error() {
@@ -527,5 +600,6 @@ fn render_inner(
         colors: &colors,
         marks: &marks,
         files: &files,
+        plan: plan.as_ref(),
     })
 }

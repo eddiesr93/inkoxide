@@ -17,6 +17,9 @@ pub(crate) struct IconOp {
     pub x: f32,
     pub y: f32,
     pub kind: IconKind,
+    /// In tagged output, the structure element of its annotation; the PDF
+    /// writer sets it (`None`: in decoration, an element of its own).
+    pub owner: Option<crate::tag::StructId>,
 }
 
 /// A note or an attachment of the document, which an icon shows.

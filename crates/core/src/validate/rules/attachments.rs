@@ -112,6 +112,9 @@ impl Checker<'_> {
             Some(PdfALevel::A2b) => Some(
                 "PDF/A-2b allows only PDF/A files as attachments, which Inkoxide cannot check; render PDF/A-3b",
             ),
+            Some(PdfALevel::A2a) => Some(
+                "PDF/A-2a allows only PDF/A files as attachments, which Inkoxide cannot check; render PDF/A-3a",
+            ),
             _ => None,
         };
         if let (Some(why), false) = (refused, decls.is_empty()) {

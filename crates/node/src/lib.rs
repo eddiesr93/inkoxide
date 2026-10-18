@@ -75,8 +75,8 @@ pub struct RenderOptions {
     pub threads: Option<f64>,
     /// Embed only the glyphs used (default `true`).
     pub subset_fonts: Option<bool>,
-    /// Write PDF/A (default `false`): `true` or a level, `"1b"`, `"2b"` or
-    /// `"3b"`; `true` is `"2b"`.
+    /// Write PDF/A (default `false`): `true` or a level, `"1b"`, `"2b"`,
+    /// `"2a"`, `"3b"` or `"3a"`; `true` is `"2b"`.
     pub pdf_a: Option<Either<bool, String>>,
     /// Image bytes by id, for this document only.
     pub images: Option<HashMap<String, Uint8Array>>,
@@ -84,6 +84,11 @@ pub struct RenderOptions {
     pub attachments: Option<HashMap<String, Uint8Array>>,
     /// Encrypt the PDF (default: not encrypted).
     pub encryption: Option<EncryptionOptions>,
+    /// Write tagged PDF (default `false`).
+    pub tagged: Option<bool>,
+    /// Write PDF/UA-1 (default `false`).
+    #[napi(js_name = "pdfUA")]
+    pub pdf_ua: Option<bool>,
 }
 
 /// `options.encryption`: mirrors Rust `Encryption`.
@@ -170,6 +175,8 @@ impl RenderJob {
                     owner_password: e.owner_password,
                     permissions: e.permissions.map(Into::into),
                 }),
+                tagged: o.tagged,
+                pdf_ua: o.pdf_ua,
             };
             if let Some(map) = o.images {
                 for (id, bytes) in map {

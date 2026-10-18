@@ -1436,6 +1436,43 @@ describe('form fields', () => {
   });
 });
 
+describe('tagged output', () => {
+  it('passes roles, alternative text, header cells and labels, and the Document flags', () => {
+    const r = renderTemplate(
+      <Document title="T" lang="en" tagged pdfUA conformance="PDF/A-2a">
+        <Page>
+          <Text role="h1">Title</Text>
+          <View role="figure" alt="A chart">
+            <Text>Q3</Text>
+          </View>
+          <Image src="logo" alt="" role="artifact" />
+          <Table columns={['1fr', '1fr']}>
+            <Row>
+              <Cell header>Total</Cell>
+              <Cell>9.70</Cell>
+            </Row>
+          </Table>
+          <TextField name="email" label="Your email" />
+        </Page>
+      </Document>,
+      { fonts },
+    );
+    expect(r.output).toEqual({ pdfA: '2a', tagged: true, pdfUA: true });
+    const [h1, figure, image, table, field] = r.document.pages[0].children as [
+      TextNode,
+      BoxNode,
+      ImageNode,
+      TableNode,
+      FieldNode,
+    ];
+    expect(h1.role).toBe('h1');
+    expect([figure.role, figure.alt]).toEqual(['figure', 'A chart']);
+    expect([image.role, image.alt]).toEqual(['artifact', '']);
+    expect(table.rows[0]?.cells[0]?.header).toBe(true);
+    expect(field.field.label).toBe('Your email');
+  });
+});
+
 describe('attachments', () => {
   it('carries the files of the Document inline, and draws icons that open them', () => {
     const r = renderTemplate(
@@ -1578,7 +1615,7 @@ describe('notes', () => {
 });
 
 describe('alternative text', () => {
-  it('reaches block images, Svg and Canvas, and an empty one is left out', () => {
+  it('reaches block images, Svg and Canvas, an empty one too', () => {
     const r = tree(
       <View>
         <Image src="logo" alt="Company logo" />
@@ -1590,7 +1627,7 @@ describe('alternative text', () => {
       </View>,
     );
     const nodes = first<BoxNode>(r).children as ImageNode[];
-    expect(nodes.map((n) => n.alt)).toEqual(['Company logo', undefined, 'A red square', 'A sketch']);
+    expect(nodes.map((n) => n.alt)).toEqual(['Company logo', '', 'A red square', 'A sketch']);
     expect(decode(nodes[2]!.data)).not.toContain('alt=');
   });
 });

@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use common::{installed, qpdf_available, root};
+use common::{installed, qpdf_available, root, verapdf};
 use inkoxide::{
     AttachmentStore, Encryption, FontStore, ImageStore, InputFormat, PdfALevel, RenderOptions,
 };
@@ -278,15 +278,7 @@ fn pdf_a_3b_carries_files_and_their_metadata() {
     assert!(text.contains("<pdfaSchema:prefix>fx</pdfaSchema:prefix>"));
     let file = out_dir().join("pdf-a-3b.pdf");
     fs::write(&file, &pdf).unwrap();
-    if let Ok(verapdf) = std::env::var("VERAPDF") {
-        let o = Command::new(verapdf)
-            .args(["--flavour", "3b", "--format", "text"])
-            .arg(&file)
-            .output()
-            .unwrap();
-        let report = String::from_utf8_lossy(&o.stdout);
-        assert!(report.starts_with("PASS"), "{report}");
-    }
+    verapdf("3b", &[file]);
     // The files are part of the identifier.
     let other = {
         let mut s = store();

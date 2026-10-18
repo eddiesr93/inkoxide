@@ -125,7 +125,7 @@ pub(super) fn find_shown<'d, R>(
         let len = path.len();
         let mut found = None;
         match &node.kind {
-            NodeKind::Box { children } => {
+            NodeKind::Box { children, .. } => {
                 for (i, c) in children.iter().enumerate() {
                     let _ = write!(path, ".children[{i}]");
                     found = walk(c, path, f);

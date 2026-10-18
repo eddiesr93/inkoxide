@@ -9,6 +9,7 @@ mod images;
 mod links;
 mod styles;
 mod tables;
+mod tagging;
 mod text;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -109,6 +110,9 @@ pub(crate) fn check(
         attachments,
         rendering: attachments.is_some(),
         profile,
+        decoration: 0,
+        last_heading: None,
+        structure: tagging::Structure::default(),
         path: String::with_capacity(128),
         errors: Vec::new(),
         declared: BTreeSet::new(),
@@ -167,10 +171,18 @@ struct Checker<'a> {
     attachments: Option<&'a AttachmentStore>,
     /// Checking for a render, which knows its options.
     rendering: bool,
-    /// The output rendered: plain PDF or a PDF/A level. At any level a
-    /// page that is too small is recorded, and at PDF/A-1b the first use of
-    /// transparency.
+    /// The output rendered: plain PDF or a PDF/A level, and PDF/UA-1 or
+    /// not. At any PDF/A level a page that is too small is recorded, at
+    /// PDF/A-1b the first use of transparency, and under PDF/UA-1 the first
+    /// thing it lacks.
     profile: Profile,
+    /// Inside so many nodes that tagged output leaves out as decoration
+    /// (painted on every page, or with the role `artifact`).
+    decoration: u32,
+    /// The level of the last heading, in document order.
+    last_heading: Option<u8>,
+    /// Where the node checked is in the structure of tagged output.
+    structure: tagging::Structure,
     doc: &'a Document,
     /// Ids that `#id` links can reach, collected on the first such link.
     anchors: Option<HashSet<&'a str>>,
@@ -394,6 +406,20 @@ impl<'a> Checker<'a> {
             self.errors
                 .push(unsupported_version(&doc.version.to_string()));
             return;
+        }
+        if self.profile.ua() {
+            for (field, missing) in [
+                ("title", doc.meta.title.as_deref().is_none_or(str::is_empty)),
+                ("lang", doc.meta.lang.as_deref().is_none_or(str::is_empty)),
+            ] {
+                if missing && self.conflict.is_none() {
+                    self.conflict = Some(ValidationError {
+                        code: Code::UaConflict,
+                        path: format!("meta.{field}"),
+                        message: format!("PDF/UA requires the document's {field}"),
+                    });
+                }
+            }
         }
         if let Some(date) = &doc.meta.creation_date {
             if parse_rfc3339(date).is_none() {
@@ -680,6 +706,19 @@ impl<'a> Checker<'a> {
         if self.errors.len() >= MAX_ERRORS {
             return;
         }
+        let decoration = node.is_decoration();
+        self.decoration += u32::from(decoration);
+        if self.profile.ua() {
+            self.ua_node(node, !self.in_fixed && self.decoration == 0);
+        }
+        let outer = self.structure;
+        self.structure = outer.enter(node);
+        self.node_body(node, ctx);
+        self.structure = outer;
+        self.decoration -= u32::from(decoration);
+    }
+
+    fn node_body(&mut self, node: &Node, ctx: Ctx) {
         if let Some(id) = &node.id {
             self.id(Some("id"), id);
         }
@@ -770,8 +809,22 @@ impl<'a> Checker<'a> {
             });
         }
 
+        if let Some(role) = node.role {
+            self.role(role, &node.kind);
+        }
+
         match &node.kind {
-            NodeKind::Box { children } => self.children(Some(&node.style), children, inner),
+            NodeKind::Box { children, alt } => {
+                self.children(Some(&node.style), children, inner);
+                self.alt(alt.as_deref());
+                if alt.is_some() && node.role != Some(crate::schema::Role::Figure) {
+                    self.err(
+                        Code::InvalidValue,
+                        Some("alt"),
+                        "only a box with the role `figure` takes `alt`",
+                    );
+                }
+            }
             NodeKind::Text { runs } => {
                 self.at("runs", |c| {
                     for (i, r) in runs.iter().enumerate() {

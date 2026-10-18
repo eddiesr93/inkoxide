@@ -93,7 +93,7 @@ pub(super) fn render_with<R>(
         &mut text,
         &mut images,
         true,
-        Profile::default(),
+        (Profile::default(), None),
         Ok,
     )
     .unwrap();
@@ -898,7 +898,7 @@ fn ops_with_logo(json: &str) -> Vec<Vec<Op>> {
         &mut text,
         &mut images,
         false,
-        Profile::default(),
+        (Profile::default(), None),
         Ok,
     )
     .unwrap();
@@ -933,7 +933,7 @@ fn an_svg_without_a_size_is_laid_out_without_its_text() {
         &mut text,
         &mut images,
         false,
-        Profile::default(),
+        (Profile::default(), None),
         Ok,
     )
     .unwrap();
@@ -1063,7 +1063,7 @@ fn emoji_ops_in(
         &mut text,
         &mut images,
         false,
-        Profile::default(),
+        (Profile::default(), None),
         Ok,
     )
     .unwrap();
@@ -1108,7 +1108,7 @@ fn colour_glyphs_take_the_colour_of_their_run() {
         &mut text,
         &mut images,
         false,
-        Profile::default(),
+        (Profile::default(), None),
         Ok,
     )
     .unwrap();
@@ -1417,7 +1417,7 @@ fn inline_images_follow_the_visual_order_of_right_to_left_text() {
             &mut text,
             &mut images,
             false,
-            Profile::default(),
+            (Profile::default(), None),
             Ok,
         )
         .unwrap();

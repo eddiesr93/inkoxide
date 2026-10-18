@@ -7,6 +7,10 @@ type Fail = (message: string) => never;
 export interface OutputOptions {
   /** The PDF/A level of `<Document conformance>`; the render option `pdfA` wins over it. */
   pdfA?: PdfALevel;
+  /** `<Document tagged>`: tagged PDF. */
+  tagged?: boolean;
+  /** `<Document pdfUA>`: PDF/UA-1. */
+  pdfUA?: boolean;
   /**
    * The encryption of `<Document userPassword ownerPassword permissions>`; the render option
    * `encryption` replaces it. JSON and `util.inspect` show it as `'<redacted>'`.
@@ -36,7 +40,7 @@ export function outputOptions(): OutputOptions {
 }
 
 /** The PDF/A parts and conformance levels the engine writes, from the oldest part. */
-const PDF_A_LEVELS = ['1b', '2b', '3b'] as const;
+const PDF_A_LEVELS = ['1b', '2b', '2a', '3b', '3a'] as const;
 
 /** A PDF/A part and conformance level the engine writes. */
 export type PdfALevel = (typeof PDF_A_LEVELS)[number];
@@ -66,16 +70,16 @@ export function documentEncryption(p: Record<string, unknown>, fail: Fail): Encr
 /** The PDF/A level of `<Document conformance>`; a bare part (`'PDF/A-2'`) is level b. */
 export function documentConformance(value: unknown, fail: Fail): PdfALevel {
   const m = typeof value === 'string' ? /^PDF\/A-(\d)([abu]?)$/.exec(value) : null;
-  const level = PDF_A_LEVELS.find((l) => l === `${m?.[1]}b`);
-  if (m && level && (m[2] === '' || m[2] === 'b')) return level;
+  const level = PDF_A_LEVELS.find((l) => l === `${m?.[1]}${m?.[2] || 'b'}`);
+  if (m && level) return level;
   const shown = typeof value === 'string' ? `"${value}"` : `{${String(value)}}`;
-  if (m && level) {
+  if (m && PDF_A_LEVELS.some((l) => l === `${m[1]}b`)) {
     fail(
-      `<Document conformance=${shown}>: the a and u levels need tagged PDF, which is not supported yet; use 'PDF/A-${level}'.`,
+      `<Document conformance=${shown}>: the u levels and PDF/A-1a are not supported; use 'PDF/A-${m[1]}b'${m[1] === '1' ? '' : ` or 'PDF/A-${m[1]}a'`}.`,
     );
   }
   const levels = PDF_A_LEVELS.map((l) => `'PDF/A-${l}'`);
-  const parts = PDF_A_LEVELS.map((l) => `'PDF/A-${l.slice(0, -1)}'`);
+  const parts = PDF_A_LEVELS.filter((l) => l.endsWith('b')).map((l) => `'PDF/A-${l.slice(0, -1)}'`);
   fail(
     `<Document conformance=${shown}> is not a PDF/A level: use ${levels.slice(0, -1).join(', ')} or ${levels.at(-1)} (or ${parts.join(', ')}).`,
   );

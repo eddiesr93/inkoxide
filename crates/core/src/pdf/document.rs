@@ -14,8 +14,8 @@ use crate::InkoxideError;
 
 use super::{
     alpha_key, attach, deflate, font, font_name, forms, gs_name, image, image_name, key_alpha,
-    notes, pdfa, round_pt, svg, svg_text_uses, text_ink, write_link, write_outline, DocumentOut,
-    FontPrograms, Out, PdfWriterSink, Writer, MAX_NUMBER,
+    notes, pdfa, round_pt, svg, svg_text_uses, tag, text_ink, write_link, write_outline,
+    DocumentOut, FontPrograms, Out, PdfWriterSink, Writer, MAX_NUMBER,
 };
 
 /// Maximum kids per page-tree node (keeps viewers fast on long documents).
@@ -65,7 +65,9 @@ impl PdfWriterSink {
             images: image_refs,
         };
         let files = attach::write_files(&mut w, doc.files);
-        let (annots, form) = self.write_annotations(&mut w, doc, &page_refs, &res.fonts, &files)?;
+        let mut tags = doc.plan.map(|_| tag::AnnotTags::new(doc.pages.len()));
+        let (annots, form) =
+            self.write_annotations(&mut w, doc, &page_refs, &res.fonts, &files, tags.as_mut())?;
         let outline = write_outline(&mut w, &doc.marks.outline, &page_refs);
         write_pages(
             &mut w,
@@ -81,14 +83,19 @@ impl PdfWriterSink {
             .producer
             .as_deref()
             .unwrap_or(concat!("Inkoxide ", env!("CARGO_PKG_VERSION")));
+        let struct_root = tags.as_ref().map(|_| w.alloc.next());
         let nav = Nav {
             pages: tree.root,
             form: form.as_ref(),
             outline,
             files: &files.specs,
+            struct_root,
         };
         self.write_catalog(&mut w, doc, catalog, &nav, &res.fonts, producer)?;
         self.write_info(&mut w, doc, info, producer);
+        if let (Some(plan), Some(root), Some(tags)) = (doc.plan, struct_root, &tags) {
+            tag::write_tree(&mut w, plan, root, doc.pages, &page_refs, tags);
+        }
 
         // Content streams are checked as they are finished; this covers
         // the objects (matrices, boxes, rectangles, coordinates).
@@ -138,7 +145,21 @@ impl PdfWriterSink {
         let mut font_refs: BTreeMap<FontKey, Ref> = BTreeMap::new();
         for ((key, glyphs), program) in fonts.used.iter().zip(&fonts.programs) {
             // Glyphs laid out keep their text; field glyphs add theirs.
-            let unicode = doc.unicode.font_with(*key, &fonts.field_text);
+            let mut unicode = doc.unicode.font_with(*key, &fonts.field_text);
+            // Tagged output maps every glyph (ISO 14289-1, 7.21.7): a glyph
+            // after the first of its cluster (a mark the font draws apart)
+            // gets the combining grapheme joiner, and is drawn in a span of
+            // no text (`show_text`), so that extraction reads the cluster
+            // once.
+            if doc.plan.is_some() {
+                let all = unicode.get_or_insert_with(Default::default).to_mut();
+                for &g in glyphs {
+                    let text = all.entry(g).or_default();
+                    if text.is_empty() {
+                        text.push('\u{34F}');
+                    }
+                }
+            }
             let embedded = font::Embedded {
                 font: doc.fonts.get(*key),
                 program,
@@ -190,12 +211,16 @@ impl PdfWriterSink {
         page_refs: &[Ref],
         font_refs: &BTreeMap<FontKey, Ref>,
         files: &attach::FileRefs<'_>,
+        mut tags: Option<&mut tag::AnnotTags>,
     ) -> Result<(Vec<Vec<Ref>>, Option<forms::Form>), InkoxideError> {
         let mut annots: Vec<Vec<Ref>> = Vec::with_capacity(doc.pages.len());
-        for page in doc.pages {
+        for (i, page) in doc.pages.iter().enumerate() {
             let mut refs = Vec::new();
             for link in &page.links {
                 let r = w.alloc.next();
+                // Recorded only when written: an anchor may have no
+                // destination.
+                let key = tags.as_deref().map(tag::AnnotTags::peek);
                 if write_link(
                     w,
                     r,
@@ -203,13 +228,24 @@ impl PdfWriterSink {
                     link,
                     (doc.marks, page_refs),
                     self.profile,
+                    key,
                 ) {
+                    if let Some(t) = tags.as_deref_mut() {
+                        t.add(r, i, link.owner, tag::AnnotKind::Link);
+                    }
                     refs.push(r);
                 }
             }
             annots.push(refs);
         }
-        notes::write_icons(w, (doc.pages, page_refs), &mut annots, files, self.profile)?;
+        notes::write_icons(
+            w,
+            (doc.pages, page_refs),
+            &mut annots,
+            files,
+            tags.as_deref_mut(),
+            self.profile,
+        )?;
         let fields = forms::Ctx {
             pages: doc.pages,
             page_refs,
@@ -217,7 +253,7 @@ impl PdfWriterSink {
             fonts: doc.fonts,
             profile: self.profile,
         };
-        let form = forms::write_fields(w, &fields, &mut annots)?;
+        let form = forms::write_fields(w, &fields, &mut annots, tags)?;
         Ok((annots, form))
     }
 
@@ -239,9 +275,23 @@ impl PdfWriterSink {
             .level()
             .map(|level| (level, w.alloc.next(), w.alloc.next()));
         let intent = pdf_a.map(|_| (w.out.text("sRGB"), w.out.text("sRGB IEC61966-2.1")));
+        // PDF/UA without PDF/A: metadata of its own (ISO 14289-1, 7.1).
+        let ua_metadata = (pdf_a.is_none() && self.profile.ua()).then(|| w.alloc.next());
         let embedded = attach::name_tree(doc.files, nav.files, |key| w.out.bytes(key));
         let mut cat = w.pdf.catalog(catalog);
         cat.pages(nav.pages);
+        if let Some(root) = nav.struct_root {
+            cat.pair(Name(b"StructTreeRoot"), root);
+            cat.insert(Name(b"MarkInfo"))
+                .dict()
+                .pair(Name(b"Marked"), true);
+            // Viewers title the window with the document's title.
+            if doc.meta.title.is_some() {
+                cat.insert(Name(b"ViewerPreferences"))
+                    .dict()
+                    .pair(Name(b"DisplayDocTitle"), true);
+            }
+        }
         if !embedded.is_empty() {
             let mut names = cat.insert(Name(b"Names")).dict();
             let mut tree = names.insert(Name(b"EmbeddedFiles")).dict();
@@ -254,7 +304,7 @@ impl PdfWriterSink {
             tree.finish();
             names.finish();
             // Associated files (ISO 19005-3, 6.8).
-            if self.profile.level() == Some(crate::PdfALevel::A3b) {
+            if self.profile.level().is_some_and(|l| l.part() == 3) {
                 cat.insert(Name(b"AF"))
                     .array()
                     .items(nav.files.iter().copied());
@@ -294,8 +344,15 @@ impl PdfWriterSink {
                 .pair(Name(b"BaseVersion"), Name(b"1.7"))
                 .pair(Name(b"ExtensionLevel"), 8);
         }
+        if let Some(m) = ua_metadata {
+            cat.metadata(m);
+        }
         let (Some((level, metadata, profile)), Some((condition, info))) = (pdf_a, intent) else {
             cat.finish();
+            if let Some(m) = ua_metadata {
+                let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, None, true);
+                w.out.metadata(&mut w.pdf, m, &xmp, |_| {});
+            }
             return Ok(());
         };
         cat.metadata(metadata);
@@ -311,7 +368,13 @@ impl PdfWriterSink {
             .pair(Name(b"DestOutputProfile"), profile);
         cat.finish();
         // XMP must stay uncompressed (ISO 19005-2, 6.6.2.1).
-        let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, level);
+        let xmp = pdfa::xmp(
+            doc.meta,
+            producer,
+            doc.creation_date,
+            Some(level),
+            self.profile.ua(),
+        );
         w.out.metadata(&mut w.pdf, metadata, &xmp, |_| {});
         let icc = deflate(&pdfa::srgb_icc(), 9)?;
         w.out.icc_profile(&mut w.pdf, profile, &icc, |p| {
@@ -384,6 +447,8 @@ struct Nav<'f> {
     outline: Option<Ref>,
     /// The file specifications, in declaration order.
     files: &'f [Ref],
+    /// The structure tree of tagged output.
+    struct_root: Option<Ref>,
 }
 
 /// The pages, each naming the shared resources it uses, with its
@@ -435,6 +500,13 @@ fn write_pages(
         r.finish();
         if !annots[i].is_empty() {
             p.annotations(annots[i].iter().copied());
+        }
+        if page.mcids.is_some() {
+            p.pair(Name(b"StructParents"), i32::try_from(i).unwrap_or(i32::MAX));
+            if !annots[i].is_empty() {
+                // Annotations are visited in the order of the structure.
+                p.pair(Name(b"Tabs"), Name(b"S"));
+            }
         }
         p.finish();
 

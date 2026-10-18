@@ -9,11 +9,14 @@ use pdf_writer::{Content, Name, Str};
 use crate::fonts::{FontKey, FontSet};
 use crate::geom::{apply, mul, Rect};
 use crate::images::ImageKey;
-use crate::paint::{FillRule, InvisibleGlyph, Op, PageContent, PathSeg, TextOp};
+use crate::paint::{
+    FillRule, InvisibleGlyph, Op, PageBand, PageContent, PathSeg, TextGlyph, TextOp,
+};
 use crate::schema::Color;
+use crate::tag::{Plan, StructId};
 use crate::InkoxideError;
 
-use super::{content_bytes, deflate, out, round_pt, round_to, EncodedPage, Profile};
+use super::{content_bytes, deflate, out, round_pt, round_to, EncodedPage, LinkArea, Profile};
 
 /// A glyph closer than this (points) to where the previous glyph's advance
 /// puts it needs no `TJ` adjustment.
@@ -21,11 +24,13 @@ pub(super) const KERN_EPS: f32 = 1e-3;
 
 /// Encodes one page: its content stream, compressed at Flate level
 /// `compression`, and the resources and areas the writer needs from it.
+/// With `plan` the content is tagged.
 pub(super) fn encode_page(
     page: &PageContent,
     fonts: &FontSet<'_>,
     profile: Profile,
     compression: Option<u32>,
+    plan: Option<&Plan>,
 ) -> Result<EncodedPage, InkoxideError> {
     let mut glyphs: BTreeMap<FontKey, BTreeSet<u16>> = BTreeMap::new();
     let mut opacities = BTreeSet::new();
@@ -33,12 +38,20 @@ pub(super) fn encode_page(
     let mut links = Vec::new();
     let mut fields = Vec::new();
     let mut icons = Vec::new();
+    let mut figures = Vec::new();
+    // The element whose content is drawn.
+    let mut owner: Option<StructId> = None;
     // Links and widgets are areas on the page: they cover where the
     // transform in effect puts them.
     let mut ctm: Option<[f32; 6]> = None;
     let mut saved = Vec::new();
     for op in &page.ops {
         match op {
+            Op::Tag(id) => owner = Some(*id),
+            Op::FigureArea { owner, rect } => {
+                figures.push((*owner, ctm.map_or(*rect, |m| bounds(m, *rect))));
+            }
+            Op::EndTag => owner = None,
             Op::Save => saved.push(ctm),
             Op::Restore => ctm = saved.pop().flatten(),
             Op::Transform(m) => ctm = Some(ctm.map_or(*m, |c| mul(c, *m))),
@@ -60,9 +73,17 @@ pub(super) fn encode_page(
             Op::InvisibleText(g) => {
                 glyphs.entry(g.font).or_default().insert(g.glyph);
             }
-            Op::Link { rect, target } => {
-                links.push((ctm.map_or(*rect, |m| bounds(m, *rect)), target.clone()));
-            }
+            Op::Link {
+                rect,
+                target,
+                label,
+                owner: own,
+            } => links.push(LinkArea {
+                rect: ctm.map_or(*rect, |m| bounds(m, *rect)),
+                target: target.clone(),
+                label: label.clone(),
+                owner: plan.and(own.or(owner)),
+            }),
             Op::Field(f) => {
                 if let Some(font) = f.font {
                     let used = glyphs.entry(font).or_default();
@@ -73,6 +94,7 @@ pub(super) fn encode_page(
                 }
                 let mut f = (**f).clone();
                 f.ctm = ctm;
+                f.owner = plan.and(owner);
                 fields.push(f);
             }
             // An icon stays upright and the same size: only its corner
@@ -82,12 +104,13 @@ pub(super) fn encode_page(
                 if let Some(m) = ctm {
                     (i.x, i.y) = apply(m, (i.x, i.y));
                 }
+                i.owner = plan.and(owner);
                 icons.push(i);
             }
             _ => {}
         }
     }
-    let raw = content_stream(page, fonts, profile)?;
+    let (raw, mcids) = marked_content_stream(page, fonts, profile, plan)?;
     let stream = match compression {
         Some(level) => deflate(&raw, level)?,
         None => raw,
@@ -103,7 +126,128 @@ pub(super) fn encode_page(
         links,
         fields,
         icons,
+        mcids: plan.map(|_| mcids),
+        figures,
     })
+}
+
+/// Marked content in a tagged content stream: each element's content in a
+/// sequence with an MCID, and everything else, drawn outside them, in
+/// artifacts. Both are opened when something is drawn, so nothing marks an
+/// empty sequence, and an artifact is closed before the save level it
+/// started in ends.
+struct Marker<'p> {
+    plan: &'p Plan,
+    /// The owner of each MCID so far.
+    mcids: Vec<StructId>,
+    /// The element whose content is drawn now, and whether its sequence is
+    /// open.
+    tag: Option<(StructId, bool)>,
+    /// Whether an artifact is open.
+    artifact: bool,
+    /// The header or footer drawn now, whose artifacts say so.
+    band: Option<PageBand>,
+    /// The element whose content goes on after the decoration drawn now.
+    resume: Option<StructId>,
+    /// Spans open: they enclose whole save levels, and what they draw is in
+    /// the sequence open around them.
+    spans: usize,
+}
+
+impl Marker<'_> {
+    fn tag(&mut self, c: &mut Content, id: StructId) {
+        self.end_tag(c);
+        self.tag = Some((id, false));
+    }
+
+    fn end_tag(&mut self, c: &mut Content) {
+        if let Some((_, true)) = self.tag.take() {
+            c.end_marked_content();
+        }
+    }
+
+    /// Before an operator that draws: in the sequence of the element drawn,
+    /// else in an artifact.
+    fn draw(&mut self, c: &mut Content) {
+        if self.spans > 0 {
+            return;
+        }
+        match self.tag {
+            Some((id, false)) => {
+                self.close_artifact(c);
+                let name = self.plan.elems[id as usize].kind.name();
+                c.begin_marked_content_with_properties(Name(name))
+                    .properties()
+                    .pair(Name(b"MCID"), self.mcids.len() as i32);
+                self.mcids.push(id);
+                self.tag = Some((id, true));
+            }
+            None if !self.artifact => {
+                match self.band {
+                    // ISO 32000-1, 14.8.2.2.2.
+                    Some(band) => {
+                        let subtype: &[u8] = match band {
+                            PageBand::Header => b"Header",
+                            PageBand::Footer => b"Footer",
+                        };
+                        c.begin_marked_content_with_properties(Name(b"Artifact"))
+                            .properties()
+                            .pair(Name(b"Type"), Name(b"Pagination"))
+                            .pair(Name(b"Subtype"), Name(subtype));
+                    }
+                    None => {
+                        c.begin_marked_content(Name(b"Artifact"));
+                    }
+                }
+                self.artifact = true;
+            }
+            _ => {}
+        }
+    }
+
+    /// Starts or ends a header or footer: its artifacts are apart from the
+    /// others.
+    fn band(&mut self, c: &mut Content, band: Option<PageBand>) {
+        if self.band != band {
+            self.close_artifact(c);
+            self.band = band;
+        }
+    }
+
+    /// Suspends the element's content: what is drawn next is an artifact.
+    fn decoration(&mut self, c: &mut Content) {
+        self.resume = self.tag.map(|(id, _)| id);
+        self.end_tag(c);
+    }
+
+    /// Ends the decoration: the suspended element's content goes on, in a
+    /// sequence of its own.
+    fn end_decoration(&mut self, c: &mut Content) {
+        self.close_artifact(c);
+        if let Some(id) = self.resume.take() {
+            self.tag = Some((id, false));
+        }
+    }
+
+    fn close_artifact(&mut self, c: &mut Content) {
+        if std::mem::take(&mut self.artifact) {
+            c.end_marked_content();
+        }
+    }
+
+    /// Before a `q` or a `Q`: a sequence never crosses one (ISO 32000-1,
+    /// 14.6: marked content and save levels nest). What the element draws
+    /// after it goes in a sequence of its own.
+    fn save_level(&mut self, c: &mut Content) {
+        if self.spans > 0 {
+            return;
+        }
+        self.close_artifact(c);
+        if let Some((id, true)) = self.tag {
+            c.end_marked_content();
+            self.tag = Some((id, false));
+        }
+    }
 }
 
 /// The upright rectangle that `rect` covers once transformed by `m`.
@@ -141,9 +285,15 @@ pub(super) fn font_name(key: FontKey) -> String {
 
 /// Text ops: one `TJ` per stretch of glyphs on the baseline, with kerning
 /// adjustments wherever our positions differ from the font's advances.
-/// With `skip_notdef` (PDF/A), `.notdef` glyphs are left out and the next
+/// With `skip_notdef` (PDF/A, PDF/UA), `.notdef` glyphs are left out and the next
 /// glyph keeps its position.
-pub(super) fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>, skip_notdef: bool) {
+pub(super) fn show_text(
+    c: &mut Content,
+    t: &TextOp,
+    fonts: &FontSet<'_>,
+    skip_notdef: bool,
+    tagged: bool,
+) {
     let font = fonts.get(t.font);
     let scale = font.scale(t.size);
     let size = round_pt(t.size);
@@ -151,6 +301,10 @@ pub(super) fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>, skip_n
     c.begin_text();
     c.set_font(Name(font_name(t.font).as_bytes()), size);
     let glyphs = &t.glyphs;
+    // Tagged, each glyph after the first of its cluster is in a span of no
+    // text: the font maps it to the combining grapheme joiner, as tagged
+    // output must map every glyph, and extraction would read that too.
+    let silent = |g: &TextGlyph| tagged && g.continues;
     let mut i = 0;
     while i < glyphs.len() {
         let g0 = glyphs[i];
@@ -167,15 +321,23 @@ pub(super) fn show_text(c: &mut Content, t: &TextOp, fonts: &FontSet<'_>, skip_n
             round_pt(t.x + g0.x),
             round_pt(t.y - g0.y_offset),
         ]);
-        if g0.y_offset != 0.0 {
+        if g0.y_offset != 0.0 || silent(&g0) {
+            if silent(&g0) {
+                c.begin_marked_content_with_properties(Name(b"Span"))
+                    .properties()
+                    .pair(Name(b"ActualText"), Str(b""));
+            }
             c.show(Str(&g0.id.to_be_bytes()));
+            if silent(&g0) {
+                c.end_marked_content();
+            }
             i += 1;
             continue;
         }
-        // Up to the next glyph moved up or down.
+        // Up to the next glyph moved up or down, or silent.
         let end = glyphs[i..]
             .iter()
-            .position(|g| g.y_offset != 0.0)
+            .position(|g| g.y_offset != 0.0 || silent(g))
             .map_or(glyphs.len(), |n| i + n);
         let run = glyphs[i..end]
             .iter()
@@ -268,15 +430,65 @@ pub(super) fn path(c: &mut Content, segs: &[PathSeg]) {
 
 /// Serialises one page's display list. Pure function of the page: safe to
 /// run per page in parallel.
+#[cfg(test)]
 pub(crate) fn content_stream(
     page: &PageContent,
     fonts: &FontSet<'_>,
     profile: Profile,
 ) -> Result<Vec<u8>, InkoxideError> {
+    marked_content_stream(page, fonts, profile, None).map(|(bytes, _)| bytes)
+}
+
+/// [`content_stream`], tagged with `plan`, with the owner of each MCID.
+pub(crate) fn marked_content_stream(
+    page: &PageContent,
+    fonts: &FontSet<'_>,
+    profile: Profile,
+    plan: Option<&Plan>,
+) -> Result<(Vec<u8>, Vec<StructId>), InkoxideError> {
     let mut c = Content::new();
+    let mut marker = plan.map(|plan| Marker {
+        plan,
+        mcids: Vec::new(),
+        tag: None,
+        artifact: false,
+        band: None,
+        resume: None,
+        spans: 0,
+    });
     // Flip to a top-left origin once; everything below is in layout space.
     c.transform([1.0, 0.0, 0.0, -1.0, 0.0, round_pt(page.height)]);
     for op in &page.ops {
+        if let Some(m) = &mut marker {
+            match op {
+                Op::Tag(id) => m.tag(&mut c, *id),
+                Op::EndTag => m.end_tag(&mut c),
+                Op::Decoration => m.decoration(&mut c),
+                Op::EndDecoration => m.end_decoration(&mut c),
+                Op::Save | Op::Restore => m.save_level(&mut c),
+                Op::Span { .. } => {
+                    m.draw(&mut c);
+                    m.spans += 1;
+                }
+                Op::EndSpan => m.spans = m.spans.saturating_sub(1),
+                Op::Band(band) => m.band(&mut c, *band),
+                Op::FillRect { .. }
+                | Op::FillPath { .. }
+                | Op::StrokePath { .. }
+                | Op::Text(_)
+                | Op::Image { .. }
+                | Op::InvisibleText(_) => m.draw(&mut c),
+                // Nothing drawn: state, clips and annotations.
+                Op::Transform(_)
+                | Op::ClipRect(_)
+                | Op::ClipPath { .. }
+                | Op::SetOpacity(_)
+                | Op::Link { .. }
+                | Op::Field(_)
+                | Op::Icon(_)
+                | Op::FigureArea { .. } => {}
+            }
+        }
         match op {
             Op::Save => {
                 c.save_state();
@@ -335,11 +547,19 @@ pub(crate) fn content_stream(
                 c.stroke();
                 c.restore_state();
             }
-            Op::Link { .. } | Op::Field(_) | Op::Icon(_) => {}
+            Op::Link { .. }
+            | Op::Field(_)
+            | Op::Icon(_)
+            | Op::Tag(_)
+            | Op::EndTag
+            | Op::Decoration
+            | Op::EndDecoration
+            | Op::Band(_)
+            | Op::FigureArea { .. } => {}
             Op::SetOpacity(a) => {
                 c.set_parameters(Name(gs_name(alpha_key(*a)).as_bytes()));
             }
-            Op::Text(t) => show_text(&mut c, t, fonts, profile.is_pdf_a()),
+            Op::Text(t) => show_text(&mut c, t, fonts, profile.skips_notdef(), plan.is_some()),
             Op::Image { key, matrix } => {
                 c.save_state();
                 c.transform(matrix.map(round_pt));
@@ -359,7 +579,15 @@ pub(crate) fn content_stream(
             }
         }
     }
-    content_bytes(c, profile)
+    let mcids = match marker {
+        Some(mut m) => {
+            m.close_artifact(&mut c);
+            m.end_tag(&mut c);
+            m.mcids
+        }
+        None => Vec::new(),
+    };
+    Ok((content_bytes(c, profile)?, mcids))
 }
 
 /// An invisible glyph (`3 Tr`) in the font named `name`, horizontally

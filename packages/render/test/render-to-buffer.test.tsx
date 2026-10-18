@@ -501,7 +501,7 @@ describe('renderToBuffer', () => {
       [{ threads: 0 }, 'options.threads'],
       [{ threads: 1000 }, 'options.threads'],
       [{ threads: 1.5 }, 'options.threads'],
-      [{ pdfA: '2a' as '2b' }, 'options.pdfA'],
+      [{ pdfA: '2u' as '2b' }, 'options.pdfA'],
     ];
     for (const [opts, path] of cases) {
       const err = await renderToBuffer(<Receipt customer="Ada" lines={[]} />, opts).catch((e: unknown) => e);
@@ -684,6 +684,53 @@ describe('renderToBuffer', () => {
       component: 'View',
     });
     expect((err as RenderError).componentStack).toContain('Faded');
+  });
+
+  it('tags as <Document tagged pdfUA> say, unless the tagged and pdfUA options say otherwise', async () => {
+    const pdf = async (props: Partial<DocumentProps>, opts: RenderToBufferOptions = {}) =>
+      Buffer.from(
+        await renderToBuffer(
+          <Document title="Tagged" lang="en" {...props}>
+            <Page>
+              <Text>Read</Text>
+            </Page>
+          </Document>,
+          opts,
+        ),
+      ).toString('latin1');
+    const tagged = (s: string) => s.includes('/StructTreeRoot');
+    const ua = (s: string) => s.includes('<pdfuaid:part>1</pdfuaid:part>');
+    expect(tagged(await pdf({}))).toBe(false);
+    expect(tagged(await pdf({ tagged: true }))).toBe(true);
+    expect(tagged(await pdf({ tagged: true }, { tagged: false }))).toBe(false);
+    expect(tagged(await pdf({}, { tagged: true }))).toBe(true);
+    expect(ua(await pdf({ pdfUA: true }))).toBe(true);
+    expect(ua(await pdf({ pdfUA: true }, { pdfUA: false }))).toBe(false);
+    const both = await pdf({}, { pdfUA: true });
+    expect([tagged(both), ua(both)]).toEqual([true, true]);
+  });
+
+  it('names the component PDF/UA-1 rejects for what it lacks', async () => {
+    function Street() {
+      return <TextField name="street" />;
+    }
+    const doc = (
+      <Document title="Report" lang="en">
+        <Page>
+          <Street />
+        </Page>
+      </Document>
+    );
+    expect(countPages(await renderToBuffer(doc))).toBe(1);
+    const err = await renderToBuffer(doc, { pdfUA: true }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RenderError);
+    expect(err).toMatchObject({
+      code: 'ENGINE_REJECTED',
+      engineCode: 'UA_CONFLICT',
+      path: 'pages[0].children[0].field.label',
+      component: 'Field',
+    });
+    expect((err as RenderError).componentStack).toContain('Street');
   });
 });
 
