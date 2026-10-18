@@ -906,11 +906,43 @@ export interface SvgPresentation {
   children?: ReactNode;
 }
 
+/**
+ * The presentation of an element inside an `<Svg>` as a `style` object: the SVG attributes CSS
+ * can set, which win over the element's own and its `className`'s (`{ fill: 'teal' }`).
+ */
+export type SvgStyle = Partial<
+  Omit<
+    SvgTextProps,
+    | 'x'
+    | 'y'
+    | 'dx'
+    | 'dy'
+    | 'rotate'
+    | 'textLength'
+    | 'lengthAdjust'
+    | 'id'
+    | 'children'
+    | 'className'
+    | 'style'
+  >
+>;
+
+/** What an element inside an `<Svg>` takes besides its SVG attributes. */
+export interface SvgElementProps extends SvgPresentation {
+  /**
+   * Tailwind classes, over the SVG attributes: `fill-*`, `stroke-*`, `stroke-<n>`, `opacity-*`, a
+   * text colour (`currentColor`) and the font utilities.
+   */
+  className?: string;
+  /** SVG presentation, over the attributes and `className`. */
+  style?: SvgStyle;
+}
+
 /** Numbers for each character in turn: a number, a list, or SVG list syntax. */
 type SvgNumberList = number | string | readonly number[];
 
 /** A `Text` inside an `<Svg>`: SVG text, positioned in the drawing's coordinates. */
-export interface SvgTextProps extends SvgPresentation {
+export interface SvgTextProps extends SvgElementProps {
   /** Where the text starts (with `textAnchor`); a list positions each character. */
   x?: SvgNumberList;
   y?: SvgNumberList;
@@ -996,10 +1028,10 @@ export interface SvgProps extends SvgPresentation {
   role?: 'figure' | 'artifact';
 }
 
-export interface PathProps extends SvgPresentation {
+export interface PathProps extends SvgElementProps {
   d: string;
 }
-export interface RectProps extends SvgPresentation {
+export interface RectProps extends SvgElementProps {
   x?: number | string;
   y?: number | string;
   width: number | string;
@@ -1007,24 +1039,24 @@ export interface RectProps extends SvgPresentation {
   rx?: number | string;
   ry?: number | string;
 }
-export interface CircleProps extends SvgPresentation {
+export interface CircleProps extends SvgElementProps {
   cx?: number | string;
   cy?: number | string;
   r: number | string;
 }
-export interface EllipseProps extends SvgPresentation {
+export interface EllipseProps extends SvgElementProps {
   cx?: number | string;
   cy?: number | string;
   rx: number | string;
   ry: number | string;
 }
-export interface LineProps extends SvgPresentation {
+export interface LineProps extends SvgElementProps {
   x1: number | string;
   y1: number | string;
   x2: number | string;
   y2: number | string;
 }
-export interface PolyProps extends SvgPresentation {
+export interface PolyProps extends SvgElementProps {
   points: string | number[];
 }
 export interface DefsProps {
@@ -1037,7 +1069,7 @@ export interface ClipPathProps {
   clipPathUnits?: 'userSpaceOnUse' | 'objectBoundingBox';
   children?: ReactNode;
 }
-export interface MarkerProps extends SvgPresentation {
+export interface MarkerProps extends SvgElementProps {
   /** Referenced as `markerStart="url(#id)"` (or `markerMid`, `markerEnd`). */
   id: string;
   viewBox?: string;
@@ -1143,7 +1175,7 @@ export const Note = host<NoteProps>(HOST.Note);
 export const Attachment = host<AttachmentProps>(HOST.Attachment);
 /** A vector drawing; becomes an SVG image. Use the SVG primitives (`Path`, `Rect`, …) inside. */
 export const Svg = host<SvgProps>(HOST.Svg);
-export const G = host<SvgPresentation>(HOST.G);
+export const G = host<SvgElementProps>(HOST.G);
 export const Path = host<PathProps>(HOST.Path);
 export const Rect = host<RectProps>(HOST.Rect);
 export const Circle = host<CircleProps>(HOST.Circle);

@@ -35,15 +35,15 @@ use pdf_writer::{Content, Filter, Finish, Name, Rect, Ref, Str};
 use usvg::tiny_skia_path::{self, PathSegment, Point};
 use usvg::{Group, Node, Paint, Transform};
 
-use super::{alpha_key, key_alpha, number, Profile, Writer};
-use crate::fonts::{FontKey, FontSet};
+use super::{alpha_key, font, key_alpha, number, Profile, Writer};
+use crate::fonts::{FontKey, FontSet, LoadedFont};
 use crate::geom::sin_cos_degrees;
 use crate::images::svg::ProbedText;
 use crate::images::svg_text::Probes;
 use crate::images::{ContentKey, ImageBody, ImageKey, ImageSet};
 use crate::paint::FillRule;
 use crate::paint::{alt_span, InvisibleGlyph, Op, SpaceAt, TextGlyph, TextOp, NO_RADII};
-use crate::text::{ColorGlyphs, LaidText};
+use crate::text::{ColorGlyphs, LaidText, SvgGlyph};
 use crate::{flate, InkoxideError};
 
 impl From<usvg::FillRule> for FillRule {
@@ -78,18 +78,21 @@ pub(crate) struct TextInk<'a, 'f> {
 pub(crate) struct TextResources<'a, 'f> {
     pub ink: TextInk<'a, 'f>,
     pub refs: &'a BTreeMap<FontKey, Ref>,
+    pub vertical: &'a VerticalFonts,
     pub image_refs: &'a BTreeMap<ImageKey, Ref>,
 }
+
+/// The vertical (`Identity-V`) font of each font SVG text draws upright
+/// glyphs in.
+pub(crate) type VerticalFonts = BTreeMap<FontKey, font::VerticalFont>;
 
 /// What the text of a render's copy of an SVG draws besides itself: the
 /// glyphs its fonts must embed (those it may draw, and the spaces its
 /// images extract through), and the images it draws (colour glyphs and
 /// emoji).
-pub(crate) fn text_uses(
-    probed: &ProbedText,
-    res: TextInk<'_, '_>,
-) -> (Vec<(FontKey, u16)>, Vec<ImageKey>) {
+pub(crate) fn text_uses(probed: &ProbedText, res: TextInk<'_, '_>) -> TextUses {
     let mut glyphs = Vec::new();
+    let mut upright = Vec::new();
     let mut keys = Vec::new();
     for t in &probed.texts {
         // A font without outlines is never embedded.
@@ -97,7 +100,12 @@ pub(crate) fn text_uses(
             .glyphs
             .iter()
             .filter(|g| res.fonts.get(g.font).has_outlines());
-        glyphs.extend(outlined.map(|g| (g.font, g.id)));
+        for g in outlined {
+            glyphs.push((g.font, g.id));
+            if g.upright {
+                upright.push(g.font);
+            }
+        }
         for (_, ops) in image_ops(t, None, res) {
             for op in ops {
                 match op {
@@ -108,7 +116,63 @@ pub(crate) fn text_uses(
             }
         }
     }
-    (glyphs, keys)
+    TextUses {
+        glyphs,
+        upright,
+        images: keys,
+    }
+}
+
+/// What the text of an SVG draws besides itself ([`text_uses`]).
+pub(crate) struct TextUses {
+    /// The glyphs its fonts must embed.
+    pub glyphs: Vec<(FontKey, u16)>,
+    /// The fonts of those drawn upright.
+    pub upright: Vec<FontKey>,
+    /// The images it draws.
+    pub images: Vec<ImageKey>,
+}
+
+/// Shows the upright glyphs from `glyphs[i]` in vertical font `v`, down
+/// the column it starts: those after it in the same font, size and turn
+/// whose point is on the column, with adjustments where it is not where
+/// the advances before it put it. Returns where the run ends.
+fn column_run(
+    cv: &mut Canvas,
+    (glyphs, i): (&[&SvgGlyph], usize),
+    v: font::VerticalFont,
+    loaded: &LoadedFont<'_>,
+) -> usize {
+    let g0 = glyphs[i];
+    let size = g0.size;
+    let (sin, cos) = sin_cos_degrees(g0.rotate);
+    // A glyph's point in the column: its origin moved by the position
+    // vector, from text space (y up) into user space (y down).
+    let point = |g: &SvgGlyph| {
+        let k = size / 1000.0;
+        let vx = font::pdf_width(loaded, g.id) / 2.0;
+        (
+            g.x + k * (cos * vx + sin * v.vy),
+            g.y + k * (sin * vx - cos * v.vy),
+        )
+    };
+    let (x0, y0) = point(g0);
+    // Across the column and down it, from the first glyph's point.
+    let across = |(x, y): (f32, f32)| (x - x0) * cos + (y - y0) * sin;
+    let down = |(x, y): (f32, f32)| (x - x0) * sin - (y - y0) * cos;
+    let mut run = Vec::new();
+    for g in &glyphs[i..] {
+        let p = point(g);
+        let on = g.upright && g.font == g0.font && g.size == size && g.rotate == g0.rotate;
+        if !on || across(p).abs() > super::content::KERN_EPS {
+            break;
+        }
+        run.push((g.id, down(p), -v.advance * size / 1000.0));
+    }
+    cv.c.set_text_matrix([cos * size, sin * size, sin * size, -cos * size, x0, y0].map(number));
+    let end = i + run.len();
+    super::show_kerned(&mut cv.c, 0.0, size, number, run);
+    end
 }
 
 /// Whether SVG text may draw image `key`: not an SVG with text of its own,
@@ -1209,6 +1273,8 @@ impl Svg<'_> {
     /// baseline with the same font and size share a `TJ`, with
     /// adjustments where their positions differ from the font's advances
     /// (as `show_text` writes page text); a turned glyph has its own.
+    /// Upright glyphs in one column share one too, in the font's vertical
+    /// font.
     /// Colour glyphs with an image are drawn as images, but in a clip path.
     fn glyphs(
         &mut self,
@@ -1240,10 +1306,17 @@ impl Svg<'_> {
         let mut i = 0;
         while i < glyphs.len() {
             let g0 = glyphs[i];
-            if font != Some(g0.font) {
-                let name = cv.name(ResKind::Font, fonts.refs[&g0.font]);
+            let column = fonts.vertical.get(&g0.font).filter(|_| g0.upright);
+            let r = column.map_or(fonts.refs[&g0.font], |v| v.font);
+            if font != Some(r) {
+                let name = cv.name(ResKind::Font, r);
                 cv.c.set_font(Name(name.as_bytes()), 1.0);
-                font = Some(g0.font);
+                font = Some(r);
+            }
+            if let Some(&v) = column {
+                let loaded = fonts.ink.fonts.get(g0.font);
+                i = column_run(cv, (&glyphs, i), v, loaded);
+                continue;
             }
             let (sin, cos) = sin_cos_degrees(g0.rotate);
             let (size, k) = (g0.size, g0.scale_x);
@@ -1678,6 +1751,15 @@ mod tests {
     /// A document showing `svg` with Inter Regular and `VertTest` declared,
     /// rendered and inflated: its SVG's form only.
     fn rendered_form(svg: &str) -> String {
+        let out = rendered_pdf(svg, false);
+        let form = out.split("/Subtype /Form").nth(1).expect(&out);
+        form.split("endobj").next().unwrap().to_string()
+    }
+
+    /// A document of `svg` with Inter Regular and the vertical test font,
+    /// rendered uncompressed and inflated (`encrypted`: with a password,
+    /// as it is).
+    fn rendered_pdf(svg: &str, encrypted: bool) -> String {
         let doc = r#"{"version":1,"fonts":[{"id":"Inter-Regular","family":"Inter"},
               {"id":"VertTest","family":"VertTest"}],
             "pages":[{"size":{"width":200,"height":200},"children":[
@@ -1685,7 +1767,14 @@ mod tests {
         let fonts = crate::test_fixtures::fonts(&["Inter-Regular", "VertTest"]);
         let mut images = crate::ImageStore::new();
         images.insert("svg", svg.as_bytes().to_vec());
-        let opts = crate::RenderOptions::default().with_compress(false);
+        let mut opts = crate::RenderOptions::default().with_compress(false);
+        if encrypted {
+            opts = opts.with_encryption(crate::Encryption {
+                user_password: Some("user".into()),
+                owner_password: None,
+                permissions: None,
+            });
+        }
         let pdf = crate::render(
             doc.as_bytes(),
             crate::InputFormat::Json,
@@ -1694,9 +1783,11 @@ mod tests {
             &images,
         )
         .unwrap();
-        let out = inflated(&pdf);
-        let form = out.split("/Subtype /Form").nth(1).expect(&out);
-        form.split("endobj").next().unwrap().to_string()
+        if encrypted {
+            // Its dictionaries are as written; its streams cannot be read.
+            return String::from_utf8_lossy(&pdf).into_owned();
+        }
+        inflated(&pdf)
     }
 
     /// The text matrices of `form`, and the glyphs each shows (two bytes a
@@ -1782,14 +1873,37 @@ mod tests {
         let [(up1, 1), (side, 1), (up2, 1)] = shown[..] else {
             panic!("{form}");
         };
-        // Upright, centred on x = 50, going down.
+        // Upright, from points on x = 50, going down.
         assert_eq!(up1[..4], [10.0, 0.0, 0.0, -10.0], "{form}");
         assert_eq!(up2[..4], up1[..4], "{form}");
-        assert_eq!((up1[4], up2[4]), (45.0, 45.0), "{form}");
+        assert_eq!((up1[4], up2[4]), (50.0, 50.0), "{form}");
         assert!(up1[5] < side[5] && side[5] < up2[5], "{form}");
         // Sideways: no trace of rounding in the matrix.
         assert_eq!(side[..4], [0.0, 10.0, 10.0, 0.0], "{form}");
         assert!(form.contains("0 10 10 0 "), "{form}");
+    }
+
+    /// Upright glyphs down one column share a `TJ` in the font's vertical
+    /// font, which has the font's vertical metrics.
+    #[test]
+    fn draws_a_column_in_a_vertical_font() {
+        let body = r#"<text x="50" y="5" font-family="VertTest" font-size="10" writing-mode="vertical-rl">縦書<tspan dy="3">縦</tspan></text>"#;
+        let out = rendered_pdf(&svg(body), false);
+        let form = out.split("/Subtype /Form").nth(1).expect(&out);
+        // The shift is an adjustment: positive, as down is negative in
+        // text space.
+        assert_eq!(
+            shown(form),
+            [([10.0, 0.0, 0.0, -10.0, 50.0, 5.0], 3)],
+            "{form}"
+        );
+        assert!(form.contains(") 300 ("), "{form}");
+        // The font's own metrics, none of a glyph.
+        assert!(out.contains("/Encoding /Identity-V"), "{out}");
+        assert!(out.contains("/DW2 [880 -1000]"), "{out}");
+        assert!(!out.contains("/W2"), "{out}");
+        let encrypted = rendered_pdf(&svg(body), true);
+        assert!(encrypted.contains("/Identity-V"));
     }
 
     /// Horizontal text reads as drawn: no span, one run.

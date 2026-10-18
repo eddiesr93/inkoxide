@@ -239,9 +239,15 @@ Vertical text shapes its upright runs top to bottom (`ParaStyle::vertical`,
 the font's `vmtx`, `VORG` and `vert`) and its sideways runs as horizontal
 text, by the Unicode vertical orientation (`text/vertical.rs`, generated);
 text on a path follows the geometry `images/svg_text/path.rs` reads from
-the XML, with an arc-length table.
+the XML, with an arc-length table. A `use` that gives the text it names
+other font properties gets a copy of that element, laid out with the
+`use`'s cascade, written into the SVG under an id of its own, which the
+`use` names instead (`UseCopy`).
 usvg resolves the probes' paint; the PDF writer draws each probe's text in
-its place as PDF text (`pdf/svg.rs`). See
+its place as PDF text (`pdf/svg.rs`). Upright glyphs down a column share a
+`TJ` in the font's `Identity-V` Type0 font, over the same descendant, whose
+`DW2` is the font's most common vertical metrics: the adjustments place
+each glyph, so no metrics of a glyph are written. See
 [ADR 0001](adr/0001-svg-text-probes.md).
 
 `TextCache` is the layout engine's `LeafMeasure` for text nodes: Taffy asks

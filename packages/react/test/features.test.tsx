@@ -1871,7 +1871,9 @@ describe('drawings', () => {
         ),
       ).message,
     ).toContain('<Tspan> goes inside a <Text> in an <Svg>');
-    expect(svg(<Text style={{ color: 'red' }}>a</Text>)).toContain('style applies to <Text> outside <Svg>');
+    expect(svg(<Text style={{ padding: 2 } as never}>a</Text>)).toContain(
+      'style on <Text> inside <Svg> does not take padding',
+    );
     expect(svg(<Text fontWeight={'heavyish' as never}>a</Text>)).toContain('fontWeight "heavyish"');
   });
 
@@ -2690,18 +2692,18 @@ describe('props and style values that would do nothing', () => {
     );
   });
 
-  it('rejects style, className and layout props on the shapes of an Svg', () => {
+  it('rejects layout props, and style and classes that do not draw, on the shapes of an Svg', () => {
     const svg = (shape: ReactNode) => () =>
       tree(
         <Svg width={20} height={20}>
           {shape}
         </Svg>,
       );
-    expect(thrown(svg(<Rect width={5} height={5} {...{ className: 'fill-red-500' }} />)).message).toBe(
-      '<Rect> inside <Svg> does not take className: it takes SVG attributes (fill, stroke, strokeWidth, …).',
+    expect(thrown(svg(<Rect width={5} height={5} className="fill-red-500 p-2" />)).message).toBe(
+      'className="fill-red-500 p-2" on <Rect> inside <Svg>: paddingTop, paddingRight, paddingBottom, paddingLeft do not apply to a drawing, which takes fill-*, stroke-*, stroke-<n>, opacity-*, a text colour and font utilities.',
     );
-    expect(thrown(svg(<Circle r={2} {...{ style: { fill: 'red' } }} />)).message).toContain(
-      '<Circle> inside <Svg> does not take style',
+    expect(thrown(svg(<Circle r={2} style={{ margin: 1 } as never} />)).message).toContain(
+      'style on <Circle> inside <Svg> does not take margin',
     );
     expect(thrown(svg(<Rect width={5} height={5} {...{ bookmark: 'Box' }} />)).message).toBe(
       '<Rect> inside <Svg> does not take `bookmark`: put it on the <Svg>.',
@@ -2720,6 +2722,35 @@ describe('props and style values that would do nothing', () => {
     );
     expect(node.bookmark).toEqual({ title: 'Chart' });
     expect(decode(node.data)).not.toMatch(/bookmark|presence|wrap=/);
+  });
+
+  it('draws the shapes and text of an Svg with their classes and style, over their attributes', () => {
+    const r = tree(
+      <Svg width={40} height={20} className="fill-[#0000ff] stroke-2">
+        <Rect width={5} height={5} fill="black" className="fill-[#ff0000] opacity-50" />
+        <Circle r={2} fill="black" className="fill-[#ff0000]" style={{ fill: 'teal', strokeWidth: 3 }} />
+        <G className="stroke-current text-[#00ff00] fill-none">
+          <Path d="M0 0L5 5" />
+        </G>
+        <Text x={1} y={15} className="text-xs font-bold underline" style={{ letterSpacing: 1 }}>
+          a
+        </Text>
+      </Svg>,
+    );
+    const svg = decode(first<ImageNode>(r).data);
+    // The drawing inherits the paint of the Svg's own classes.
+    expect(svg).toMatch(/<svg [^>]* fill="rgb\(0,0,255\)" stroke-width="2" font-size="10">/);
+    expect(svg).toContain('<rect width="5" height="5" fill="rgb(255,0,0)" opacity="0.5"/>');
+    expect(svg).toContain('<circle r="2" fill="teal" stroke-width="3"/>');
+    expect(svg).toContain('<g fill="none" stroke="currentColor" color="rgb(0,255,0)">');
+    expect(svg).toMatch(
+      /<text x="1" y="15" font-size="9" text-decoration="underline" letter-spacing="1" font-family="[^"]+" font-weight="700">a<\/text>/,
+    );
+    expect(r.validate()).toEqual([]);
+    // Outside an Svg they draw nothing.
+    expect(thrown(() => tree(<View className="fill-[#ff0000]" />)).message).toBe(
+      'fill (from className="fill-[#ff0000]") applies to an <Svg> and the elements inside it, not <View>.',
+    );
   });
 
   it('keeps the components around a render prop in the stack of an error inside it', () => {

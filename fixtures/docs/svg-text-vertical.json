@@ -57,6 +57,16 @@
        "top": 12
       }
      }
+    },
+    {
+     "type": "image",
+     "src": "text-vertical-path",
+     "style": {
+      "width": 480,
+      "margin": {
+       "top": 12
+      }
+     }
     }
    ]
   }

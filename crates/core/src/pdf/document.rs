@@ -58,8 +58,8 @@ impl PdfWriterSink {
         let tree = write_page_tree(&mut w, &page_refs);
 
         let opacities = self.write_opacities(&mut w, doc)?;
-        let font_refs = self.write_fonts(&mut w, doc, fonts)?;
-        let image_refs = self.write_images(&mut w, doc, &font_refs)?;
+        let (font_refs, vertical) = self.write_fonts(&mut w, doc, fonts)?;
+        let image_refs = self.write_images(&mut w, doc, (&font_refs, &vertical))?;
         let type3 = self.write_type3(&mut w, doc, &image_refs)?;
         let res = Resources {
             opacities,
@@ -138,14 +138,16 @@ impl PdfWriterSink {
         Ok(opacities)
     }
 
-    /// The fonts, each with the glyphs the document uses.
+    /// The fonts, each with the glyphs the document uses, and the
+    /// vertical fonts of those SVG text draws upright.
     fn write_fonts(
         &self,
         w: &mut Writer,
         doc: &DocumentOut<'_>,
         fonts: &FontPrograms,
-    ) -> Result<BTreeMap<FontKey, Ref>, InkoxideError> {
+    ) -> Result<(BTreeMap<FontKey, Ref>, svg::VerticalFonts), InkoxideError> {
         let mut font_refs: BTreeMap<FontKey, Ref> = BTreeMap::new();
+        let mut vertical = svg::VerticalFonts::new();
         for ((key, glyphs), program) in fonts.used.iter().zip(&fonts.programs) {
             // Glyphs laid out keep their text; field glyphs add theirs.
             let mut unicode = doc.unicode.font_with(*key, &fonts.field_text);
@@ -168,11 +170,15 @@ impl PdfWriterSink {
                 program,
                 used: glyphs,
                 unicode: unicode.as_deref(),
+                vertical: fonts.vertical.contains(key),
             };
-            let r = font::write_font(w, &embedded, self.profile)?;
-            font_refs.insert(*key, r);
+            let refs = font::write_font(w, &embedded, self.profile)?;
+            font_refs.insert(*key, refs.horizontal);
+            if let Some(v) = refs.vertical {
+                vertical.insert(*key, v);
+            }
         }
-        Ok(font_refs)
+        Ok((font_refs, vertical))
     }
 
     /// Images: one `XObject` per unique image actually painted, those SVG
@@ -181,11 +187,11 @@ impl PdfWriterSink {
         &self,
         w: &mut Writer,
         doc: &DocumentOut<'_>,
-        font_refs: &BTreeMap<FontKey, Ref>,
+        (font_refs, vertical): (&BTreeMap<FontKey, Ref>, &svg::VerticalFonts),
     ) -> Result<BTreeMap<ImageKey, Ref>, InkoxideError> {
         let mut image_refs: BTreeMap<ImageKey, Ref> = BTreeMap::new();
         let text_images: BTreeSet<ImageKey> =
-            svg_text_uses(doc).flat_map(|(_, images)| images).collect();
+            svg_text_uses(doc).flat_map(|uses| uses.images).collect();
         // And those the Type 3 fonts of colour glyphs draw.
         let type3 = doc.colors.type3();
         let glyph_images = type3_used(doc)
@@ -202,6 +208,7 @@ impl PdfWriterSink {
             let res = svg::TextResources {
                 ink: text_ink(doc),
                 refs: font_refs,
+                vertical,
                 image_refs: &image_refs,
             };
             let r = image::write_image(w, doc.images.get(key), self.profile, Some(res))?;

@@ -103,6 +103,7 @@ fn stub(text: &SvgText) -> LaidText {
                 paint,
                 text: (0, 0),
                 char: 0,
+                upright: false,
             })
             .collect(),
         decorations: Vec::new(),
@@ -166,6 +167,42 @@ fn copies_by_use_inherit_their_paint() {
     assert_eq!(
         probes_of(r##"<symbol id="s"><text fill="red">a</text></symbol><use href="#s"/>"##),
         [found(0, 0, RED, None)]
+    );
+}
+
+/// A `use` that gives the text it copies other fonts draws a copy of
+/// its own, with its own texts; one that gives it nothing new draws the
+/// text where it is.
+#[test]
+fn copies_by_use_with_fonts_of_their_own_draw_their_own_texts() {
+    assert_eq!(
+        probes_of(
+            r##"<defs><g id="g"><text>a</text><text fill="blue">b</text></g></defs>
+               <use href="#g" font-size="30" fill="red"/><use href="#g" fill="red"/>
+               <use href="#g" font-size="30" fill="blue"/>"##
+        ),
+        [
+            found(2, 0, RED, None),
+            found(3, 0, BLUE, None),
+            found(0, 0, RED, None),
+            found(1, 0, BLUE, None),
+            found(4, 0, BLUE, None),
+            found(5, 0, BLUE, None),
+        ]
+    );
+    assert_eq!(
+        probes_of(
+            r##"<defs><text id="t">a</text></defs>
+               <use href="#t" style="font-family:Mono" fill="red"/>"##
+        ),
+        [found(1, 0, RED, None)]
+    );
+    assert_eq!(
+        probes_of(
+            r##"<symbol id="s" viewBox="0 0 10 10"><text fill="red">a</text></symbol>
+               <use href="#s" font-weight="bold" width="20" height="20"/>"##
+        ),
+        [found(1, 0, RED, None)]
     );
 }
 

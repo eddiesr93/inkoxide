@@ -834,6 +834,42 @@ impl LoadedFont<'_> {
             f32::from(b.y_max),
         ])
     }
+
+    /// The vertical metrics most of the font's glyphs are shaped upright
+    /// with, in font units: how far below its point in a column a glyph's
+    /// baseline is, and how far down the next point is. Each glyph's are
+    /// read as shaping reads them: from `VORG` and `vmtx`, or else from
+    /// its box and the line height.
+    pub fn vertical_metrics(&self) -> (f32, f32) {
+        let f = &self.face;
+        let (ascender, descender) = (i32::from(f.ascender()), i32::from(f.descender()));
+        let line = ascender - descender;
+        let vmtx = f.tables().vmtx.is_some();
+        let mut origins: BTreeMap<i32, usize> = BTreeMap::new();
+        let mut advances: BTreeMap<i32, usize> = BTreeMap::new();
+        for g in 0..f.number_of_glyphs() {
+            let id = ttf_parser::GlyphId(g);
+            let advance = f.glyph_ver_advance(id).map_or(line, i32::from);
+            *advances.entry(advance).or_default() += 1;
+            let origin = f.glyph_y_origin(id).map(i32::from).or_else(|| {
+                let b = f.glyph_bounding_box(id)?;
+                let (top, bottom) = (i32::from(b.y_max), i32::from(b.y_min));
+                Some(if vmtx {
+                    top + f.glyph_ver_side_bearing(id).map_or(0, i32::from)
+                } else {
+                    top + ((line - (top - bottom)) >> 1)
+                })
+            });
+            *origins.entry(origin.unwrap_or(ascender)).or_default() += 1;
+        }
+        let most = |counts: BTreeMap<i32, usize>, or: i32| {
+            counts
+                .into_iter()
+                .max_by_key(|&(v, n)| (n, std::cmp::Reverse(v)))
+                .map_or(or, |(v, _)| v)
+        };
+        (most(origins, ascender) as f32, most(advances, line) as f32)
+    }
 }
 
 /// A declared face as CSS matching sees it: its family, the weights and

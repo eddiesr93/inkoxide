@@ -17,6 +17,7 @@ const MAIN_VALUES = [
   'PT_PER_PX',
   'PT_PER_REM',
   'PT_PER_UNIT',
+  'SVG_ONLY',
   'TEXT_INHERITED',
   'TEXT_ONLY',
   'UnsupportedValueError',
