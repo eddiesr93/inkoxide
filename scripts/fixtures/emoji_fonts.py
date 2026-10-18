@@ -27,7 +27,6 @@ fails when it differs, so edit this script, not the fonts.
 
   scripts/fixtures/emoji_fonts.py
 """
-import gzip
 import math
 import pathlib
 import struct
@@ -374,6 +373,16 @@ def png(w, h, pixel):
             + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
 
 
+def gzip_member(data):
+    """`data` as a gzip member with a fixed header. gzip.compress(mtime=0)
+    lets zlib write the header in Python 3.11 and 3.12, whose OS byte then
+    depends on the platform (3 on Linux), so the font would differ by machine."""
+    deflate = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS)
+    body = deflate.compress(data) + deflate.flush()
+    return (b"\x1f\x8b\x08\x00" + bytes(4) + b"\x02\xff" + body
+            + struct.pack("<II", zlib.crc32(data), len(data) & 0xFFFFFFFF))
+
+
 PX = 64  # bitmap size and strike ppem
 
 
@@ -718,7 +727,7 @@ def svg_font():
         "</g></svg>"
     )
     docs = [
-        (gid["grin"], gid["grin"], gzip.compress(grin.encode(), mtime=0)),
+        (gid["grin"], gid["grin"], gzip_member(grin.encode())),
         (gid["heart"], gid["star"], pair.encode()),
         (gid["thumbs"], gid["flag"], nested.encode()),
     ]
