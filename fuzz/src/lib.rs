@@ -95,6 +95,22 @@ const FIXTURE_FONTS: &[(&str, &str, u16, &str, &[u8])] = &[
         "normal",
         include_bytes!("../../fixtures/fonts/VarTest-opsz.ttf"),
     ),
+    // Layout tables that vary (`rvrn`, kerning with a variation device) and
+    // a COLR v1 square whose colour varies (`PaintVarSolid`).
+    (
+        "VarTest-layout",
+        "VarTest Layout",
+        400,
+        "normal",
+        include_bytes!("../../fixtures/fonts/VarTest-layout.ttf"),
+    ),
+    (
+        "VarTest-COLRv1",
+        "VarTest COLRv1",
+        400,
+        "normal",
+        include_bytes!("../../fixtures/fonts/VarTest-COLRv1.ttf"),
+    ),
     // Vertical metrics (vhea, vmtx, VORG) and vertical forms (`vert`).
     (
         "VertTest",
@@ -247,8 +263,9 @@ pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {
 ///
 /// On a finding.
 pub fn check(doc: &[u8]) {
-    // Most inputs also go through the PDF/A writer.
-    let _ = check_with(doc, &FONTS, &IMAGES, pdf_a_level(doc.len()));
+    // Most inputs also go through the PDF/A writer, and some render tagged.
+    let (pdf_a, tagged) = (pdf_a_level(doc.len()), tagging(doc.len()));
+    let _ = check_with(doc, &FONTS, &IMAGES, pdf_a, tagged);
 }
 
 /// Above this size the JSON render is not rendered again, encrypted and
@@ -257,17 +274,18 @@ pub fn check(doc: &[u8]) {
 /// renders of those take longer than the fuzzer's timeout.
 const RERENDER_LIMIT: usize = 8 << 20;
 
-/// The oracle of [`check`], with the given stores and PDF/A level:
-/// validates and renders the JSON `doc`, encrypted too when `pdf_a` is
-/// `None`, and as `MessagePack` (both only up to [`RERENDER_LIMIT`]).
-/// Returns the JSON render.
+/// The oracle of [`check`], with the given stores, PDF/A level and
+/// tagging ([`tagging`]): validates and renders the JSON `doc`, encrypted
+/// too when `pdf_a` is `None`, and as `MessagePack` (both only up to
+/// [`RERENDER_LIMIT`]). Returns the JSON render.
 fn check_with(
     doc: &[u8],
     fonts: &FontStore,
     images: &ImageStore,
     pdf_a: Option<PdfALevel>,
+    tagged: Option<bool>,
 ) -> Result<Vec<u8>, InkoxideError> {
-    let json = render_with(doc, InputFormat::Json, fonts, images, pdf_a);
+    let json = render_with(doc, InputFormat::Json, fonts, images, pdf_a, tagged);
     if json.as_ref().is_ok_and(|pdf| pdf.len() > RERENDER_LIMIT) {
         return json;
     }
@@ -284,7 +302,14 @@ fn check_with(
     };
     // Only a document JSON accepts has to round-trip: the `Value` detour
     // drops duplicate keys, which JSON parsing rejects.
-    let msgpack = render_with(&packed, InputFormat::MessagePack, fonts, images, pdf_a);
+    let msgpack = render_with(
+        &packed,
+        InputFormat::MessagePack,
+        fonts,
+        images,
+        pdf_a,
+        tagged,
+    );
     if let Ok(a) = &json {
         match &msgpack {
             Ok(b) => assert!(a == b, "MessagePack output differs from JSON"),
@@ -317,10 +342,21 @@ const INSTANCES: &[(&str, &str, u16, &str)] = &[
     ),
 ];
 
+/// The declarations `fixture_fonts` adds to the fixture fonts and the
+/// [`INSTANCES`], which runs pick by id: a variable font's weights and
+/// widths (SVG text draws at its own), an `opsz` font at a width of its
+/// own with the optical size opted out, and the layout and colour fonts at
+/// their boldest.
+const OTHER_FONTS: &[&str] = &[
+    "VarTest-range",
+    "VarTest-fixed",
+    "VarLayout-900",
+    "VarCOLRv1-900",
+];
+
 /// The `fonts` of a document that declares every fixture font, the
-/// [`INSTANCES`], a variable font's weights and widths, which SVG text
-/// draws at its own and runs at their size's optical size, and an `opsz`
-/// font at a width of its own, drawn at its default optical size.
+/// [`INSTANCES`] and the [`OTHER_FONTS`]; runs draw a variable font at the
+/// optical size of their font size, unless the declaration opts out.
 fn fixture_fonts() -> Vec<Value> {
     let fonts = FIXTURE_FONTS
         .iter()
@@ -335,7 +371,14 @@ fn fixture_fonts() -> Vec<Value> {
         "weightRange": [100, 900], "stretchRange": [50, 100]});
     let fixed = json!({"id": "VarTest-fixed", "family": "VarFixed", "source": "VarTest-opsz",
         "stretch": 75, "opticalSizing": "none"});
-    fonts.chain(instances).chain([ranged, fixed]).collect()
+    let layout = json!({"id": "VarLayout-900", "family": "VarLayout", "weight": 900,
+        "source": "VarTest-layout", "variations": {"wght": 900}});
+    let colour = json!({"id": "VarCOLRv1-900", "family": "VarCOLRv1", "weight": 900,
+        "source": "VarTest-COLRv1", "variations": {"wght": 900}});
+    fonts
+        .chain(instances)
+        .chain([ranged, fixed, layout, colour])
+        .collect()
 }
 
 /// Renders `doc` encrypted: it must render exactly when `plain`, its
@@ -413,7 +456,8 @@ pub fn check_image(bytes: &[u8]) -> Result<(), InkoxideError> {
         ]}]
     })
     .to_string();
-    check_with(doc.as_bytes(), &FONTS, &images, pdf_a_level(bytes.len())).map(|_| ())
+    let (pdf_a, tagged) = (pdf_a_level(bytes.len()), tagging(bytes.len()));
+    check_with(doc.as_bytes(), &FONTS, &images, pdf_a, tagged).map(|_| ())
 }
 
 /// Registers arbitrary bytes as a font, as they are and with the WOFF and
@@ -438,13 +482,15 @@ pub fn check_font(bytes: &[u8]) -> usize {
     // an axis it may lack.
     let doc = r#"{"version":1,"meta":{"title":"Fuzz-Font"},"fonts":[{"id":"fz","family":"Fz"},{"id":"Inter-Regular","family":"Inter"},
         {"id":"fzv","family":"Fz","weight":900,"source":"fz","variations":{"wght":900,"wdth":50,"opsz":72,"slnt":-90}},
-        {"id":"fzr","family":"Fzr","source":"fz","weightRange":[1,1000],"stretchRange":[1,1000]}],
+        {"id":"fzr","family":"Fzr","source":"fz","weightRange":[1,1000],"stretchRange":[1,1000]},
+        {"id":"fzo","family":"Fzo","source":"fz","opticalSizing":"none"}],
         "fallbackFonts":["fz"],"pages":[{"size":{"width":300,"height":200},"children":[
         {"type":"text","runs":[{"text":"Hello, world! 0123 Äß של fi\u00ad😀","font":"fz","size":12}]},
         {"type":"text","runs":[{"text":"Variable 0123 Äß","font":"fzv","size":12}]},
-        {"type":"text","runs":[{"text":"Optical 0123","font":"fzr","size":7},{"text":"Optical","font":"fzr","size":48}]},
+        {"type":"text","runs":[{"text":"Optical 0123","font":"fzr","size":7},{"text":"Optical","font":"fzr","size":48},{"text":"Optical","font":"fzo","size":48}]},
         {"type":"text","runs":[{"text":"😀 👩‍💻 🇫🇷 1️⃣ #⃣ 👍🏽 ❤️ ☺︎ 🏴󠁧󠁢󠁥󠁮󠁧󠁿","font":"Inter-Regular","size":12}]}]}]}"#;
     let pdf_a = pdf_a_level(bytes.len());
+    let tagged = tagging(bytes.len());
     let mut registered = 0;
     for v in variants {
         let mut fonts = FontStore::new();
@@ -452,7 +498,7 @@ pub fn check_font(bytes: &[u8]) -> usize {
         fonts.register("Inter-Regular", inter.to_vec()).unwrap();
         if fonts.register("fz", v).is_ok() {
             registered += 1;
-            let rendered = check_with(doc.as_bytes(), &fonts, &IMAGES, pdf_a);
+            let rendered = check_with(doc.as_bytes(), &fonts, &IMAGES, pdf_a, tagged);
             // Without subsetting, the PDF embeds each font, and each
             // instance, whole: no panic, and a render as the subset one.
             let options = RenderOptions::default()
@@ -789,13 +835,25 @@ fn pdf_a_level(len: usize) -> Option<PdfALevel> {
     }
 }
 
+/// Whether an input of `len` bytes also renders tagged, and as PDF/UA-1
+/// (`Some(true)`): a quarter of the inputs, half of those as PDF/UA. It
+/// reads the bits above the two [`pdf_a_level`] reads, so tagging meets
+/// every PDF/A level.
+fn tagging(len: usize) -> Option<bool> {
+    match (len / 4) % 8 {
+        0 => Some(false),
+        1 => Some(true),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 fn render(
     doc: &[u8],
     format: InputFormat,
     pdf_a: Option<PdfALevel>,
 ) -> Result<Vec<u8>, InkoxideError> {
-    render_with(doc, format, &FONTS, &IMAGES, pdf_a)
+    render_with(doc, format, &FONTS, &IMAGES, pdf_a, tagging(doc.len()))
 }
 
 fn render_with(
@@ -804,6 +862,7 @@ fn render_with(
     fonts: &FontStore,
     images: &ImageStore,
     pdf_a: Option<PdfALevel>,
+    tagged: Option<bool>,
 ) -> Result<Vec<u8>, InkoxideError> {
     let errors = inkoxide::validate(doc, format, fonts, images);
     let mut options = RenderOptions::default()
@@ -824,15 +883,14 @@ fn render_with(
             result.as_ref().map(|_| ())
         );
     }
-    // Tagging changes what is written, not what renders: a quarter of the
-    // documents render tagged too, and both render or fail alike; as
-    // PDF/UA, only `UA_CONFLICT` may refuse more.
-    if doc.len() % 4 == 1 {
-        let ua = doc.len() % 8 == 1;
-        let tagged = options.clone().with_tagged(true).with_pdf_ua(ua);
-        let other = inkoxide::render(doc, format, &tagged, fonts, images);
+    // Tagging changes what is written, not what renders: some inputs
+    // render tagged too ([`tagging`], at any PDF/A level), and both render
+    // or fail alike; as PDF/UA, only `UA_CONFLICT` may refuse more.
+    if let Some(ua) = tagged {
+        let with_tags = options.clone().with_tagged(true).with_pdf_ua(ua);
+        let other = inkoxide::render(doc, format, &with_tags, fonts, images);
         match (&result, &other) {
-            (Ok(_), Ok(pdf)) => assert!(pdf.starts_with(b"%PDF-")),
+            (Ok(_), Ok(pdf)) => check_pdf(pdf, pdf_a.is_some()),
             (_, Err(InkoxideError::Validation(e)))
                 if ua && e.code == ValidationCode::UaConflict => {}
             (Err(a), Err(b)) => assert_eq!(a.code(), b.code(), "tagged: {b}; untagged: {a}"),
@@ -849,9 +907,7 @@ fn render_with(
                 errors.is_empty(),
                 "rendered a document validate rejects: {errors:?}"
             );
-            assert!(pdf.starts_with(b"%PDF-") && pdf.trim_ascii_end().ends_with(b"%%EOF"));
-            assert_finite_numbers(pdf, true);
-            check_scripts(pdf, pdf_a.is_some());
+            check_pdf(pdf, pdf_a.is_some());
         }
         // `validate` does not know the PDF/A level: every level rejects
         // valid documents with a page side under 3 points, PDF/A-1b those
@@ -889,9 +945,31 @@ fn render_with(
             !m.contains("does not allow transparency"),
             "validation missed transparency: {m}"
         ),
+        // A panic the engine caught: the fuzzer's hook aborts at it, but
+        // `repro` has none, and must not call it "ok".
+        Err(e) if engine_panicked(e) => panic!("{e}"),
         Err(_) => {}
     }
     result
+}
+
+/// Whether `e` is a panic the engine caught and returned: `INTERNAL`, or
+/// a `FONT_ERROR` from the shaper.
+fn engine_panicked(e: &InkoxideError) -> bool {
+    match e {
+        InkoxideError::Internal(_) => true,
+        InkoxideError::Font(m) => m.contains("the shaper panicked"),
+        _ => false,
+    }
+}
+
+/// What every PDF the oracle gets must be, tagged or not: complete, with
+/// no `inf` or `NaN` operand, and with only standard form scripts (none at
+/// PDF/A).
+fn check_pdf(pdf: &[u8], pdf_a: bool) {
+    assert!(pdf.starts_with(b"%PDF-") && pdf.trim_ascii_end().ends_with(b"%%EOF"));
+    assert_finite_numbers(pdf, true);
+    check_scripts(pdf, pdf_a);
 }
 
 /// PDF whitespace and delimiters.
@@ -1508,6 +1586,9 @@ const WORDS: &[&str] = &[
     "AV",
     "-",
     "\u{feff}",
+    // The glyphs of VarTest-COLRv1 and VarTest-layout (`rvrn` turns I into L).
+    "\u{25A0}",
+    "TOI",
     "",
 ];
 
@@ -1549,13 +1630,12 @@ fn link(s: &mut Src) -> Value {
 /// A fixture font, or one the document does not declare.
 fn font(s: &mut Src) -> Value {
     let declared = FIXTURE_FONTS.len() + INSTANCES.len();
-    let i = s.below(declared + 3);
+    let i = s.below(declared + OTHER_FONTS.len() + 1);
     let font = FIXTURE_FONTS
         .get(i)
         .map(|f| f.0)
         .or_else(|| INSTANCES.get(i - FIXTURE_FONTS.len()).map(|f| f.0))
-        .or_else(|| (i == declared).then_some("VarTest-range"))
-        .or_else(|| (i == declared + 1).then_some("VarTest-fixed"))
+        .or_else(|| OTHER_FONTS.get(i - declared).copied())
         .unwrap_or("Missing");
     json!(font)
 }
@@ -2842,6 +2922,46 @@ mod tests {
         }
     }
 
+    /// Tagging is picked apart from the PDF/A level, so every level also
+    /// renders tagged and as PDF/UA, and a tagged PDF gets the checks of
+    /// an untagged one.
+    #[test]
+    fn tagged_renders_meet_every_pdf_a_level() {
+        let mut modes = Vec::new();
+        for len in 0..64 {
+            let mode = (pdf_a_level(len), tagging(len));
+            if !modes.contains(&mode) {
+                modes.push(mode);
+            }
+        }
+        // Four PDF/A levels (or none) by plain, tagged and PDF/UA.
+        assert_eq!(modes.len(), 4 * 3, "{modes:?}");
+        let doc = br#"{"version":1,"meta":{"title":"Tagged","lang":"en"},"fonts":[{"id":"Inter-Regular","family":"Inter"}],
+            "pages":[{"size":{"width":100,"height":100},"children":[{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":9}]}]}]}"#;
+        for (pdf_a, tagged) in modes {
+            render_with(doc, InputFormat::Json, &FONTS, &IMAGES, pdf_a, tagged).unwrap();
+        }
+        let sound = b"%PDF-1.7\n1 0 obj\n<< /BBox [0 0 5 5] >>\nendobj\n%%EOF";
+        let bad = b"%PDF-1.7\n1 0 obj\n<< /BBox [0 0 NaN 5] >>\nendobj\n%%EOF";
+        check_pdf(sound, false);
+        assert!(std::panic::catch_unwind(|| check_pdf(bad, false)).is_err());
+    }
+
+    /// A panic the engine caught is a finding, as it is under the fuzzer's
+    /// abort hook; other errors are not.
+    #[test]
+    fn a_caught_panic_is_a_finding() {
+        let internal = InkoxideError::Internal("the engine panicked: x".into());
+        let shaper = InkoxideError::Font(
+            "font `a`: the shaper panicked; the font's layout tables may be malformed".into(),
+        );
+        let limit =
+            InkoxideError::Font("font `a`: the text shaped to more than 4194304 glyphs".into());
+        assert!(engine_panicked(&internal) && engine_panicked(&shaper));
+        assert!(!engine_panicked(&limit));
+        assert!(!engine_panicked(&InkoxideError::Image("x".into())));
+    }
+
     /// The `render_json` seeds (`fixtures/docs`) validate with the
     /// harness's fonts and images, so they reach layout.
     #[test]
@@ -2954,8 +3074,14 @@ mod tests {
             // and in CFF2.
             r#""font":"VarTest-max""#,
             r#""font":"VarCFF2-100""#,
-            // A declaration with `stretch` and `opticalSizing: "none"`.
+            // The optical size opted out, a width of its own, and the
+            // variable layout and colour fonts at an instance.
+            r#""opticalSizing":"none""#,
+            r#""stretch":75"#,
             r#""font":"VarTest-fixed""#,
+            r#""font":"VarLayout-900""#,
+            r#""font":"VarCOLRv1-900""#,
+            "\u{25A0}",
             // Files, their icons and the PDF/A metadata that describes them.
             r#""type":"attachment""#,
             r#""attachments":[{"#,

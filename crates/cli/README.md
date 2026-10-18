@@ -12,9 +12,9 @@ cargo install inkoxide-cli
 # (Inter-Regular.ttf is the font Inter-Regular).
 inkoxide render invoice.json --fonts fonts/ --images images/ -o invoice.pdf
 
-# Validate: prints every problem, with its path (--json for a JSON array).
-# With --pdf-a, --pdf-ua, --flatten-alpha or --attachments, also what a
-# render with them would refuse.
+# Validate: prints the problems found (at most 100), each with its path
+# (--json for a JSON array). With --pdf-a, --pdf-ua, --flatten-alpha or
+# --attachments, also what a render with them would refuse.
 inkoxide validate invoice.json --fonts fonts/ --pdf-a=1b
 
 # Render repeatedly and report timings.

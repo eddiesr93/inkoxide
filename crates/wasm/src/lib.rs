@@ -234,6 +234,8 @@ pub extern "C" fn ink_alloc(len: usize) -> *mut u8 {
 /// As [`take`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ink_free(ptr: *mut u8, len: usize) {
+    // SAFETY: the caller upholds this function's contract: a buffer from
+    // `ink_alloc` that no call took.
     drop(unsafe { take(ptr, len) });
 }
 
@@ -267,6 +269,7 @@ pub unsafe extern "C" fn ink_register_font(
     data: *mut u8,
     data_len: usize,
 ) -> u32 {
+    // SAFETY: buffers from `ink_alloc`, each passed once.
     let (id, data) = unsafe { (take(id, id_len), take(data, data_len)) };
     finish(register_font(&id, &data).map(|()| Vec::new()))
 }
@@ -278,6 +281,7 @@ pub unsafe extern "C" fn ink_register_font(
 /// As [`take`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ink_unregister_font(id: *mut u8, id_len: usize) -> u32 {
+    // SAFETY: a buffer from `ink_alloc`, passed once.
     let id = unsafe { take(id, id_len) };
     u32::from(unregister_font(&id))
 }
@@ -294,6 +298,7 @@ pub unsafe extern "C" fn ink_register_hyphenation_patterns(
     data: *mut u8,
     data_len: usize,
 ) -> u32 {
+    // SAFETY: buffers from `ink_alloc`, each passed once.
     let (lang, data) = unsafe { (take(lang, lang_len), take(data, data_len)) };
     finish(register_hyphenation_patterns(&lang, &data).map(|()| Vec::new()))
 }
@@ -308,6 +313,7 @@ pub unsafe extern "C" fn ink_unregister_hyphenation_patterns(
     lang: *mut u8,
     lang_len: usize,
 ) -> u32 {
+    // SAFETY: a buffer from `ink_alloc`, passed once.
     let lang = unsafe { take(lang, lang_len) };
     u32::from(unregister_hyphenation_patterns(&lang))
 }
@@ -335,6 +341,7 @@ pub unsafe extern "C" fn ink_validate(
     files_len: usize,
     has_options: u32,
 ) -> u32 {
+    // SAFETY: buffers from `ink_alloc`, each passed once.
     let (doc, format, images, options, files) = unsafe {
         (
             take(doc, doc_len),
@@ -365,6 +372,7 @@ pub unsafe extern "C" fn ink_render(
     files: *mut u8,
     files_len: usize,
 ) -> u32 {
+    // SAFETY: buffers from `ink_alloc`, each passed once.
     let (doc, options, images, files) = unsafe {
         (
             take(doc, doc_len),
@@ -407,6 +415,7 @@ pub unsafe extern "C" fn ink_register_builtin_hyphenation(
     data: *mut u8,
     data_len: usize,
 ) -> u32 {
+    // SAFETY: buffers from `ink_alloc`, each passed once.
     let (file, data) = unsafe { (take(file, file_len), take(data, data_len)) };
     finish(register_builtin_hyphenation(&file, &data).map(|()| Vec::new()))
 }
@@ -418,6 +427,7 @@ pub unsafe extern "C" fn ink_register_builtin_hyphenation(
 /// As [`take`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ink_hyphenation_file(lang: *mut u8, lang_len: usize) -> u32 {
+    // SAFETY: a buffer from `ink_alloc`, passed once.
     let lang = unsafe { take(lang, lang_len) };
     finish(Ok(hyphenation_file(&lang).into_bytes()))
 }

@@ -320,7 +320,9 @@ the `ci` workflow builds them and runs clippy on them):
   sequences), which a colour font draws from its colour tables. Seeded with
   `fixtures/fonts`, its WOFF files and its malformed and limit fonts.
 
-All share one oracle: no panic; `render` succeeds only when `validate`
+All share one oracle: no panic (also one the engine catches and returns
+as `INTERNAL` or as the shaper's `FONT_ERROR`: the fuzzer aborts on a
+panic, and `repro` fails the oracle); `render` succeeds only when `validate`
 is clean and vice versa for validation errors, except `PDFA_CONFLICT`,
 which only a PDF/A-1b render reports (by input length, a quarter of the
 inputs render as plain PDF and a quarter at each PDF/A level); the
@@ -328,15 +330,16 @@ writer never refuses transparency at 1b, which would mean validation
 missed it (for SVG, that its scan disagrees with the writer). What only
 a render knows is not a finding either: PDF/A-2b refusing files, a file
 `src` the store lacks (`ATTACHMENT_NOT_REGISTERED`), and XMP extensions
-without PDF/A to go in. A quarter of the documents also render tagged
-(an eighth as PDF/UA-1), and render or fail as untagged does, with the
-same code; PDF/UA may refuse more only with `UA_CONFLICT`. Every
+without PDF/A to go in. A quarter of the inputs also render tagged (an
+eighth as PDF/UA-1), picked by their length apart from the PDF/A level,
+and render or fail as untagged does, with the same code; PDF/UA may
+refuse more only with `UA_CONFLICT`. Every
 form script (`/JS`, read from the parsed object syntax, so a script
 written as a hex string is checked and a document title that looks like
 one is not) is a call of a standard form function (`AFNumber_Format`
 and the like) with only integers, booleans and string literals as
 arguments, and PDF/A output has no scripts and no `/AA` (`check_scripts`);
-the output is a complete
+the output, tagged too, is a complete
 PDF with no `inf` or `NaN` operand in its object syntax or uncompressed
 content streams; a document that renders from JSON renders the same bytes
 from MessagePack (the image and font targets included), and a document
