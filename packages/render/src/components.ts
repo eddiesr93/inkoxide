@@ -84,6 +84,7 @@ export {
   Rect,
   type RectProps,
   type RenderProp,
+  type Role,
   Row,
   type RowProps,
   Select,

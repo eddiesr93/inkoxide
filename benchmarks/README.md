@@ -11,7 +11,7 @@ browser. The results are in [docs/BENCHMARKS.md](../docs/BENCHMARKS.md).
 | `invoice.tsx` | The invoice, styled with `className`, with its logo read from disk; run directly, it writes `invoice.pdf` |
 | `bench.tsx` | On the server: warm renders (median), one-thread renders and cold starts in fresh processes |
 | `cold.tsx` | One render in a fresh process, called by `bench.tsx` |
-| `browser/` | In the browser: a page (`index.html`, `main.tsx`) built with Vite, measured with Playwright in Chromium, WebKit and Firefox |
+| `browser/` | In the browser: a page (`index.html`, `main.tsx`) built with Vite and the `inkoxideTailwind()` build plugin, measured with Playwright in Chromium, WebKit and Firefox |
 
 From the repository root, after `pnpm install`, `scripts/build-node.sh` and
 `scripts/build-wasm.sh`:

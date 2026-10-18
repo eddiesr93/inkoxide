@@ -49,11 +49,10 @@ browser, are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 - **Pagination.** Tables that split across pages with repeating header rows, headers and
   footers, page numbers, keep-together blocks and page breaks.
 - **Content.** JPEG, PNG, GIF, WebP and SVG images, vector drawing, links, bookmarks,
-  fillable form fields and text notes.
+  fillable form fields, text notes and file attachments.
 - **Output.** Font subsetting (TrueType and CFF), variable fonts as static instances, PDF/A-1b,
   2b, 2a, 3b and 3a, tagged PDF and PDF/UA-1, AES-256 encryption with passwords and permissions,
-  parallel rendering across pages,
-  and byte-identical output for identical input.
+  parallel rendering across pages, and byte-identical output for identical input.
 - **Validation.** Every document is checked against a JSON Schema, with the path of each error.
   In React, errors carry the component stack.
 
@@ -163,7 +162,7 @@ MessagePack. [`@inkoxide/schema`](packages/schema) has its TypeScript types and 
 |---|---|
 | [`@inkoxide/render`](packages/render) | React components to PDF: `renderToBuffer`, `renderToFile`, `Font.register`, bundled fonts |
 | [`@inkoxide/react`](packages/react) | The React components and reconciler that build document trees |
-| [`@inkoxide/tailwind`](packages/tailwind) | Optional: Tailwind class strings (`className`) to engine styles, with the Tailwind v4 compiler |
+| [`@inkoxide/tailwind`](packages/tailwind) | Optional: Tailwind class strings (`className`) to engine styles, with the Tailwind v4 compiler, and a build plugin that puts a table of your classes in the browser bundle in its place |
 | [`@inkoxide/style`](packages/style) | Style values: CSS lengths, colours and transforms read into engine styles |
 | [`inkoxide`](packages/inkoxide) | The engine for Node.js: a JSON or MessagePack document tree in, PDF bytes out |
 | [`@inkoxide/wasm`](packages/wasm) | The engine as WebAssembly, for browsers: a JSON document tree in, PDF bytes out |

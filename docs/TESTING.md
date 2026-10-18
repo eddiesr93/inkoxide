@@ -203,8 +203,10 @@ only on demand, from the Actions tab, with the ID of that release run.
   (`scripts/build-wasm.sh` first, with the `wasm32-unknown-unknown`
   target) runs them against it, skipping the two about threads, and its own
   tests of the pool in `packages/wasm/test`; `pnpm test:threads` runs them
-  against the module with threads (`scripts/build-wasm.sh --threads`), on a
-  pool of 3.
+  against the module with threads (`scripts/build-wasm.sh --threads`, on
+  the nightly it prints with `--toolchain`: `rustup toolchain install
+  "$(scripts/build-wasm.sh --toolchain)" --profile minimal --component
+  rust-src`), on a pool of 3.
 - The WebAssembly build, in the `wasm` job of `ci.yml` and in
   `scripts/ci.sh`:
   - `scripts/wasm-size.mjs` fails when a module is over its download
@@ -225,14 +227,16 @@ only on demand, from the Actions tab, with the ID of that release run.
     allocator's cache of blocks;
   - the engine's tests that need MessagePack are left out of a build
     without its feature (`--no-default-features`), which reads JSON only.
-  - `examples/browser` (`pnpm test` there, after `pnpm exec playwright
-    install`): Playwright renders the page's invoice in a worker in
-    Chromium, Firefox and WebKit, under a strict Content Security Policy
-    and without cross-origin isolation, and compares the PDF with the one
-    Node renders; a render's `signal` ends its worker. `tests/threads.spec.ts`
-    does the same on the page served cross-origin isolated, where the
-    engine renders on a pool of threads, and checks that a bug on a pool
-    thread fails the render with `INTERNAL` and the next one renders.
+- `examples/browser`, in the `wasm` job of `ci.yml` only (`scripts/ci.sh`
+  does not run it): `pnpm test` there, after `scripts/build-node.sh`,
+  `scripts/build-wasm.sh`, `scripts/build-wasm.sh --threads` and
+  `pnpm exec playwright install`. Playwright renders the page's invoice in a worker in
+  Chromium, Firefox and WebKit, under a strict Content Security Policy
+  and without cross-origin isolation, and compares the PDF with the one
+  Node renders; a render's `signal` ends its worker. `tests/threads.spec.ts`
+  does the same on the page served cross-origin isolated, where the
+  engine renders on a pool of threads, and checks that a bug on a pool
+  thread fails the render with `INTERNAL` and the next one renders.
 - `packages/render/test/browser.test.tsx`: `@inkoxide/render/browser` on
   the calling thread renders the bytes the main entry renders. It needs
   `scripts/build-wasm.sh` first, and skips without it outside CI.
@@ -252,7 +256,9 @@ only on demand, from the Actions tab, with the ID of that release run.
 - `scripts/check-generated.sh`: regenerates every committed generated
   file (`packages/schema/index.d.ts`, `docs/SCHEMA.md`,
   `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict`, the fixture
-  documents that `scripts/fixtures` writes and the emoji test fonts) and
+  documents and the emoji, variable and vertical test fonts that
+  `scripts/fixtures` writes, the version `@inkoxide/react` reports and the
+  Tailwind theme) and
   fails when one is stale; `ci.yml` and `scripts/ci.sh` run it. The
   images of `scripts/fixtures/images.py` and its document are the
   exception: it needs Pillow, whose PNG bytes change between versions.

@@ -46,10 +46,11 @@ written in Rust does the typesetting: text shaping, line breaking, pagination an
   fallback, right-to-left text, flexbox and CSS grid.
 - **Pagination.** Tables that split across pages with repeating header rows, headers and
   footers, page numbers, keep-together blocks and page breaks.
-- **Content.** JPEG, PNG, GIF, WebP and SVG images, vector drawing, links, bookmarks and
-  fillable form fields.
-- **Output.** Subset fonts, variable fonts, PDF/A (1b, 2b and 3b), encryption with passwords
-  and permissions, and byte-identical output for identical input.
+- **Content.** JPEG, PNG, GIF, WebP and SVG images, vector drawing, links, bookmarks,
+  fillable form fields and file attachments, Factur-X invoices among them.
+- **Output.** Subset fonts, variable fonts, PDF/A (1b, 2b, 2a, 3b and 3a), tagged PDF and
+  PDF/UA-1, encryption with passwords and permissions, and byte-identical output for identical
+  input.
 - **Diagnostics.** A component in the wrong place or an unknown style key fails with the
   component stack that produced it, and so does an unknown Tailwind class, except in
   production, where it is logged once and ignored.
@@ -1014,6 +1015,8 @@ renderToFile(<Form {...sample} />, 'form.pdf');
 | Document | Contents |
 |---|---|
 | [Guide](GUIDE.md) | Components, styling, fonts, images, pagination, tables, links, drawing and forms |
+| [Accessibility](GUIDE.md#accessibility) | Tagged PDF and PDF/UA-1: `tagged`, `pdfUA`, roles and alternate text |
+| [Attachments](GUIDE.md#attachments) | Files embedded in the PDF, `<Attachment>`, and Factur-X invoices |
 | [API](GUIDE.md#api) | `renderToBuffer`, `renderToFile`, `renderToStream` and their options, `Font.register`, `init`, health checks, concurrency |
 | [Errors](GUIDE.md#errors) | Error codes and what they mean |
 | [Serving templates](GUIDE.md#serving-templates) | Templates by id, with a zod schema for their data: `@inkoxide/render/templates` |

@@ -33,14 +33,15 @@ A run that fails part way can be dispatched again: every step skips what is alre
 1. **`ci-passed`** stops the release unless the `ci` workflow passed for the commit. A dry run
    only warns.
 2. **Builds:** the native bindings on Linux (x64 glibc and musl, arm64), macOS (arm64, x64) and
-   Windows (x64), and the WebAssembly engine, which must stay under its size budget
-   (`scripts/wasm-size.mjs`). The platforms come from `napi.targets` in
+   Windows (x64), and the two WebAssembly modules, `inkoxide.wasm` and `inkoxide-threads.wasm`,
+   which must stay under their size budget (`scripts/wasm-size.mjs`). The module with threads is
+   built on the nightly that `scripts/build-wasm.sh --toolchain` prints, with `rust-src`. The platforms come from `napi.targets` in
    `packages/inkoxide/package.json` (`scripts/platforms.mjs`).
 3. **`publish`**, to npm, in dependency order, skipping every `name@version` already on the
    registry:
    - `scripts/npm-release.mjs` publishes the engine packages: the platform packages, then
      `inkoxide`, `@inkoxide/schema` and `@inkoxide/wasm`. The README of `@inkoxide/wasm` gets
-     the version and the Subresource Integrity hash of its module.
+     the version and the Subresource Integrity hash of each of its two modules.
    - `scripts/release/publish.sh` then publishes `@inkoxide/style`, `@inkoxide/tailwind`,
      `@inkoxide/react` and `@inkoxide/render`.
 4. **`crates`** publishes `inkoxide` and then `inkoxide-cli` to crates.io, skipping a version
@@ -78,5 +79,5 @@ version by hand, then sets the trusted publisher:
 |---|---|
 | `pnpm release:stage` | `scripts/release/stage.mjs`: builds `@inkoxide/style`, `@inkoxide/tailwind`, `@inkoxide/react` and `@inkoxide/render` with `tsc`, and writes publish-ready copies to `tmp/release/<package>/`, with `exports` pointing at `dist/`, registry versions in place of `workspace:` links, `engines` from the root `package.json`, each package's `README.md`, and the fonts and hyphenation patterns of `@inkoxide/render`. The workspace stays as it is. `--list` prints the packages in publish order |
 | `pnpm release:publish` | `scripts/release/publish.sh`: stages, checks that the engine packages they depend on (`inkoxide`, `@inkoxide/schema`) are on the registry, waiting a few minutes for a version just published, and publishes each package not on the registry yet. `--dry-run` stages and runs `npm publish --dry-run`. In GitHub Actions it uses trusted publishing; locally, the `npm login` session, with 2FA in the browser |
-| `node scripts/npm-release.mjs <bin-dir> <staging-dir> [--publish [--dry-run]]` | Stages the engine packages from a directory holding a native binary for every platform and `inkoxide.wasm`, and with `--publish` publishes them |
+| `node scripts/npm-release.mjs <bin-dir> <staging-dir> [--publish [--dry-run]]` | Stages the engine packages from a directory holding a native binary for every platform, `inkoxide.wasm` and `inkoxide-threads.wasm`, and with `--publish` publishes them |
 | `node scripts/release/github-release.mjs [--dry-run] [--section <name>] [--target <commit>]` | Creates the tag and the GitHub release for a changelog section (by default the newest released one), with `gh`. An existing release is left alone |

@@ -52,8 +52,9 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   too) is marked as decoration. Every glyph maps to text, and extraction reads each cluster once.
   `pdfUA` writes PDF/UA-1, with its metadata and without `.notdef` glyphs, and refuses a document
   without a title, a language, alternative text on its images (in text too), labels on its fields
-  (in headers too), headings in order or lists made of items (`UA_CONFLICT`). New PDF/A levels 2a and 3a are tagged. Nodes take `role`, `figure` boxes
-  `alt`, table cells `header` and fields `label`; `@inkoxide/render` takes them as props, with
+  (in headers too), headings in order or lists made of items (`UA_CONFLICT`). New PDF/A levels
+  2a and 3a are tagged. Nodes take `role`, `figure` boxes `alt`, table cells `header` and fields
+  `label`; `@inkoxide/render` takes them as props (the `Role` type is exported), with
   `<Document tagged pdfUA>` and `conformance="PDF/A-2a"`. The CLI takes `--tagged` and
   `--pdf-ua`. Untagged output is unchanged.
 
@@ -63,7 +64,7 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   `meta.pageMode` takes `useAttachments`. Under PDF/A-3b they are associated files, and
   `meta.xmpExtensions` declares and fills in XMP schemas, such as the metadata a Factur-X or
   ZUGFeRD e-invoice declares (the output passes veraPDF's PDF/A-3b profile; it is not checked
-  with a Factur-X validator); PDF/A-1b and 2b refuse attachments. New validation codes
+  with a Factur-X validator); PDF/A-1b, 2b and 2a refuse attachments, and 3a allows them. New validation codes
   `UNKNOWN_ATTACHMENT`, `ATTACHMENT_NOT_REGISTERED` and `ATTACHMENT_TOO_LARGE`. Rust takes an
   `AttachmentStore` in `RenderOptions::attachments`, whose `insert_too_large` registers a file
   over `AttachmentStore::MAX_FILE_BYTES` (64 MiB) by its size alone; the CLI takes

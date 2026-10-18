@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Checks that the WebAssembly build of the engine behaves as the native one:
 // - every fixtures/docs document, and every fixture image alone on a page, renders to the same
-//   bytes, and the one with files as PDF/A-3b too, whose file identifier hashes them. Those listed in fixtures/wasm-parity.json may differ only in numbers, by at most 1e-6
-//   relative, and in the file identifier, compared with their streams decompressed. Whether
-//   they differ depends on the platform's math library: on Linux they are identical, on macOS
-//   they differ in the last digits;
+//   bytes, and the one with files as PDF/A-3b too, whose file identifier hashes them. Those
+//   listed in fixtures/wasm-parity.json may differ only in numbers, by at most 1e-6 relative,
+//   and in the file identifier, compared with their streams decompressed. Whether they differ
+//   depends on the platform's math library: on Linux they are identical, on macOS they differ in
+//   the last digits;
 // - the fuzz seeds (the fixture fonts, malformed and limit fonts included, and the fixture
 //   images) register with the same outcome, and those that register render text with the same
 //   outcome and bytes;

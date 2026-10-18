@@ -35,7 +35,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 
 | Component | What it is |
 |---|---|
-| `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `creator`, `producer`, `lang` (`"en-US"`), `creationDate`, `pageMode`, `pageLayout` and `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)). |
+| `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `creator`, `producer`, `lang` (`"en-US"`), `creationDate`, `pageMode`, `pageLayout` and `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)); `conformance` ([PDF/A](#pdfa)), `userPassword`, `ownerPassword` and `permissions` ([passwords](#passwords-and-permissions)), `tagged` and `pdfUA` ([accessibility](#accessibility)), `attachments` and `xmpExtensions` ([attachments](#attachments)). |
 | `Page` | One page layout; content flows over as many sheets as it needs. `size` (a [preset](#page-sizes) such as `"A4"`, `"letter"` or `"A4-landscape"`, `[width, height]`, `{ width, height }`, or `[width]` or one length for a square), `orientation`, `margin`. Padding on a page is its margin; a percentage is of the page width, on every side, as in CSS. |
 | `View` | A box: flex column by default, and also grid. |
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
@@ -51,9 +51,10 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | `TextField` (or `TextInput`), `Checkbox`, `Radio`, `Select`, `List`, `Field` | Fillable form fields (AcroForm). |
 | `FieldSet` | A `View` that groups the form fields inside it under its `name`. |
 | `Note` | A text note: an icon that opens its text in the viewer. |
+| `Attachment` | An icon that opens one of the document's [attachments](#attachments) (`file`). |
 
 **The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `Link`,
-`Image` (an image in the line), `Note` and other `Text`, and nothing else. A `View` inside a `Text` is an error that names the component.
+`Image` (an image in the line), `Note`, `Attachment` and other `Text`, and nothing else. A `View` inside a `Text` is an error that names the component.
 
 ## Styling
 
@@ -131,8 +132,8 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
   or the range forms (`(400pt <= width < 600pt)`), joined by `and`, `or`, `not` and commas.
   `print` and `all` match, `screen` does not. Lengths take `pt`, `mm`, `cm`, `in`, `px`, `pc`
   and `rem`, and are compared to 1/100 pt, so `(max-width: 210mm)` holds on A4. Blocks apply
-  after the object's own properties, in the order written, and may nest (all their queries must
-  match); a later entry of a style array still wins. A block for another page size is read too,
+  after the object's own properties, in the order written, and may nest, at most 32 deep (all
+  their queries must match); a later entry of a style array still wins. A block for another page size is read too,
   so a mistake in it fails on every page. Features of screens (`hover`, `prefers-color-scheme`,
   `resolution`) are errors. Each `Page` has one size, so the queries are answered once per
   page, before layout; a JSON document has no `@media` (its author knows each page's size).
@@ -243,8 +244,9 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   can take `fontVariationSettings` in `Font.register` (`{ ital: 1 }`), so one file can be the
   italic as well. Each combination a document uses is a static instance, embedded as TrueType
   (CFF2 outlines too), so viewers show exactly what was laid out. TrueType (`gvar`) and CFF2
-  variable fonts work; one with more than 63 axes or an `avar` table of version 2 is refused
-  when it loads. Text in an `<Svg>` takes the nearest instance the document declares.
+  variable fonts work; one with more than 63 axes or an `avar` table other than version 1.0 is
+  refused when it loads. A document uses at most 64 instances (`OUT_OF_RANGE` at `fonts`). Text
+  in an `<Svg>` takes the nearest instance the document declares.
 - **Colour emoji.** Register a colour emoji font, such as Noto Color Emoji, and list it in
   [`fallbackFonts`](#links-bookmarks-and-metadata):
 
@@ -656,8 +658,8 @@ wins over it:
 | `'PDF/A-2b'` or `'PDF/A-2'` | `true` or `'2b'` | PDF/A-2b |
 | `'PDF/A-3b'` or `'PDF/A-3'` | `'3b'` | PDF/A-3b, as 2b, with [attachments](#attachments) (an e-invoice's XML) |
 | `'PDF/A-1b'` or `'PDF/A-1'` | `'1b'` | PDF/A-1b, the oldest level, for archives that require it |
-| `'PDF/A-2a'` | `'2a'` | PDF/A-2b, [tagged](#accessibility) (accessible) |
-| `'PDF/A-3a'` | `'3a'` | PDF/A-3b, tagged |
+| `'PDF/A-2a'` | `'2a'` | PDF/A-2a: 2b, [tagged](#accessibility) (accessible) |
+| `'PDF/A-3a'` | `'3a'` | PDF/A-3a: 3b, tagged, with attachments |
 
 PDF/A-1b has no transparency, so a render fails with `ENGINE_REJECTED` (`engineCode`
 `PDFA_CONFLICT`) and the component at fault for a colour with alpha below 1 (a transparent
@@ -991,8 +993,9 @@ In an SVG, whether in `<Svg>` or an image file:
 
 These are real AcroForm fields: readers fill them in any PDF viewer and save the file. `name`
 must be unique, except for radio buttons of one group. Every field takes `readOnly` (viewers do
-not let the user change it) and `required` (it must be filled in before the form is
-submitted). `TextField` also takes `multiline`, `maxLength` and `password`; size, border,
+not let the user change it), `required` (it must be filled in before the form is
+submitted) and `label`, what it is for, which screen readers say and
+[PDF/UA](#accessibility) requires. `TextField` also takes `multiline`, `maxLength` and `password`; size, border,
 background and text style come from the classes. `TextInput` is another name for `TextField`.
 
 A field's text, its value and the options of a `Select` or `List`, is drawn with the field's own
@@ -1160,7 +1163,8 @@ of paragraphs.
 `attachments` are files the PDF carries: viewers list them in their attachments panel
 (`pageMode="useAttachments"` opens it). Each has a `name`, unique in the document, and its
 `data`, a `Uint8Array` or a string (its text, in UTF-8); `mimeType`, `description`,
-`relationship` (`'source'`, `'data'`, `'alternative'`, `'supplement'`) and `modified` (RFC 3339)
+`relationship` (`'source'`, `'data'`, `'alternative'`, `'supplement'`, or the default
+`'unspecified'`) and `modified` (RFC 3339)
 are optional. A file is written once, compressed when that makes it smaller, and encrypted with
 the rest of an encrypted PDF. The bytes go into the document tree as base64 `data`, so a stored
 `result.document` renders alone, its files with it, at 4/3 of their size; a document written as
@@ -1176,7 +1180,7 @@ the top-left corner of its box, inside a `Text` it hangs from the line, and in a
 show for it (default: the file's description, else its name), and `backgroundColor` is its
 colour.
 
-Under PDF/A, only PDF/A-3b allows attachments; PDF/A-1b and 2b refuse them (`PDFA_CONFLICT`).
+Under PDF/A, only PDF/A-3b and 3a allow attachments; PDF/A-1b, 2b and 2a refuse them (`PDFA_CONFLICT`).
 **E-invoices** (Factur-X, ZUGFeRD 2) are PDF/A-3b with the invoice's XML attached and the `fx`
 metadata that `facturX({ profile })` makes, as above; `facturXRelationship(profile)` gives the
 relationship the profile asks for (`'data'` for MINIMUM and BASIC WL, `'alternative'` for the
@@ -1234,7 +1238,10 @@ All three take the same options:
 | `localImages` | off | `{ root: '/srv/app/images' }` or `{ root: [dirA, dirB] }`: folders `<Image src="./logo.png">` may read files from. A relative path is resolved against the first. `maxBytes` (20 MiB) limits each file. The `INKOXIDE_LOCAL_IMAGES` environment variable (folders separated by `:`, `;` on Windows) sets it for every render. |
 | `remoteImages` | off | `{ allow: ['https://cdn.example.com/', '*.example.org'] }`: hosts `<Image src="https://…">` and `<Image src={{ uri }}>` may load from. A URL entry allows its origin (scheme, host and port), and, with a path, that path and the paths under it: `https://cdn.example.com/img` allows `/img/logo.png`, not `/imgs/logo.png`. A host entry allows `https:` at that host, or with `*.` at its subdomains. Ports must match: an entry without a port allows only its scheme's default port (443 for `https:`, 80 for `http:`), and `cdn.example.com:8443` or `https://cdn.example.com:8443` only port 8443. `timeoutMs` (10 000; `Infinity` for no limit) and `maxBytes` (20 MiB, 20 971 520 bytes) limit each image, and redirects are not followed. The `INKOXIDE_REMOTE_IMAGES` environment variable (comma-separated) sets it for every render. |
 | `imageTimeoutMs` | `10000` | How long a function or promise `<Image src>` may take to settle; `Infinity` waits without a limit |
-| `pdfA` | `false` | Write PDF/A, for archiving: `true` or `'2b'`, `'3b'` or `'1b'` (see [PDF/A](#pdfa)). Wins over `<Document conformance>`. |
+| `pdfA` | `false` | Write PDF/A, for archiving: `true` or `'2b'`, `'3b'`, `'1b'`, `'2a'` or `'3a'` (see [PDF/A](#pdfa)). Wins over `<Document conformance>`. |
+| `tagged` | `false` | Write tagged PDF (see [Accessibility](#accessibility)). Wins over `<Document tagged>`. |
+| `pdfUA` | `false` | Write PDF/UA-1 (see [Accessibility](#accessibility)). Wins over `<Document pdfUA>`. |
+| `attachments` | none | The bytes of the files a document written as JSON names in `src`, by id (see [Attachments](#attachments)). `<Document attachments>` carries its files itself. |
 | `encryption` | none | `{ userPassword, ownerPassword, permissions }`: encrypt the PDF (see [Passwords and permissions](#passwords-and-permissions)). Replaces the `<Document>` props of the same names. |
 | `compress` | `true` | Compress the page content |
 | `subsetFonts` | `true` | Embed only the glyphs the document uses |
@@ -1267,7 +1274,8 @@ not wait. It resolves to the same status as `engineStatus()`.
 document schema version it reads and the commit it was built from. `engineStatus()` returns
 `undefined` until the engine has started (the first `init` or render), then `{ version, fonts,
 hyphenation, warnings }`: the font ids registered, which hyphenation languages loaded
-(`{ en: true }`), and start-up warnings such as a missing bundled font.
+(`{ en: true }`), and start-up warnings such as a missing bundled font. In a browser it also has
+`threads`, the size of the engine's pool ([threads](#threads-in-the-browser)).
 
 ```ts
 app.get('/health', (_req, res) => {
@@ -1288,7 +1296,10 @@ exported:
 - styles and values: `Style`, `StyleProp`, `MediaStyle` (a `StyleProp` with `@media` blocks),
   `AbsoluteLength`, `Length`, `LengthPercent`,
   `LengthAuto`, `PageSize`, `PagePreset`, `BreakProp`, `BookmarkProp`, `FontWeightName`,
-  `Permissions` (of `<Document permissions>`), and `TextFormat`, the `format` of a `TextField`;
+  `Permissions` (of `<Document permissions>`), `Role`, the `role` of an element in tagged output,
+  and `TextFormat`, the `format` of a `TextField`;
+- attachments: `AttachmentFile`, a file of `<Document attachments>`, `AttachmentProps`, and
+  `FacturXOptions` and `FacturXProfile`, of `facturX()`;
 - `render` props and images: `RenderProp`, `PageInfo`, `ImageSrc`, `ImageSrcValue`,
   `ImageRequest`, `Painter`, the painter a `Canvas` draws with, `CanvasGradient`, its
   gradients, and `CanvasTextOptions`, the options of its `text`;
@@ -1552,7 +1563,8 @@ engine's nested worker), the engine renders on one thread.
 **What differs from Node.**
 
 - Renders run in one worker, one at a time, on one thread unless the page is cross-origin
-  isolated ([threads](#threads-in-the-browser)); without a pool `threads` may only be `1`.
+  isolated ([threads](#threads-in-the-browser)); without a pool `threads` may only be `1`, and
+  with one, any larger number uses the whole pool.
 - `renderToFile`, `renderToStream` and image files are not available.
 - The engine module is about 1.4 MB to download with brotli, once, and Tailwind's compiler
   about 90 KB when templates use `className`, or a few KB with the [build plugin](#tailwind).

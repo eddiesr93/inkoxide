@@ -19,8 +19,10 @@ pnpm install
 ```
 
 Optional, for the full local check: poppler and `numpy`/`Pillow` (visual regression), `qpdf`
-(PDF structure), `cargo-deny`, and the nightly toolchain `scripts/fuzz.sh --toolchain` prints,
-with `cargo-fuzz` (fuzzing).
+(PDF structure), veraPDF (PDF/A and PDF/UA), `cargo-deny`, the nightly toolchain
+`scripts/fuzz.sh --toolchain` prints, with `cargo-fuzz` (fuzzing), and, for the WebAssembly
+modules, the `wasm32-unknown-unknown` target and the nightly `scripts/build-wasm.sh --toolchain`
+prints, with `rust-src` (the module with threads).
 
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how the repository is organised and how
 a document goes from React to PDF.

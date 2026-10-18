@@ -135,7 +135,8 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium firefox webkit
       - name: Browser tests
         # examples/browser, built with Vite: a render in a worker, in each browser, gives the bytes
-        # Node gives, under a strict Content Security Policy and without cross-origin isolation.
+        # Node gives, under a strict Content Security Policy, without cross-origin isolation and,
+        # cross-origin isolated, on a pool of threads (tests/threads.spec.ts).
         working-directory: examples/browser
         run: pnpm test
 

@@ -33,8 +33,8 @@ Worker.
   compiled module, registers its fonts and patterns again, and fails the call with `INTERNAL`.
 - **Binding: a hand-written C ABI and a small JS wrapper, not wasm-bindgen.** Byte buffers in,
   one result buffer out; options as JSON. The module has no imports (the module with threads of
-ADR 0003 imports its memory), and there is no generated
-  glue to keep in step with a tool version. Both bindings share their option checks through
+  ADR 0003 imports its memory), and there is no generated glue to keep in step with a tool
+  version. Both bindings share their option checks through
   `crates/binding`. Unsafe code stays in `crates/wasm`.
 - **Entry point: a subpath, `@inkoxide/render/browser`**, not an export condition, so a server
   bundle never picks it by accident. `@inkoxide/wasm` is an optional peer of `@inkoxide/render`,
@@ -70,7 +70,8 @@ ADR 0003 imports its memory), and there is no generated
 - **`Font.register` in the browser** takes a URL, relative to the page as in a link, or bytes. A
   file path that cannot be a URL fails the render with `INVALID_FONT`.
 - **Release.** `@inkoxide/wasm` is released with the other packages, at their version. Its npm
-  README gets the module's Subresource Integrity hash at staging.
+  README gets each module's Subresource Integrity hash at staging (one module until
+  ADR 0003).
 - **Runtimes.** Browsers and Node only; edge runtimes are out of scope.
 
 ## Consequences

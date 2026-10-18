@@ -6,6 +6,7 @@ A Vite page that renders an invoice with `@inkoxide/render/browser`: the engine 
 
 ```sh
 scripts/build-wasm.sh           # packages/wasm/inkoxide.wasm
+scripts/build-wasm.sh --threads # packages/wasm/inkoxide-threads.wasm, for the isolated page
 pnpm --filter @inkoxide/examples-browser dev
 ```
 
@@ -13,7 +14,10 @@ pnpm --filter @inkoxide/examples-browser dev
 
 - `worker: { format: 'es' }`, for the engine's module worker;
 - a Content Security Policy that allows `'wasm-unsafe-eval'` and workers of its own origin. No
-  cross-origin isolation is needed.
+  cross-origin isolation is needed; with `INKOXIDE_ISOLATED` set, `vite preview` serves the page
+  cross-origin isolated (`isolated()`), and the engine renders on a pool of threads;
+- `inkoxideTailwind()` from `@inkoxide/tailwind/plugin`, which puts a table of the page's classes
+  in the bundle in place of Tailwind's compiler.
 
 `src/Invoice.tsx` imports from `@inkoxide/render`, as server code would; the config points that
 at the browser entry.
@@ -26,7 +30,8 @@ needs neither.
 ## Tests
 
 `pnpm test` builds the page, serves it with `vite preview`, and checks in Chromium, Firefox and
-WebKit (`pnpm exec playwright install` first) that:
+WebKit (after `scripts/build-node.sh`, both `scripts/build-wasm.sh` builds and
+`pnpm exec playwright install`) that:
 
 - the PDF rendered in the worker, and the file the download link saves, have the bytes the same
   invoice renders to in Node (`tests/render-node.tsx`);
@@ -36,3 +41,8 @@ WebKit (`pnpm exec playwright install` first) that:
 - a render's `signal` ends its worker, and the next render runs in a new one;
 - a render that takes longer than its `timeoutMs` rejects with a `TimeoutError`, and the next
   render succeeds.
+
+`tests/threads.spec.ts` serves the page again, cross-origin isolated, and checks that the engine
+renders on a pool of threads with the bytes Node renders; that `signal` and `timeoutMs` stop a
+render on the pool; and that a bug on a pool thread fails the render with `INTERNAL`. After each,
+the next render succeeds.

@@ -3,9 +3,9 @@
 // scripts/build-wasm.sh, and inkoxide-threads.wasm, from scripts/build-wasm.sh --threads, when it
 // is built) and fails when one is over BUDGET with brotli. The budget is a little over 1.37 MB,
 // the build without its hyphenation patterns, which it fetches as documents need them, and with
-// variable fonts (subsetter's instancer), which took it from 1.18 MB. The module with threads is
-// within a few kilobytes of the other, and has the same budget. Raise it deliberately, in the pull
-// request that needs it. In CI the sizes also go to the job summary, and a module not built fails.
+// variable fonts (subsetter's instancer). The module with threads is within a few kilobytes of
+// the other, and has the same budget. Raise it deliberately, in the pull request that needs it.
+// In CI the sizes also go to the job summary, and a module not built fails.
 //   node scripts/wasm-size.mjs
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
