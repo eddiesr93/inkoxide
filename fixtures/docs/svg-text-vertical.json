@@ -1,0 +1,64 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Vertical SVG text",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  },
+  {
+   "id": "VertTest",
+   "family": "VertTest"
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 841.89
+   },
+   "margin": {
+    "top": 40,
+    "right": 40,
+    "bottom": 40,
+    "left": 40
+   },
+   "children": [
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "Vertical SVG text: upright ideographs and vertical punctuation, sideways Latin, upright Latin, sideways modes, anchors, decorations and textLength",
+       "font": "Inter-Regular",
+       "size": 13,
+       "color": [
+        0,
+        0,
+        0,
+        1
+       ]
+      }
+     ]
+    },
+    {
+     "type": "image",
+     "src": "text-vertical",
+     "style": {
+      "width": 480,
+      "margin": {
+       "top": 12
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

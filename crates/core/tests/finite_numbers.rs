@@ -245,6 +245,13 @@ fn svg_numbers_that_overflow_render_finite_numbers() {
         // Text whose positions and sizes overflow f32 when laid out.
         format!("<svg {NS} width='100' height='100'><text x='3e38' dx='3e38' dy='-1e39' font-size='3e38' letter-spacing='1e39' text-decoration='underline'>Hi <tspan font-size='1e39'>there</tspan></text></svg>"),
         format!("<svg {NS} width='100' height='100'><text x='5' y='50' textLength='3e38' lengthAdjust='spacingAndGlyphs' rotate='1e39 -1e30'>Hi</text></svg>"),
+        // Text on paths whose numbers overflow, or that have no length.
+        format!("<svg {NS} width='100' height='100'><path id='p' d='M0 0H50'/><path id='q' d='M0 0H10' transform='scale(1e30)'/><path id='z' d='M5 5L5 5'/>\
+            <text><textPath href='#p' startOffset='1e30'>Hi</textPath><textPath href='#p' startOffset='-1e30%'>Hi</textPath>\
+            <textPath href='#p' startOffset='1e30%'>Hi</textPath><textPath href='#q' startOffset='3e38'>Hi</textPath>\
+            <textPath href='#q'>Hi <tspan dy='1e39' dx='1e39'>there</tspan></textPath><textPath href='#z'>Hi</textPath></text></svg>"),
+        // Vertical text whose positions overflow.
+        format!("<svg {NS} width='100' height='100'><text writing-mode='tb' x='3e38' y='3e38' dy='1e39' textLength='3e38' font-size='1e39'>Hi 縦</text></svg>"),
     ];
     let mut images = ImageStore::new();
     let mut children = Vec::new();

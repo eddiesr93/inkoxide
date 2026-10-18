@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { inflateSync } from 'node:zlib';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
@@ -32,6 +33,7 @@ import {
   StyleSheet,
   Svg,
   Text,
+  TextPath,
   Tspan,
   TextField,
   TotalPages,
@@ -405,6 +407,46 @@ describe('renderToBuffer', () => {
     );
     expect(countPages(await renderToBuffer(doc(false)))).toBe(2);
     expect(countPages(await renderToBuffer(doc(true)))).toBe(3);
+  });
+
+  it('draws text on a path and vertical text from an Svg', async () => {
+    const pdf = await renderToBuffer(
+      <Document>
+        <Page style={{ padding: 40 }}>
+          <Svg width={200} height={120}>
+            <Defs>
+              <Path id="curve" d="M10 100 Q 100 0 190 100" />
+            </Defs>
+            <Text fontSize={12}>
+              <TextPath href="#curve" startOffset="50%" textAnchor="middle">
+                Along the curve
+              </TextPath>
+            </Text>
+            <Text x={20} y={10} fontSize={10} writingMode="vertical-rl">
+              Down
+            </Text>
+          </Svg>
+        </Page>
+      </Document>,
+      { compress: false },
+    );
+    // The drawing is a form, compressed whatever the option: its stream
+    // inflated.
+    const raw = Buffer.from(pdf).toString('latin1');
+    const forms = [...raw.matchAll(/FlateDecode[^]*?stream\r?\n/g)].map((m) => {
+      const start = (m.index ?? 0) + m[0].length;
+      const bytes = Buffer.from(raw.slice(start, raw.indexOf('endstream', start)), 'latin1');
+      try {
+        return inflateSync(bytes).toString('latin1');
+      } catch {
+        return '';
+      }
+    });
+    const text = forms.join('');
+    // Each glyph on the curve is turned: a text matrix of its own.
+    expect(text.match(/ Tm/g)?.length ?? 0).toBeGreaterThan(10);
+    // Extraction reads it in order.
+    expect(text).toContain('/ActualText');
   });
 
   it('renders superscripts, subscripts and font features', async () => {

@@ -1,12 +1,18 @@
 //! Lays out the text of SVG images with the render's fonts and shaper.
 //!
 //! Each `<text>` ([`SvgText`], read by `images/svg_text`) is split into
-//! chunks at every absolute position. A chunk is shaped as one paragraph
+//! chunks at every absolute position, and where a `textPath` starts or
+//! ends. A chunk is shaped as one paragraph
 //! ([`TextShaper::prepare`], so fallback fonts, bidi, the shape cache and
 //! the glyph limit apply), then placed as `usvg` places text: spacing,
 //! `textLength`, relative shifts and rotations per character, the anchor
 //! per chunk and baselines from the font's metrics. Positions are in the
 //! text's user space, y down.
+//!
+//! Vertical text (`writing-mode`) is laid out down a column: runs of
+//! upright characters shaped top to bottom, with the font's vertical
+//! metrics and forms, and runs of sideways ones shaped as horizontal text
+//! turned a quarter, all centred on the column.
 //!
 //! The glyphs of colour fonts stay glyphs: the PDF writer draws those
 //! that have a colour image (`ColorGlyphs`, loaded after layout) as
@@ -16,10 +22,13 @@
 use std::collections::HashMap;
 
 use super::objects::InlineObject;
+use super::vertical;
 use super::{ParaStyle, TextShaper};
 use crate::fonts::{FontKey, FontSet, LoadedFont};
-use crate::geom::Rect;
-use crate::images::svg_text::{Anchor, Baseline, Shift, SvgSpan, SvgText};
+use crate::geom::{self, Rect};
+use crate::images::svg_text::{
+    Anchor, Baseline, Shift, SvgSpan, SvgText, TextOrientation, TextPathSpec, Writing,
+};
 use crate::images::ImageKey;
 use crate::schema::{Direction, FontStyle, TextAlign, TextRun, TextWrap, WhiteSpace};
 
@@ -42,6 +51,8 @@ pub(crate) struct SvgGlyph {
     /// Its text, in [`LaidText::text`]: the text of its cluster, on the
     /// cluster's first glyph (an empty range: none).
     pub text: (u32, u32),
+    /// Its cluster's first character, in [`SvgText::chars`].
+    pub char: u32,
 }
 
 /// An underline, overline or line-through: a quadrilateral, filled.
@@ -73,6 +84,8 @@ pub(crate) struct SvgImage {
     pub font: FontKey,
     pub size: f32,
     pub paint: u32,
+    /// Its character, in [`SvgText::chars`].
+    pub char: u32,
 }
 
 /// A text laid out.
@@ -89,6 +102,10 @@ pub(crate) struct LaidText {
     pub ink: Option<[f32; 4]>,
     /// The text of the glyphs ([`SvgGlyph::text`]).
     pub text: String,
+    /// For text on a path or vertical text, by paint style: the text it
+    /// draws in logical order, which text extraction reads in place of
+    /// the glyphs (`ActualText`), placed as they are; empty otherwise.
+    pub actual: Vec<String>,
 }
 
 /// The items of `items` (in paint style order) drawn in paint style
@@ -129,6 +146,7 @@ impl LaidText {
             scale_x: 1.0,
             paint,
             text: (0, 0),
+            char: 0,
         };
         Self {
             glyphs: (0..paints as u32).map(glyph).collect(),
@@ -136,6 +154,7 @@ impl LaidText {
             images: Vec::new(),
             ink: Some([0.0, 0.0, 1.0, 1.0]),
             text: String::new(),
+            actual: Vec::new(),
         }
     }
 
@@ -171,12 +190,16 @@ struct Cluster {
     /// An image in place of its one glyph, and how far it reaches above
     /// the baseline.
     object: Option<(InlineObject, f32)>,
+    /// Upright in vertical text: shaped top to bottom, its advance down.
+    upright: bool,
 }
 
 /// A chunk: clusters placed from one absolute position.
 struct Chunk {
     x: Option<f32>,
     y: Option<f32>,
+    /// The path it goes along ([`SvgText::paths`]).
+    path: Option<u16>,
     /// The anchor of its first character.
     anchor: Anchor,
     clusters: Vec<Cluster>,
@@ -194,25 +217,35 @@ pub(crate) fn lay_out<S: TextShaper>(text: &SvgText, shaper: &mut S) -> LaidText
         let span = c.span as usize;
         !c.hidden && keys[span].is_some() && valid_size(text.spans[span].size)
     };
-    // Chunks start at characters with an absolute position.
+    // Chunks start at characters with an absolute position, and where
+    // the path changes.
     let mut ranges: Vec<std::ops::Range<usize>> = Vec::new();
     for i in (0..text.chars.len()).filter(|&i| drawn(i)) {
         let c = &text.chars[i];
         match ranges.last_mut() {
-            Some(r) if c.x.is_none() && c.y.is_none() => r.end = i + 1,
+            Some(r) if c.x.is_none() && c.y.is_none() && text.chars[r.end - 1].path == c.path => {
+                r.end = i + 1;
+            }
             _ => ranges.push(i..i + 1),
         }
     }
+    let mut forms = HashMap::new();
     let mut chunks: Vec<Chunk> = ranges
         .into_iter()
         .map(|r| {
             let first = text.chars[r.start];
             let chars: Vec<usize> = r.filter(|&i| drawn(i)).collect();
+            let clusters = if text.writing.is_horizontal() {
+                shape(text, &chars, &keys, shaper, false)
+            } else {
+                shape_column(text, &chars, &keys, shaper, &mut forms)
+            };
             Chunk {
                 x: first.x,
                 y: first.y,
+                path: first.path,
                 anchor: text.spans[first.span as usize].anchor,
-                clusters: shape(text, &chars, &keys, shaper),
+                clusters,
                 rtl: text.rtl,
             }
         })
@@ -222,7 +255,97 @@ pub(crate) fn lay_out<S: TextShaper>(text: &SvgText, shaper: &mut S) -> LaidText
         spacing(text, &mut chunk.clusters);
     }
     length_adjust(text, &mut chunks);
-    place(text, &chunks, fonts)
+    let mut laid = if text.writing.is_horizontal() {
+        place(text, &chunks, fonts)
+    } else {
+        place_vertical(text, &chunks, fonts)
+    };
+    if !text.writing.is_horizontal() || !text.paths.is_empty() {
+        laid.actual = actual_text(&laid, text.paints.len());
+    }
+    laid
+}
+
+/// The text each paint style of `laid` draws, in logical order: the text
+/// of its glyphs and the alternative text of its images, by character.
+fn actual_text(laid: &LaidText, paints: usize) -> Vec<String> {
+    let mut pieces: Vec<(u32, u32, &str)> = laid
+        .glyphs
+        .iter()
+        .filter_map(|g| Some((g.paint, g.char, laid.glyph_text(g)?)))
+        .chain(
+            laid.images
+                .iter()
+                .filter_map(|i| Some((i.paint, i.char, i.text.as_deref()?))),
+        )
+        .collect();
+    pieces.sort_by_key(|p| (p.0, p.1));
+    let mut out = vec![String::new(); paints];
+    for (paint, _, t) in pieces {
+        if let Some(s) = out.get_mut(paint as usize) {
+            s.push_str(t);
+        }
+    }
+    out
+}
+
+/// Shapes characters `chars` of vertical text (one chunk, in logical
+/// order): each run of upright characters top to bottom, each run of
+/// sideways ones as horizontal text. `forms` keeps which characters have
+/// a vertical form in which font.
+fn shape_column<S: TextShaper>(
+    text: &SvgText,
+    chars: &[usize],
+    keys: &[Option<FontKey>],
+    shaper: &mut S,
+    forms: &mut HashMap<(FontKey, char), bool>,
+) -> Vec<Cluster> {
+    let upright: Vec<bool> = chars
+        .iter()
+        .map(|&i| stands_upright(text, i, keys, shaper.fonts(), forms))
+        .collect();
+    let mut out = Vec::new();
+    let mut start = 0;
+    while start < chars.len() {
+        let up = upright[start];
+        let end = start + upright[start..].iter().take_while(|&&u| u == up).count();
+        out.extend(shape(text, &chars[start..end], keys, shaper, up));
+        start = end;
+    }
+    out
+}
+
+/// Whether character `i` of vertical text stands upright: by its span's
+/// `text-orientation`, and when that is `mixed`, by its Unicode
+/// `Vertical_Orientation` (`Tr`: upright when its font has a vertical
+/// form for it).
+fn stands_upright(
+    text: &SvgText,
+    i: usize,
+    keys: &[Option<FontKey>],
+    fonts: &FontSet<'_>,
+    forms: &mut HashMap<(FontKey, char), bool>,
+) -> bool {
+    if text.writing != Writing::Vertical {
+        return false;
+    }
+    let c = text.chars[i];
+    let span = c.span as usize;
+    match text.spans[span].orientation {
+        TextOrientation::Upright => true,
+        TextOrientation::Sideways => false,
+        TextOrientation::Mixed => match vertical::orientation(c.c) {
+            None => false,
+            Some(vertical::Orientation::Upright | vertical::Orientation::TransformedUpright) => {
+                true
+            }
+            Some(vertical::Orientation::TransformedRotated) => keys[span].is_some_and(|k| {
+                *forms
+                    .entry((k, c.c))
+                    .or_insert_with(|| fonts.get(k).has_vertical_form(c.c))
+            }),
+        },
+    }
 }
 
 /// The declared font CSS matching picks for `span`.
@@ -240,13 +363,15 @@ fn valid_size(size: f32) -> bool {
     size.is_finite() && size > 0.0
 }
 
-/// Shapes characters `chars` (one chunk, in logical order) and returns
-/// their clusters in visual order.
+/// Shapes characters `chars` (one chunk, or a run of one, in logical
+/// order) and returns their clusters in visual order; `upright`: top to
+/// bottom.
 fn shape<S: TextShaper>(
     text: &SvgText,
     chars: &[usize],
     keys: &[Option<FontKey>],
     shaper: &mut S,
+    upright: bool,
 ) -> Vec<Cluster> {
     // One run per stretch of characters of one span.
     let mut runs: Vec<TextRun> = Vec::new();
@@ -275,7 +400,7 @@ fn shape<S: TextShaper>(
                 hyphenate: Some(false),
                 // SVG text shifts baselines itself (`baseline-shift`).
                 vertical_align: None,
-                font_features: None,
+                font_features: (!s.features.is_empty()).then(|| s.features.to_vec().into()),
                 image: None,
                 note: None,
                 attachment: None,
@@ -304,6 +429,7 @@ fn shape<S: TextShaper>(
         },
         hyphenate: false,
         lang: None,
+        vertical: upright,
     };
     let prepared = shaper.prepare(&runs, &style);
     // Glyphs in visual order, each with its bidi level.
@@ -358,6 +484,7 @@ fn shape<S: TextShaper>(
                 scale_x: 1.0,
                 space: glyph.is_space(),
                 object,
+                upright,
             }),
         }
     }
@@ -463,13 +590,11 @@ fn baseline_drop(span: &SvgSpan, font: &LoadedFont<'_>) -> f32 {
     down - up
 }
 
-/// A point turned by `deg` degrees (clockwise, y down) about the origin.
-fn turn((x, y): (f32, f32), deg: f32) -> (f32, f32) {
-    if deg == 0.0 {
-        return (x, y);
-    }
-    let (sin, cos) = deg.to_radians().sin_cos();
-    (x * cos - y * sin, x * sin + y * cos)
+/// How far the alphabetic baseline of `span` sits below its central one:
+/// the middle of the font's ascender and descender.
+fn central_drop(span: &SvgSpan, font: &LoadedFont<'_>) -> f32 {
+    let m = font.metrics();
+    (m.ascender + m.descender) * font.scale(span.size) / 2.0
 }
 
 /// The box of `points`, grown into `ink`.
@@ -483,27 +608,177 @@ fn grow(ink: &mut Option<[f32; 4]>, points: impl IntoIterator<Item = (f32, f32)>
     }
 }
 
+/// Outline boxes by font and glyph: each outline is read once.
+type Boxes = HashMap<(FontKey, u16), Option<[f32; 4]>>;
+
+/// Draws cluster `c` (of span `span`, in `font`) from `origin` turned
+/// `rotate` degrees: its glyphs, or its image, into `out`, with their
+/// ink. A horizontal cluster's origin is on its baseline; an upright
+/// one's, on the centre of the column at its top.
+fn put_cluster(
+    out: &mut LaidText,
+    boxes: &mut Boxes,
+    (c, span, font): (&Cluster, &SvgSpan, &LoadedFont<'_>),
+    (ox, oy): (f32, f32),
+    rotate: f32,
+) {
+    let scale = font.scale(span.size);
+    // Upright glyphs are not stretched: their advance is.
+    let scale_x = if c.upright { 1.0 } else { c.scale_x };
+    if let Some((o, above)) = &c.object {
+        let rect = if c.upright {
+            Rect::new(-o.width / 2.0, 0.0, o.width, o.height)
+        } else {
+            Rect::new(0.0, -above, o.width, o.height)
+        };
+        let image = SvgImage {
+            key: o.key,
+            x: ox,
+            y: oy,
+            rotate,
+            scale_x,
+            rect,
+            placement: o.placement,
+            text: o.alt.clone(),
+            font: c.font,
+            size: span.size,
+            paint: span.paint,
+            char: c.char as u32,
+        };
+        let r = image.rect;
+        let corners = [
+            (r.x, r.y),
+            (r.x + r.w, r.y),
+            (r.x + r.w, r.y + r.h),
+            (r.x, r.y + r.h),
+        ];
+        grow(
+            &mut out.ink,
+            corners.map(|(u, v)| {
+                let (px, py) = geom::rotate((u * scale_x, v), rotate);
+                (ox + px, oy + py)
+            }),
+        );
+        out.images.push(image);
+        return;
+    }
+    let mut pen = 0.0;
+    for ShapedGlyph {
+        id,
+        text: glyph_text,
+        x_offset,
+        y_offset,
+        advance,
+    } in &c.glyphs
+    {
+        let (id, x_offset, y_offset, advance) = (*id, *x_offset, *y_offset, *advance);
+        let start = out.text.len() as u32;
+        if let Some(t) = glyph_text {
+            out.text.push_str(t);
+        }
+        // Upright glyphs go down from the column's top, sideways and
+        // horizontal ones along their baseline.
+        let at = if c.upright {
+            (x_offset, pen - y_offset)
+        } else {
+            ((pen + x_offset) * scale_x, -y_offset)
+        };
+        let (gx, gy) = geom::rotate(at, rotate);
+        let g = SvgGlyph {
+            font: c.font,
+            id,
+            size: span.size,
+            x: ox + gx,
+            y: oy + gy,
+            rotate,
+            scale_x,
+            paint: span.paint,
+            text: (start, out.text.len() as u32),
+            char: c.char as u32,
+        };
+        let bbox = *boxes
+            .entry((c.font, id))
+            .or_insert_with(|| ink_box(font, id));
+        if let Some([bx0, by0, bx1, by1]) = bbox {
+            let corners = [(bx0, by0), (bx1, by0), (bx1, by1), (bx0, by1)];
+            grow(
+                &mut out.ink,
+                corners.map(|(u, v)| {
+                    let (px, py) = geom::rotate((u * scale * scale_x, -v * scale), g.rotate);
+                    (g.x + px, g.y + py)
+                }),
+            );
+        }
+        out.glyphs.push(g);
+        pen += advance;
+    }
+}
+
+/// Where the clusters of a chunk start along its line, from its anchor:
+/// start and end swap in right-to-left text.
+fn anchored(chunk: &Chunk) -> f32 {
+    let width: f32 = chunk.clusters.iter().map(|c| c.advance).sum();
+    match (chunk.anchor, chunk.rtl) {
+        (Anchor::Start, false) | (Anchor::End, true) => 0.0,
+        (Anchor::Middle, _) => -width / 2.0,
+        (Anchor::End, false) | (Anchor::Start, true) => -width,
+    }
+}
+
+/// What placing the chunks of a text builds: the laid text, the outline
+/// boxes read so far, and the decoration runs of the chunk being placed.
+#[derive(Default)]
+struct Placing {
+    out: LaidText,
+    boxes: Boxes,
+    runs: Vec<DecorationRun>,
+}
+
+impl Placing {
+    /// Draws a cluster from `origin` turned `rotate` ([`put_cluster`]).
+    fn put(
+        &mut self,
+        cluster: (&Cluster, &SvgSpan, &LoadedFont<'_>),
+        origin: (f32, f32),
+        rotate: f32,
+    ) {
+        put_cluster(&mut self.out, &mut self.boxes, cluster, origin, rotate);
+    }
+}
+
+/// Places every chunk that has clusters with `place_chunk`, which gets
+/// where the chunk starts (where the text before it ended, unless it
+/// has a position) and returns where the text after it goes on (`None`:
+/// where it was). Each chunk's decorations are drawn after it.
+fn place_chunks(
+    text: &SvgText,
+    chunks: &[Chunk],
+    fonts: &FontSet<'_>,
+    mut place_chunk: impl FnMut(&Chunk, (f32, f32), &mut Placing) -> Option<(f32, f32)>,
+) -> LaidText {
+    let mut p = Placing::default();
+    let (mut last_x, mut last_y) = (0.0f32, 0.0f32);
+    for chunk in chunks.iter().filter(|c| !c.clusters.is_empty()) {
+        let start = (chunk.x.unwrap_or(last_x), chunk.y.unwrap_or(last_y));
+        if let Some(end) = place_chunk(chunk, start, &mut p) {
+            (last_x, last_y) = end;
+        }
+        draw_decorations(&mut p.out, text, &p.runs, fonts);
+        p.runs.clear();
+    }
+    sort(&mut p.out);
+    p.out
+}
+
 /// Places the clusters of every chunk (`resolve_clusters_positions`),
 /// with anchors, baselines, decorations and the ink box.
 fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
-    let mut out = LaidText::default();
-    // Outline boxes by font and glyph: each outline is read once.
-    let mut boxes: HashMap<(FontKey, u16), Option<[f32; 4]>> = HashMap::new();
-    let (mut last_x, mut last_y) = (0.0f32, 0.0f32);
-    for chunk in chunks {
-        if chunk.clusters.is_empty() {
-            continue;
+    place_chunks(text, chunks, fonts, |chunk, (x0, y0), p| {
+        if let Some(path) = chunk.path {
+            return place_on_path(text, chunk, &text.paths[usize::from(path)], fonts, p);
         }
-        let (x0, y0) = (chunk.x.unwrap_or(last_x), chunk.y.unwrap_or(last_y));
-        let width: f32 = chunk.clusters.iter().map(|c| c.advance).sum();
-        // Start and end swap in right-to-left text.
-        let mut x = match (chunk.anchor, chunk.rtl) {
-            (Anchor::Start, false) | (Anchor::End, true) => 0.0,
-            (Anchor::Middle, _) => -width / 2.0,
-            (Anchor::End, false) | (Anchor::Start, true) => -width,
-        };
+        let mut x = anchored(chunk);
         let mut y = 0.0;
-        let mut runs: Vec<DecorationRun> = Vec::new();
         for c in &chunk.clusters {
             let ch = text.chars[c.char];
             x += ch.dx;
@@ -512,134 +787,157 @@ fn place(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
             let span = &text.spans[c.span];
             let font = fonts.get(c.font);
             let down = baseline_drop(span, font);
-            let (ox, oy) = (x0 + x, y0 + y + down);
-            let scale = font.scale(span.size);
-            let mut pen = 0.0;
-            if let Some((o, above)) = &c.object {
-                let image = SvgImage {
-                    key: o.key,
-                    x: ox,
-                    y: oy,
-                    rotate: ch.rotate,
-                    scale_x: c.scale_x,
-                    rect: Rect::new(0.0, -above, o.width, o.height),
-                    placement: o.placement,
-                    text: o.alt.clone(),
-                    font: c.font,
-                    size: span.size,
-                    paint: span.paint,
-                };
-                let r = image.rect;
-                let corners = [
-                    (r.x, r.y),
-                    (r.x + r.w, r.y),
-                    (r.x + r.w, r.y + r.h),
-                    (r.x, r.y + r.h),
-                ];
-                grow(
-                    &mut out.ink,
-                    corners.map(|(u, v)| {
-                        let (px, py) = turn((u * c.scale_x, v), ch.rotate);
-                        (ox + px, oy + py)
-                    }),
-                );
-                out.images.push(image);
-            }
-            let glyphs = if c.object.is_some() {
-                &[][..]
-            } else {
-                &c.glyphs[..]
-            };
-            for ShapedGlyph {
-                id,
-                text: glyph_text,
-                x_offset,
-                y_offset,
-                advance,
-            } in glyphs
-            {
-                let (id, x_offset, y_offset, advance) = (*id, *x_offset, *y_offset, *advance);
-                let start = out.text.len() as u32;
-                if let Some(t) = glyph_text {
-                    out.text.push_str(t);
-                }
-                let (gx, gy) = turn(((pen + x_offset) * c.scale_x, -y_offset), ch.rotate);
-                let g = SvgGlyph {
-                    font: c.font,
-                    id,
-                    size: span.size,
-                    x: ox + gx,
-                    y: oy + gy,
-                    rotate: ch.rotate,
-                    scale_x: c.scale_x,
-                    paint: span.paint,
-                    text: (start, out.text.len() as u32),
-                };
-                let bbox = *boxes
-                    .entry((c.font, id))
-                    .or_insert_with(|| ink_box(font, id));
-                if let Some([bx0, by0, bx1, by1]) = bbox {
-                    let corners = [(bx0, by0), (bx1, by0), (bx1, by1), (bx0, by1)];
-                    grow(
-                        &mut out.ink,
-                        corners.map(|(u, v)| {
-                            let (px, py) = turn((u * scale * c.scale_x, -v * scale), g.rotate);
-                            (g.x + px, g.y + py)
-                        }),
-                    );
-                }
-                out.glyphs.push(g);
-                pen += advance;
-            }
-            match runs.last_mut() {
-                Some(r) if r.span == c.span && !shifted => r.width += c.advance,
-                _ => runs.push(DecorationRun {
-                    span: c.span,
-                    font: c.font,
-                    origin: (ox, oy),
-                    rotate: ch.rotate,
-                    width: c.advance,
-                }),
-            }
+            let origin = (x0 + x, y0 + y + down);
+            p.put((c, span, font), origin, ch.rotate);
+            decorate(&mut p.runs, c, shifted, origin, ch.rotate);
             x += c.advance;
         }
-        for run in runs {
-            let span = &text.spans[run.span];
-            let font = fonts.get(run.font);
-            let (rx, ry) = run.origin;
-            let (rotate, w) = (run.rotate, run.width);
-            let m = font.metrics();
-            let scale = font.scale(span.size);
-            let thick = m.underline_thickness * scale;
-            for (on, offset, over) in [
-                (span.underline, -m.underline_position * scale, false),
-                (span.overline, -m.ascender * scale, false),
-                (span.line_through, -m.strikeout_position * scale, true),
-            ] {
-                if !(on && thick > 0.0 && w > 0.0) {
-                    continue;
-                }
-                let (top, bottom) = (offset - thick / 2.0, offset + thick / 2.0);
-                let quad = [(0.0, top), (w, top), (w, bottom), (0.0, bottom)].map(|p| {
-                    let (px, py) = turn(p, rotate);
-                    [rx + px, ry + py]
-                });
-                grow(&mut out.ink, quad.map(|p| (p[0], p[1])));
-                out.decorations.push(SvgDecoration {
-                    paint: span.paint,
-                    quad,
-                    over,
-                });
-            }
+        Some((x0 + x, y0 + y))
+    })
+}
+
+/// Places the clusters of a chunk on a path (`resolve_clusters_positions_path`):
+/// the middle of each cluster's advance on the path, turned to the
+/// path's direction there, and moved off it by its baseline and `dy`.
+/// The chunk starts at `startOffset` plus its x, with its anchor; `dx`
+/// moves along the path. A cluster whose middle is off the path is not
+/// drawn, and each cluster has its own decorations. Returns where text
+/// after it goes on, as `usvg` does: past the last cluster drawn.
+fn place_on_path(
+    text: &SvgText,
+    chunk: &Chunk,
+    path: &TextPathSpec,
+    fonts: &FontSet<'_>,
+    p: &mut Placing,
+) -> Option<(f32, f32)> {
+    let mut along = chunk.x.unwrap_or(0.0) + path.start + anchored(chunk);
+    let mut dy = 0.0;
+    let mut end = None;
+    for c in &chunk.clusters {
+        let ch = text.chars[c.char];
+        along += ch.dx;
+        dy += ch.dy;
+        let half = c.advance / 2.0;
+        if let Some(at) = path.geom.at(along + half) {
+            let span = &text.spans[c.span];
+            let font = fonts.get(c.font);
+            let (ux, uy) = geom::rotate((-half, dy + baseline_drop(span, font)), at.angle);
+            let origin = (at.x + ux, at.y + uy);
+            let rotate = at.angle + ch.rotate;
+            p.put((c, span, font), origin, rotate);
+            decorate(&mut p.runs, c, true, origin, rotate);
+            end = Some((at.x + c.advance, at.y));
         }
-        last_x = x0 + x;
-        last_y = y0 + y;
+        along += c.advance;
     }
-    // Each probe draws one paint style: stable sorts keep the order.
+    end
+}
+
+/// Places the clusters of every chunk of vertical text. A chunk's line
+/// goes down from its position (up in `sideways-lr`) on the column's
+/// centre: sideways clusters lie on it as horizontal text turned a
+/// quarter, on their baseline (central unless set), and upright ones
+/// stand on the centre, moved across as far as their baseline is from
+/// the central one. `dx` and `dy` move across and along as they move x
+/// and y; the anchor and `textLength` act along the line.
+fn place_vertical(text: &SvgText, chunks: &[Chunk], fonts: &FontSet<'_>) -> LaidText {
+    let line = text.writing.line_angle();
+    place_chunks(text, chunks, fonts, |chunk, (x0, y0), p| {
+        // A point `along` the line and `across` it (down from the glyphs'
+        // view), in user space, after the shifts so far.
+        let at = |along: f32, across: f32, (sx, sy): (f32, f32)| {
+            let (px, py) = geom::rotate((along, across), line);
+            (x0 + sx + px, y0 + sy + py)
+        };
+        let mut along = anchored(chunk);
+        let mut shift = (0.0f32, 0.0f32);
+        for c in &chunk.clusters {
+            let ch = text.chars[c.char];
+            shift.0 += ch.dx;
+            shift.1 += ch.dy;
+            let shifted = ch.dx != 0.0 || ch.dy != 0.0 || ch.rotate != 0.0;
+            let span = &text.spans[c.span];
+            let font = fonts.get(c.font);
+            let down = baseline_drop(span, font);
+            let baseline = at(along, down, shift);
+            if c.upright {
+                let origin = at(along, down - central_drop(span, font), shift);
+                p.put((c, span, font), origin, ch.rotate);
+            } else {
+                p.put((c, span, font), baseline, line + ch.rotate);
+            }
+            decorate(&mut p.runs, c, shifted, baseline, line);
+            along += c.advance;
+        }
+        Some(at(along, 0.0, shift))
+    })
+}
+
+/// Each probe draws one paint style: stable sorts keep the order.
+fn sort(out: &mut LaidText) {
     out.glyphs.sort_by_key(|g| g.paint);
     out.decorations.sort_by_key(|d| d.paint);
     out.images.sort_by_key(|i| i.paint);
-    out
+}
+
+/// Adds cluster `c`, on its baseline at `origin` turned `rotate`, to the
+/// decoration runs: it continues the last one unless it is shifted or of
+/// another span.
+fn decorate(
+    runs: &mut Vec<DecorationRun>,
+    c: &Cluster,
+    shifted: bool,
+    origin: (f32, f32),
+    rotate: f32,
+) {
+    match runs.last_mut() {
+        Some(r) if r.span == c.span && !shifted => r.width += c.advance,
+        _ => runs.push(DecorationRun {
+            span: c.span,
+            font: c.font,
+            origin,
+            rotate,
+            width: c.advance,
+        }),
+    }
+}
+
+/// The underlines, overlines and lines-through of `runs`, into `out`.
+fn draw_decorations(
+    out: &mut LaidText,
+    text: &SvgText,
+    runs: &[DecorationRun],
+    fonts: &FontSet<'_>,
+) {
+    for run in runs {
+        let span = &text.spans[run.span];
+        let font = fonts.get(run.font);
+        let (rx, ry) = run.origin;
+        let (rotate, w) = (run.rotate, run.width);
+        let m = font.metrics();
+        let scale = font.scale(span.size);
+        let thick = m.underline_thickness * scale;
+        for (on, offset, over) in [
+            (span.underline, -m.underline_position * scale, false),
+            (span.overline, -m.ascender * scale, false),
+            (span.line_through, -m.strikeout_position * scale, true),
+        ] {
+            if !(on && thick > 0.0 && w > 0.0) {
+                continue;
+            }
+            let (top, bottom) = (offset - thick / 2.0, offset + thick / 2.0);
+            let quad = [(0.0, top), (w, top), (w, bottom), (0.0, bottom)].map(|p| {
+                let (px, py) = geom::rotate(p, rotate);
+                [rx + px, ry + py]
+            });
+            grow(&mut out.ink, quad.map(|p| (p[0], p[1])));
+            out.decorations.push(SvgDecoration {
+                paint: span.paint,
+                quad,
+                over,
+            });
+        }
+    }
 }
 
 /// The box of glyph `id`'s ink, in font units, y up: its outline, or the

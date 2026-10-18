@@ -359,11 +359,30 @@ impl ImageSet {
     /// Converts the SVGs with text again, each text laid out with this
     /// render's fonts through `shaper` (in image order, so glyph mappings
     /// do not depend on threads). Each becomes this render's own copy, of
-    /// the size it has without its text.
+    /// the size it has without its text. The SVGs of a render use at most
+    /// [`MAX_FEATURE_SETS`] different sets of OpenType features in all, as
+    /// the document's text does: each is shaped with plans of its own.
+    ///
+    /// [`MAX_FEATURE_SETS`]: crate::validate::rules::MAX_FEATURE_SETS
     pub fn lay_out_text<S: crate::text::TextShaper>(
         &mut self,
         shaper: &mut S,
     ) -> Result<(), InkoxideError> {
+        use crate::validate::rules::MAX_FEATURE_SETS;
+        let mut sets = HashSet::new();
+        for image in &self.images {
+            if let ImageBody::Svg {
+                text: Some(source), ..
+            } = &image.body
+            {
+                source.feature_sets(&mut sets);
+            }
+        }
+        if sets.len() > MAX_FEATURE_SETS {
+            return Err(InkoxideError::Image(format!(
+                "the text of the document's SVGs uses more than {MAX_FEATURE_SETS} different sets of font features"
+            )));
+        }
         for image in &mut self.images {
             let ImageBody::Svg {
                 tree,

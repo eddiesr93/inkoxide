@@ -44,7 +44,7 @@ the text's ink, or a group of probes, one per paint style of its spans.
   `objectBoundingBox` paint, clips, masks and group bounds resolve against it.
 - **Recognition**: the PDF writer finds a probe by its geometry, not its id, because `usvg`
   drops ids in `use` copies and markers. Each probe's corners carry its number in their last
-  bits (a few units in the last place), so they are unique within an SVG; a crafted collision
+  bits (a few units in the last place), so they are unique within an SVG; a deliberate collision
   with a rectangle can only make an SVG draw its own text in place of one of its own
   rectangles.
 - **Drawing** (`pdf/svg.rs`): a probe draws its text in its place, with its fill and stroke
@@ -70,14 +70,21 @@ the text's ink, or a group of probes, one per paint style of its spans.
   resolves `inherit` and copies paths. `usvg` is pinned, and the probe survival suite
   (`images/svg_text/survival.rs`) checks every context on an upgrade.
 - Two cascades exist: ours for text properties, `usvg`'s for the rest. They can drift on edge
-  cases; ours is a port of `usvg`'s, with the same `simplecss` and `svgtypes` versions.
+  cases; ours is a port of `usvg`'s, with the same `simplecss` and `svgtypes` versions. So do
+  two readers of geometry: the paths a `textPath` follows are read by ours (`path.rs`, with the
+  same `svgtypes`), the rest by `usvg`.
 - An SVG with text is converted again on each render that lays its text out differently.
-- Not in this version: text on a path, vertical text and text that an XML entity expands to
-  (refused, as all text was: the placeholder replaces the element where it is in the source,
-  and an entity's text is somewhere else), font properties passed through `use`,
-  `font-variant`, `font-stretch`, `font-kerning`, `font-feature-settings` and `tref`. An
-  author `!important` rule that matches any element (`*`) applies to the text's paint, as it
-  does in a browser; one that names both `path` and `polygon` reaches the probes.
+- Not in this version: text that an XML entity expands to (refused, as all text was: the
+  placeholder replaces the element where it is in the source, and an entity's text is
+  somewhere else), vertical text on a path, font properties passed through `use`,
+  `font-stretch` and `tref`. An author `!important` rule that matches any element (`*`)
+  applies to the text's paint, as it does in a browser; one that names both `path` and
+  `polygon` reaches the probes.
+- Text on a path and vertical text, added since, fit the design unchanged. The path a `textPath`
+  follows is read from the XML with the text (`usvg` never sees it, and a path in `<defs>` is
+  not in its tree), once per element it refers to, and the probe covers the ink wherever the
+  glyphs go. Each glyph on a curve, and each in a column, has its own text matrix, and the
+  text of each paint style is written once as `ActualText`, in logical order.
 
 ## Alternatives
 

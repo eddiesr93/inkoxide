@@ -87,6 +87,14 @@ const FIXTURE_FONTS: &[(&str, &str, u16, &str, &[u8])] = &[
         "normal",
         include_bytes!("../../fixtures/fonts/VarTest-CFF2.otf"),
     ),
+    // Vertical metrics (vhea, vmtx, VORG) and vertical forms (`vert`).
+    (
+        "VertTest",
+        "Vert Test",
+        400,
+        "normal",
+        include_bytes!("../../fixtures/fonts/VertTest.ttf"),
+    ),
     // Colour fonts: COLR layers with outlines, PNG bitmaps without (CBDT
     // and sbix).
     (
@@ -188,6 +196,14 @@ const FIXTURE_IMAGES: &[(&str, &[u8])] = &[
     ),
     ("text", include_bytes!("../../fixtures/images/text.svg")),
     ("svgtext", include_bytes!("../../fixtures/images/text.svg")),
+    (
+        "text-path",
+        include_bytes!("../../fixtures/images/text-path.svg"),
+    ),
+    (
+        "text-vertical",
+        include_bytes!("../../fixtures/images/text-vertical.svg"),
+    ),
 ];
 
 pub static IMAGES: LazyLock<ImageStore> = LazyLock::new(|| {

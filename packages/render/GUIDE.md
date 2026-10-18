@@ -46,7 +46,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | `PageNumber`, `TotalPages` | The current page and the page count, inside a `Text`. |
 | `Table`, `Row`, `Cell` | A table that splits across pages. |
 | `PageBreak`, `Spacer` | A forced page break; empty space. |
-| `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `Marker`, `LinearGradient`, `RadialGradient`, `Stop`, `Tspan` | Vector drawing in JSX; a `Text` in an `Svg` is SVG text. |
+| `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `Marker`, `LinearGradient`, `RadialGradient`, `Stop`, `Tspan`, `TextPath` | Vector drawing in JSX; a `Text` in an `Svg` is SVG text. |
 | `Canvas` | Drawing in code: `paint={(painter, width, height) => …}`. |
 | `TextField` (or `TextInput`), `Checkbox`, `Radio`, `Select`, `List`, `Field` | Fillable form fields (AcroForm). |
 | `FieldSet` | A `View` that groups the form fields inside it under its `name`. |
@@ -834,9 +834,37 @@ copied.
   `wordSpacing`, `textDecoration` (`underline`, `overline`, `line-through`), `direction`
   (`rtl` sets the base direction of the text and mirrors its anchor) and, on a `Tspan`,
   `baselineShift` (`super`, `sub` or a length) and `alignmentBaseline`, which places the span
-  on another baseline than the text's `dominantBaseline`. A `Text` in an `<Svg>` takes these SVG props:
+  on another baseline than the text's `dominantBaseline`. `fontFeatureSettings`
+  (`"'tnum', 'liga' off"`), `fontVariant` (`small-caps`, `tabular-nums`, …) and `fontKerning`
+  (`none`) choose OpenType features, as in CSS. A `Text` in an `<Svg>` takes these SVG props:
   `style` and `className` are for text outside drawings.
-- Strings and `Tspan` go in it; anything else is an error.
+- **Vertical text**: `writingMode="vertical-rl"` (or `vertical-lr`, the same for one line) sets
+  the text down a column centred on its `x`: CJK characters stand upright, in their vertical
+  forms when the font has them (`、` `「` `ー`), with its vertical metrics; Latin letters and
+  digits lie sideways, as in browsers. `textOrientation="upright"` stands every character,
+  `"sideways"` turns every one, and `writingMode="sideways-rl"` turns every one too
+  (`sideways-lr` goes up). The anchor and `textLength` act down the column
+  (`spacingAndGlyphs` stretches sideways glyphs, and spaces upright ones), and the underline
+  goes on the left, the overline on the right.
+- **Text on a path**: a `TextPath` directly inside the `Text` sets its characters along the
+  path or shape `href` names (`href="#curve"`, in `Defs`), or along its own `path` data, each
+  turned with the curve, from `startOffset` (a length or a percentage of the path's length).
+  `side="right"` follows the path the other way; what goes past its end is not drawn.
+  `method` and `spacing` are accepted and do nothing, as in browsers. Vertical text on a path
+  is not supported.
+- Strings, `Tspan` and `TextPath` go in it; anything else is an error.
+
+```tsx
+<Svg width={200} height={90}>
+  <Defs>
+    <Path id="curve" d="M10 80 Q 100 0 190 80" />
+  </Defs>
+  <Text fontSize={13} fill="#4f46e5">
+    <TextPath href="#curve" startOffset="50%" textAnchor="middle">Along the curve</TextPath>
+  </Text>
+  <Text x={10} y={10} writingMode="vertical-rl">縦書き</Text>
+</Svg>
+```
 
 **Markers** draw a shape at the vertices of a `Path`, `Line`, `Polyline` or `Polygon`: define a
 `Marker` in `Defs` and reference it with `markerStart`, `markerMid` or `markerEnd`.
@@ -912,13 +940,18 @@ In an SVG, whether in `<Svg>` or an image file:
   matches), with the fallback fonts for characters it lacks; a font that only an SVG file
   needs goes in `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)), so that the
   document declares it. Style sheets, `xml:space`, positions and rotations, anchors, baselines,
-  `baseline-shift`, spacing, `text-decoration` and `textLength` work, also in clip paths, masks,
-  patterns, markers and `use` copies. Text on a path (`<textPath>`) and vertical text (`writing-mode` of `tb`, `tb-rl`,
-  `vertical-rl` or `vertical-lr`) fail the render with `INVALID_IMAGE`: convert them to outlines
-  in your design tool. `sideways-rl` and `sideways-lr` are not refused: the text is drawn
-  horizontally. `font-variant`, `font-stretch`, `font-kerning` and `font-feature-settings` are
-  ignored, and font properties set on a `<use>` do not reach the text it copies (its fill and
-  stroke do). A `<text>` element that an XML entity expands to fails with `INVALID_IMAGE` too:
+  `baseline-shift`, spacing, `text-decoration`, `textLength`, `font-variant`, `font-kerning`
+  and `font-feature-settings` work, also in clip paths, masks, patterns, markers and `use`
+  copies. Vertical text (`writing-mode` of `tb`, `tb-rl`, `vertical-rl`, `vertical-lr`,
+  `sideways-rl` or `sideways-lr`, with `text-orientation` and `glyph-orientation-vertical`) and
+  text on a path (`<textPath>` on a `path` or basic shape, or with its own `path` data) are
+  laid out as described above, and read in their order when the PDF's text is copied or
+  extracted. Vertical text on a path fails the render with `INVALID_IMAGE`: convert it to
+  outlines in your design tool, as for the text paths of an SVG that has more than 100,000
+  path segments in all. An SVG's text uses at most 64 different sets of font features, and so do the SVGs of a
+  document in all.
+  `font-stretch` is ignored, and font properties set on a `<use>` do not reach the text it
+  copies (its fill and stroke do). A `<text>` element that an XML entity expands to fails with `INVALID_IMAGE` too:
   write the element in the SVG itself. An entity inside a `<text>` that is in the SVG
   (`<text>&co; report</text>`) is fine. An `!important` rule that names both `path` and
   `polygon` also sets the paint of the SVG's text. Colour emoji fonts draw in colour, and emoji the document maps to images (`emojiImages`) are those
@@ -1241,7 +1274,7 @@ app.get('/health', (_req, res) => {
 tree the engine writes, so it is not a general PDF parser.
 
 **Types.** The props of a component are exported as a type named after it (`DocumentProps`,
-`TextProps`, `TextFieldProps`, `FieldProps`, `SvgProps`, `MarkerProps`, `TspanProps`, `CanvasProps` and so on); `PolyProps`
+`TextProps`, `TextFieldProps`, `FieldProps`, `SvgProps`, `MarkerProps`, `TspanProps`, `TextPathProps`, `CanvasProps` and so on); `PolyProps`
 serves `Polyline` and `Polygon`, `GradientProps` both gradients, `SvgPresentation` the
 attributes every SVG shape takes, and `SvgTextProps` the props of a `Text` in an `Svg`. Also
 exported:
@@ -1488,8 +1521,9 @@ cross-origin isolation (COOP and COEP).
   245 KB with brotli) is downloaded when a document first draws with it: Noto Sans, the
   fallback, only for a character Inter lacks. A language's hyphenation patterns (1 to 350 KB)
   are downloaded when a document first hyphenates text in it.
-- The PDF has the bytes Node renders, except where SVG markers are rotated: their numbers can
-  differ in the last digits, since the browser's math library rounds differently.
+- The PDF has the bytes Node renders, except where SVG markers are rotated and where SVG text
+  follows a path: their numbers can differ in the last digits, since the browser's math library
+  rounds differently.
 - A bug in the engine fails the render with `INTERNAL`; the next render runs in a new instance.
 
 ## FAQ
@@ -1548,7 +1582,7 @@ Yes, for the same input, fonts and options, as long as you leave out `creationDa
 
 - **Browsers.** Renders run on one thread, in a worker (see [In the browser](#in-the-browser)).
   Browsers and Node are the runtimes supported; edge runtimes are not.
-- **Drawing.** SVG text on a path and vertical SVG text are not supported. SVG filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
+- **Drawing.** Vertical SVG text on a path is not supported. SVG filters are not applied, and an SVG only shows images embedded as `data:` URLs (see
   [Drawing](#drawing-svg-and-canvas)).
 - **Content taller than a page.** What cannot split (an `Image`, a float, an absolutely
   positioned, rotated or transformed element, table rows tied by a `rowSpan`) is cut at the

@@ -70,11 +70,15 @@ const SVG_SHAPES = new Set<string>([
 ]);
 /**
  * What goes in an `<Svg>`, `<G>`, `<Defs>`, `<ClipPath>` or `<Marker>`: every SVG primitive but
- * `<Stop>` and `<Tspan>`, and `<Text>`.
+ * `<Stop>`, `<Tspan>` and `<TextPath>`, and `<Text>`.
  */
-const SVG_CONTENT = new Set<string>(Object.keys(SVG_TAGS).filter((t) => t !== HOST.Stop && t !== HOST.Tspan));
-/** The context inside SVG text (a `Text` in an `<Svg>`, or a `Tspan`): strings and `Tspan`. */
+const SVG_CONTENT = new Set<string>(
+  Object.keys(SVG_TAGS).filter((t) => t !== HOST.Stop && t !== HOST.Tspan && t !== HOST.TextPath),
+);
+/** The context inside SVG text (a `Tspan` or a `TextPath`): strings and `Tspan`. */
 const SVG_TEXT = 'ink-svg-text';
+/** The context of a `Text` in an `<Svg>`: strings, `Tspan` and `TextPath`. */
+const SVG_TEXT_ROOT = 'ink-svg-text-root';
 const LEAF = new Set<string>([
   HOST.Image,
   HOST.PageBreak,
@@ -118,6 +122,8 @@ function allowed(parent: HostContext['parent'], child: HostType): boolean {
       return SVG_CONTENT.has(child) || child === HOST.Text;
     case SVG_TEXT:
       return child === HOST.Tspan;
+    case SVG_TEXT_ROOT:
+      return child === HOST.Tspan || child === HOST.TextPath;
     case HOST.LinearGradient:
     case HOST.RadialGradient:
       return child === HOST.Stop;
@@ -166,9 +172,12 @@ function placementError(parent: HostContext['parent'], child: string): TemplateE
     );
   }
   if (LEAF.has(parent)) return new TemplateError(`${name(parent)} cannot have children.`);
-  if (parent === SVG_TEXT) {
+  if (child === HOST.TextPath) {
+    return new TemplateError('<TextPath> goes directly inside a <Text> in an <Svg>.');
+  }
+  if (parent === SVG_TEXT || parent === SVG_TEXT_ROOT) {
     return new TemplateError(
-      `${name(child)} cannot be inside SVG text; a <Text> in an <Svg> holds strings and <Tspan>.`,
+      `${name(child)} cannot be inside SVG text; a <Text> in an <Svg> holds strings, <Tspan> and <TextPath>.`,
     );
   }
   if (child === HOST.Tspan) {
@@ -245,7 +254,8 @@ export const hostConfig = {
   getChildHostContext: (parent: HostContext, type: string): HostContext => {
     if (type === HOST.Link && parent.parent === HOST.Text) return contextFor(HOST.Text);
     const inSvg = parent.parent === HOST.Svg || SVG_CONTENT.has(parent.parent);
-    if ((type === HOST.Text && inSvg) || type === HOST.Tspan) return contextFor(SVG_TEXT);
+    if (type === HOST.Text && inSvg) return contextFor(SVG_TEXT_ROOT);
+    if (type === HOST.Tspan || type === HOST.TextPath) return contextFor(SVG_TEXT);
     return contextFor(type);
   },
   getPublicInstance: (instance: Instance): Instance => instance,
@@ -265,7 +275,7 @@ export const hostConfig = {
     return instance;
   },
   createTextInstance(text: string, _root: Container, ctx: HostContext, fiber: unknown): TextInstance {
-    if (ctx.parent === SVG_TEXT) return { kind: 'text', text, fiber };
+    if (ctx.parent === SVG_TEXT || ctx.parent === SVG_TEXT_ROOT) return { kind: 'text', text, fiber };
     if (ctx.parent === HOST.Svg || SVG_CONTENT.has(ctx.parent)) {
       throw new TemplateError('Text inside <Svg> goes in a <Text>: <Text x={10} y={20}>…</Text>.');
     }

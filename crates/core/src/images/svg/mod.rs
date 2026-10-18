@@ -30,6 +30,7 @@ mod text;
 mod view_box;
 
 use check::check;
+pub(crate) use check::iri;
 use limits::{
     too_complex, Meter, Reject, MAX_ENTITY_TEXT, MAX_NESTING, MAX_SIDE, MAX_XML_NODES, MIN_SIDE,
 };
@@ -38,7 +39,7 @@ pub(crate) use view_box::*;
 
 pub(crate) const SVG_NS: &str = "http://www.w3.org/2000/svg";
 
-const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
+pub(crate) const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
 
 /// Looks like SVG: optional BOM and whitespace, then `<`.
 pub(crate) fn is_svg(bytes: &[u8]) -> bool {

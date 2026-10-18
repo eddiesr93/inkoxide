@@ -9,7 +9,7 @@ use crate::{FontStore, InputFormat};
 const FONTS: &str = r#"[{"id":"Inter-Regular","family":"Inter"},{"id":"Inter-Bold","family":"Inter","weight":700}]"#;
 
 fn store() -> FontStore {
-    crate::test_fixtures::fonts(&["Inter-Regular", "Inter-Bold"])
+    crate::test_fixtures::fonts(&["Inter-Regular", "Inter-Bold", "VertTest"])
 }
 
 fn document(fonts: &str) -> crate::schema::Document {
@@ -304,4 +304,282 @@ fn lays_out_emoji_images_as_images() {
     assert!(close(laid.glyphs[1].x, image.x + 40.0));
     let ink = laid.ink.unwrap();
     assert!(ink[1] <= 50.0 - 18.0 && ink[2] >= image.x + 40.0, "{ink:?}");
+}
+
+/// Fonts for vertical text: the test font with vertical metrics and forms
+/// first, then Inter.
+const VERT: &str = r#"[{"id":"VertTest","family":"Vert"},{"id":"Inter-Regular","family":"Inter"}]"#;
+
+/// The first text of `body`, vertical (`vertical-rl`) at (50, 10) in the
+/// vertical test font at size 10, laid out.
+fn column(attrs: &str, body: &str) -> LaidText {
+    laid_with(
+        VERT,
+        &format!(
+            r#"<text x="50" y="10" font-size="10" font-family="Vert" writing-mode="vertical-rl" {attrs}>{body}</text>"#
+        ),
+    )
+}
+
+/// The vertical test font's central baseline below its alphabetic one at
+/// size 10: the middle of its ascender and descender.
+fn central() -> f32 {
+    let store = store();
+    let m = &store.get("VertTest").unwrap().metrics;
+    f32::midpoint(m.ascender, m.descender) * 10.0 / m.units_per_em
+}
+
+#[test]
+fn stands_upright_characters_down_the_column() {
+    let t = column("", "縦書");
+    // The column's centre is x; each ideograph advances 10 down, its
+    // origin half its width left of the centre and 8.8 below its top.
+    let at: Vec<(f32, f32, f32)> = t.glyphs.iter().map(|g| (g.x, g.y, g.rotate)).collect();
+    assert!(close(at[0].0, 45.0) && close(at[0].1, 18.8), "{at:?}");
+    assert!(close(at[1].0, 45.0) && close(at[1].1, 28.8), "{at:?}");
+    assert!(at.iter().all(|g| g.2 == 0.0));
+    // The same in `tb` and `vertical-lr`, which one line cannot tell apart.
+    for mode in ["tb", "tb-rl", "vertical-lr"] {
+        let other = laid_with(
+            VERT,
+            &format!(
+                r#"<text x="50" y="10" font-size="10" font-family="Vert" writing-mode="{mode}">縦書</text>"#
+            ),
+        );
+        assert_eq!(other.glyphs, t.glyphs, "{mode}");
+    }
+}
+
+#[test]
+fn turns_punctuation_into_its_vertical_forms() {
+    let ids = |t: &LaidText| t.glyphs.iter().map(|g| g.id).collect::<Vec<_>>();
+    let horizontal = laid_with(
+        VERT,
+        r#"<text font-size="10" font-family="Vert">、「ー」。</text>"#,
+    );
+    let vertical = column("", "、「ー」。");
+    assert!(ids(&vertical)
+        .iter()
+        .zip(ids(&horizontal))
+        .all(|(v, h)| *v != h));
+    assert!(vertical.glyphs.iter().all(|g| g.rotate == 0.0));
+    // The text layer keeps the characters.
+    assert_eq!(vertical.text, "、「ー」。");
+}
+
+#[test]
+fn lays_latin_sideways_in_mixed_orientation() {
+    let t = column("", "縦AB〈書");
+    let rot: Vec<f32> = t.glyphs.iter().map(|g| g.rotate).collect();
+    // 〈 has no vertical form in the font: it turns, as Latin does.
+    assert_eq!(rot, [0.0, 90.0, 90.0, 90.0, 0.0]);
+    // A sideways glyph lies on the central baseline, down the column.
+    let a = &t.glyphs[1];
+    assert!(close(a.x, 50.0 - central()) && close(a.y, 20.0), "{a:?}");
+    // Sideways runs advance by their horizontal advances (A, B 6; 〈 10).
+    let last = &t.glyphs[4];
+    assert!(
+        close(last.y, 10.0 + 10.0 + 6.0 + 6.0 + 10.0 + 8.8),
+        "{last:?}"
+    );
+    // `upright` stands them all; `sideways` lays them all down.
+    let up = column(r#"text-orientation="upright""#, "AB");
+    assert!(up.glyphs.iter().all(|g| g.rotate == 0.0));
+    assert!(close(up.glyphs[1].y - up.glyphs[0].y, 10.0));
+    let down = column(r#"text-orientation="sideways""#, "縦書");
+    assert!(down.glyphs.iter().all(|g| g.rotate == 90.0));
+    // The SVG 1.1 property says the same.
+    let up_too = column(r#"glyph-orientation-vertical="0""#, "AB");
+    assert_eq!(up_too.glyphs, up.glyphs);
+}
+
+#[test]
+fn sideways_modes_turn_every_character() {
+    let rl = laid_with(
+        VERT,
+        r#"<text x="50" y="10" font-size="10" font-family="Vert" writing-mode="sideways-rl">縦A</text>"#,
+    );
+    assert!(rl.glyphs.iter().all(|g| g.rotate == 90.0));
+    assert!(rl.glyphs[1].y > rl.glyphs[0].y);
+    // `sideways-lr` goes up, turned the other way.
+    let lr = laid_with(
+        VERT,
+        r#"<text x="50" y="100" font-size="10" font-family="Vert" writing-mode="sideways-lr">縦A</text>"#,
+    );
+    assert!(lr.glyphs.iter().all(|g| g.rotate == -90.0));
+    assert!(
+        close(lr.glyphs[0].y, 100.0) && close(lr.glyphs[1].y, 90.0),
+        "{:?}",
+        lr.glyphs
+    );
+    assert!(close(lr.glyphs[0].x, 50.0 + central()));
+}
+
+#[test]
+fn anchors_shifts_and_lengths_act_along_the_column() {
+    let t = column(r#"text-anchor="middle""#, "縦書");
+    assert!(close(t.glyphs[0].y, 10.0 - 10.0 + 8.8), "{:?}", t.glyphs);
+    let t = column(r#"text-anchor="end""#, "縦書");
+    assert!(close(t.glyphs[1].y, 10.0 - 10.0 + 8.8), "{:?}", t.glyphs);
+    // dx moves across, dy along; both carry on.
+    let t = column(r#"dx="0 3" dy="0 2""#, "縦書文");
+    assert!(
+        close(t.glyphs[1].x, 48.0) && close(t.glyphs[1].y, 30.8),
+        "{:?}",
+        t.glyphs
+    );
+    assert!(
+        close(t.glyphs[2].x, 48.0) && close(t.glyphs[2].y, 40.8),
+        "{:?}",
+        t.glyphs
+    );
+    // `textLength` spreads the characters down the column.
+    let t = column(r#"textLength="40""#, "縦書文");
+    assert!(
+        close(t.glyphs[2].y - t.glyphs[0].y, 40.0 - 10.0),
+        "{:?}",
+        t.glyphs
+    );
+    // A new chunk starts at each absolute position.
+    let t = column("", r#"縦<tspan y="100">書</tspan>"#);
+    assert!(close(t.glyphs[1].y, 108.8));
+}
+
+#[test]
+fn decorates_vertical_text_along_the_column() {
+    let t = column(r#"text-decoration="underline overline""#, "縦書");
+    assert_eq!(t.decorations.len(), 2);
+    let xs = |d: &SvgDecoration| d.quad.map(|p| p[0]);
+    let ys = |d: &SvgDecoration| d.quad.map(|p| p[1]);
+    // The underline on the left of the column, the overline on the right,
+    // both as long as the text.
+    let (under, over) = (&t.decorations[0], &t.decorations[1]);
+    assert!(xs(under).iter().all(|&x| x < 50.0), "{under:?}");
+    assert!(xs(over).iter().all(|&x| x > 50.0), "{over:?}");
+    let span = |d: &SvgDecoration| {
+        let y = ys(d);
+        y.iter().copied().fold(f32::MIN, f32::max) - y.iter().copied().fold(f32::MAX, f32::min)
+    };
+    assert!(close(span(under), 20.0));
+    // The ink covers the column.
+    let ink = t.ink.unwrap();
+    assert!(
+        ink[0] < 46.0 && ink[2] > 54.0 && ink[1] <= 10.0 && ink[3] >= 30.0,
+        "{ink:?}"
+    );
+}
+
+#[test]
+fn a_straight_path_lays_out_as_a_line() {
+    let on_path = laid(
+        r##"<defs><path id="p" d="M10 50H200"/></defs><text font-size="10"><textPath href="#p">ab c</textPath></text>"##,
+    );
+    let line = laid(r#"<text x="10" y="50" font-size="10">ab c</text>"#);
+    assert_eq!(on_path.glyphs.len(), line.glyphs.len());
+    for (p, l) in on_path.glyphs.iter().zip(&line.glyphs) {
+        assert!(
+            close(p.x, l.x) && close(p.y, l.y) && close(p.rotate, 0.0),
+            "{p:?} {l:?}"
+        );
+    }
+    assert_eq!(on_path.text, line.text);
+}
+
+#[test]
+fn turns_glyphs_to_the_path() {
+    // A circle of radius 50 about (100, 100), from its rightmost point,
+    // clockwise: down first.
+    let t = laid(
+        r##"<circle id="c" cx="100" cy="100" r="50"/><text font-size="10"><textPath href="#c">aaaa</textPath></text>"##,
+    );
+    let a = advance('a', 10.0);
+    for (i, g) in t.glyphs.iter().enumerate() {
+        // The middle of each glyph's advance is on the circle, and the
+        // glyph turns with the tangent there.
+        let mid = (i as f32 + 0.5) * a;
+        let theta = mid / 50.0;
+        assert!(
+            (g.rotate - (90.0 + theta.to_degrees())).abs() < 0.1,
+            "{i}: {g:?}"
+        );
+        let (sin, cos) = (g.rotate.to_radians().sin(), g.rotate.to_radians().cos());
+        let (mx, my) = (g.x + a / 2.0 * cos, g.y + a / 2.0 * sin);
+        let (px, py) = (100.0 + 50.0 * theta.cos(), 100.0 + 50.0 * theta.sin());
+        // Within what cubic curves are off a circle (0.03%).
+        assert!(
+            (mx - px).abs() < 0.02 && (my - py).abs() < 0.02,
+            "{i}: {g:?}"
+        );
+    }
+}
+
+#[test]
+fn drops_what_is_off_the_path_and_goes_on_after_it() {
+    let a = advance('a', 10.0);
+    // A path one and a half glyphs long: the second glyph's middle is
+    // past its end.
+    let t = laid(&format!(
+        r##"<path id="p" d="M0 20H{}"/><text font-size="10"><textPath href="#p">aa</textPath>b</text>"##,
+        a * 1.4
+    ));
+    assert_eq!(t.glyphs.len(), 2, "{:?}", t.glyphs);
+    assert_eq!(t.text, "ab");
+    // Text after the textPath goes on past the last glyph drawn.
+    assert!(close(t.glyphs[1].x, a / 2.0 + a), "{:?}", t.glyphs);
+    // A start before the path hides what is before it.
+    let t = laid(
+        r##"<path id="p" d="M0 20H100"/><text font-size="10"><textPath href="#p" startOffset="-100">aa</textPath></text>"##,
+    );
+    assert!(t.glyphs.is_empty());
+    // A start past f32, either way, hides it all as one within it does.
+    for start in ["1e30", "1e39", "-1e39", "1e39%"] {
+        let t = laid(&format!(
+            r##"<path id="p" d="M0 20H100"/><text font-size="10"><textPath href="#p" startOffset="{start}">aa</textPath></text>"##
+        ));
+        assert!(t.glyphs.is_empty(), "{start}: {:?}", t.glyphs);
+    }
+}
+
+#[test]
+fn anchors_and_shifts_along_the_path() {
+    let w = 2.0 * advance('a', 10.0);
+    let t = laid(
+        r##"<path id="p" d="M0 20H100"/><text font-size="10" text-anchor="middle"><textPath href="#p" startOffset="50%">aa</textPath></text>"##,
+    );
+    assert!(close(t.glyphs[0].x, 50.0 - w / 2.0), "{:?}", t.glyphs);
+    // x on a span adds to the start; dx moves along, dy off the path.
+    let t = laid(
+        r##"<path id="p" d="M0 20V100"/><text font-size="10"><textPath href="#p"><tspan x="10" dx="5" dy="3">a</tspan></textPath></text>"##,
+    );
+    let g = &t.glyphs[0];
+    assert!(
+        close(g.rotate, 90.0) && close(g.y, 35.0) && close(g.x, -3.0),
+        "{g:?}"
+    );
+    // Each glyph has its own decoration.
+    let t = laid(
+        r##"<path id="p" d="M0 20H100"/><text font-size="10" text-decoration="underline"><textPath href="#p">aaa</textPath></text>"##,
+    );
+    assert_eq!(t.decorations.len(), 3);
+}
+
+#[test]
+fn shapes_with_font_features() {
+    // Inter's digits are proportional; `tnum` makes them as wide as each
+    // other.
+    let widths = |attrs: &str| -> Vec<f32> {
+        let t = laid(&format!(r#"<text font-size="10" {attrs}>1100</text>"#));
+        t.glyphs.windows(2).map(|w| w[1].x - w[0].x).collect()
+    };
+    let proportional = widths("");
+    let tabular = widths(r#"font-variant="tabular-nums""#);
+    assert!(!close(proportional[0], proportional[2]), "{proportional:?}");
+    assert!(close(tabular[0], tabular[2]), "{tabular:?}");
+    assert_eq!(widths(r#"font-feature-settings="'tnum'""#), tabular);
+    // Without kerning, "AV" is wider.
+    let width = |attrs: &str| {
+        let t = laid(&format!(r#"<text font-size="10" {attrs}>AV</text>"#));
+        t.glyphs[1].x
+    };
+    assert!(width(r#"font-kerning="none""#) > width(""));
 }

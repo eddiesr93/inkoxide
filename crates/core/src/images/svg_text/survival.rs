@@ -102,12 +102,14 @@ fn stub(text: &SvgText) -> LaidText {
                 scale_x: 1.0,
                 paint,
                 text: (0, 0),
+                char: 0,
             })
             .collect(),
         decorations: Vec::new(),
         images: Vec::new(),
         ink: Some([1.5, -8.25, 30.125, 2.0]),
         text: String::new(),
+        actual: Vec::new(),
     }
 }
 
@@ -298,4 +300,33 @@ fn text_without_ink_keeps_its_id() {
     let source = parse_text(svg.as_bytes()).unwrap().2;
     // An empty text is no text at all.
     assert!(source.is_none());
+}
+
+/// A text with a `textPath` is a text like any other: its probes carry the
+/// paint of its spans, in every context, and the path it follows stays out
+/// of the drawing when it is in `<defs>`.
+#[test]
+fn text_on_a_path_has_its_probes() {
+    let path = r#"<defs><path id="p" d="M0 5H50"/></defs>"#;
+    assert_eq!(
+        probes_of(&format!(
+            r##"{path}<text fill="red"><textPath href="#p">a<tspan fill="blue">b</tspan></textPath></text>"##
+        )),
+        [
+            found(0, 0, Some("#ff0000"), None),
+            found(0, 1, Some("#0000ff"), None)
+        ]
+    );
+    assert_eq!(
+        probes_of(&format!(
+            r##"{path}<defs><text id="t"><textPath href="#p">a</textPath></text></defs><use href="#t" fill="red"/>"##
+        )),
+        [found(0, 0, Some("#ff0000"), None)]
+    );
+    assert_eq!(
+        probes_of(&format!(
+            r##"{path}<clipPath id="c"><text><textPath href="#p">a</textPath></text></clipPath><rect width="9" height="9" clip-path="url(#c)"/>"##
+        )),
+        [found(0, 0, BLACK, None)]
+    );
 }
