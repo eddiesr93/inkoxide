@@ -31,6 +31,7 @@ versions; removing or renaming any of them is a major version.
 | Hyphenation patterns | `HyphenationStore::register(lang, tex)`, via `RenderOptions::with_hyphenation` | `registerHyphenationPatterns(lang, data)` (process-wide), `unregisterHyphenationPatterns(lang)` |
 | Validate | `validate(doc, format, &fonts, &images) -> Vec<ValidationError>` | `validate(doc, format?, images?): ValidationError[]` |
 | Validate without the images | `validate_without_images(doc, format, &fonts) -> Vec<ValidationError>` | `validate(doc, format?)`, with no `images` |
+| Validate for a render with its options | `validate_with_options(doc, format, &options, &fonts, Option<&images>) -> Vec<ValidationError>` | `validate(doc, format?, images?, options?)`, with the render's options |
 | Render | `render(doc, format, &options, &fonts, &images) -> Result<Vec<u8>, InkoxideError>` | `render(doc, options?): Promise<Uint8Array>` (libuv pool) |
 | Render, blocking | (same `render`) | `renderSync(doc, options?): Uint8Array` |
 | Input format | `InputFormat::Json` (default), `InputFormat::MessagePack` (cargo feature `msgpack`, on by default; without it, `PARSE_ERROR`) | `options.format` / `format`: `'json'` (default) or `'msgpack'` |
@@ -96,6 +97,7 @@ How it differs from the Node package:
 | `pdf_a` / `with_pdf_a` | `pdfA` | `false` | Write PDF/A, at `pdf_a_level` (Node: `true` is PDF/A-2b). PDF/A forbids scripts, so text fields with a `format` keep their formatted text and value but not the form scripts that format what the user types |
 | `pdf_a_level` / `with_pdf_a_level` (also sets `pdf_a`) | `pdfA: '1b' \| '2b' \| '2a' \| '3b' \| '3a'` | `PdfALevel::A2b` | The PDF/A level: 1b, 2b, 2a, 3b or 3a (see [PDF/A](#pdfa)). Node: another string is `INVALID_ARGUMENT` |
 | `tagged` / `with_tagged` | `tagged` | `false` | Write tagged PDF: a structure tree in document order, with roles (`role`), alternative text (`alt`), table headers and field labels, and the rest marked as artifacts. PDF/UA and the "a" levels imply it |
+| `flatten_alpha` / `with_flatten_alpha` | `flattenAlpha` | `false` | At PDF/A-1b, draw images with partial alpha (neither only clear nor only opaque) on white instead of failing with `PDFA_CONFLICT`. Other levels and plain PDF keep the alpha. Binary alpha needs no option: PDF/A-1b writes it as a stencil mask |
 | `pdf_ua` / `with_pdf_ua` | `pdfUA` | `false` | Write PDF/UA-1: tagged, with XMP metadata (`pdfuaid`), the title shown as the window title, link descriptions and field labels. A document without a title, a language, `alt` on its images and `figure` boxes, labels on its fields, or headings in order fails with `UA_CONFLICT`; encryption must keep `contentAccessibility` |
 | `attachments` / `with_attachments` (`AttachmentStore`) | `attachments: Record<string, Uint8Array>` | none | The bytes of the files the document's `attachments` name in `src`, by id. A `src` missing from them is `ATTACHMENT_NOT_REGISTERED` |
 | `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns; and, for a build without the `embedded-hyphenation` feature, built-in patterns given with `register_builtin` |
@@ -152,8 +154,14 @@ What a level does not allow (a page side under 3 points at every level,
 transparency under PDF/A-1b) is `PDFA_CONFLICT`, at the path of its first
 use. The [code table of `SCHEMA.md`](SCHEMA.md#validation-error-codes)
 lists what counts as transparency. A `backgroundColor` of alpha 0 draws
-nothing and is accepted at 1b. Only `render` reports `PDFA_CONFLICT`:
-`validate` does not know the level.
+nothing and is accepted at 1b. An image whose alpha is only clear or
+opaque (a GIF's transparency) is written with a stencil mask, which
+PDF/A-1b allows; one with partial alpha needs transparency, unless
+`flattenAlpha` (`flatten_alpha`) draws it on white. `validate` reports
+`PDFA_CONFLICT` only when given the render's options
+(`validate_with_options` in Rust, the `options` argument in Node and
+WebAssembly, `--pdf-a` in the CLI), and a colour glyph that needs
+transparency only `render` finds, after shaping.
 
 A PDF/A-1b file also keeps within the limits of PDF/A-1: real numbers
 within ±32767, strings of at most 65535 bytes, names of at most 127
@@ -166,6 +174,7 @@ equals sign:
 
 ```sh
 inkoxide render doc.json --fonts fonts/ --pdf-a=1b
+inkoxide validate doc.json --fonts fonts/ --pdf-a=1b
 ```
 
 ## Tagged PDF and PDF/UA
@@ -412,8 +421,8 @@ Handle unknown codes, because new ones may be added in minor versions.
 | Code | Rust | Node | When |
 |---|---|---|---|
 | `PARSE_ERROR` … `UNKNOWN_ANCHOR` | `ValidationCode` (in `ValidationError` or `InkoxideError::Validation`) | `ValidationError.code`, or `InkoxideError.code` from `render` | The document is invalid. See the code table in [`SCHEMA.md`](SCHEMA.md). In Rust, also an invalid `creation_date` option (`INVALID_VALUE` at `options.creationDate`) |
-| `PDFA_CONFLICT` | `ValidationCode::PdfaConflict` | `InkoxideError.code` from `render` | The document uses something its PDF/A level does not allow: a page side under 3 points, at any level, transparency under PDF/A-1b, or `attachments` under PDF/A-1b, 2b and 2a. The path names the first such use. Only `render` reports it: `validate` does not know the level |
-| `UA_CONFLICT` | `ValidationCode::UaConflict` | `InkoxideError.code` from `render` | With `pdfUA`, the document lacks something PDF/UA-1 requires (see [Tagged PDF and PDF/UA](#tagged-pdf-and-pdfua)). The path names the first thing it lacks. Only `render` reports it: `validate` does not know the options |
+| `PDFA_CONFLICT` | `ValidationCode::PdfaConflict` | `InkoxideError.code` from `render` | The document uses something its PDF/A level does not allow: a page side under 3 points, at any level, transparency under PDF/A-1b, or `attachments` under PDF/A-1b, 2b and 2a. The path names the first such use. `validate` reports it with the render's options |
+| `UA_CONFLICT` | `ValidationCode::UaConflict` | `InkoxideError.code` from `render` | With `pdfUA`, the document lacks something PDF/UA-1 requires (see [Tagged PDF and PDF/UA](#tagged-pdf-and-pdfua)). The path names the first thing it lacks. `validate` reports it with the render's options |
 | `FONT_ERROR` | `InkoxideError::Font` | same | Font bytes cannot be parsed or embedded, or the shaper panicked on the font, or the font shaped the text to far more glyphs than it has bytes (the message names the font) |
 | `IMAGE_ERROR` | `InkoxideError::Image` | same | An image cannot be embedded. Images that do not decode are `INVALID_IMAGE` at their path, found by validation first |
 | `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit (100,000 pages) or the limit on content repeated on every page was exceeded |
@@ -448,11 +457,18 @@ looked up and everything else is checked. An empty result means the
 document is valid; `render` can still fail on an option, on the page
 limit or the limit on content repeated on every page (`LAYOUT_ERROR`), on
 a font that cannot be shaped or embedded (`FONT_ERROR`), on
-something its PDF/A level or PDF/UA does not allow (`PDFA_CONFLICT`, `UA_CONFLICT`, which
-`validate` cannot know), on an attachment's `src` that is not among the render's
-`attachments` or is too large (`ATTACHMENT_NOT_REGISTERED`, `ATTACHMENT_TOO_LARGE`: `validate`
-does not have the files),
-or on a failure in writing the PDF (`PDF_ERROR`). `validate` reads the
+something its PDF/A level or PDF/UA does not allow (`PDFA_CONFLICT`, `UA_CONFLICT`), on an
+attachment's `src` that is not among the render's `attachments` or is too large
+(`ATTACHMENT_NOT_REGISTERED`, `ATTACHMENT_TOO_LARGE`),
+or on a failure in writing the PDF (`PDF_ERROR`). Given the render's
+options (Rust `validate_with_options`; in Node and WebAssembly the
+fourth argument, the object `render` takes, whose `format` and `images`
+the arguments override), `validate` reports the conflicts and the
+attachments too, and the options' invalid `creationDate` or
+`encryption` as `INVALID_VALUE` at `options.…`; a fallback font in
+`deferred_fonts` (WebAssembly `deferredFonts`) may be missing. Only
+`render` still finds the layout limits, the fonts that cannot be shaped
+or embedded, and at PDF/A-1b a colour glyph that needs transparency. `validate` reads the
 document's structure first, and a problem found there (input that does
 not parse, an unknown or missing property, a wrong type, a value the
 reader rejects) is returned alone, as the rest cannot be checked.

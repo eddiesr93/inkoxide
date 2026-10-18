@@ -36,6 +36,7 @@ const OPTION_TYPES = {
   subsetFonts: 'boolean',
   tagged: 'boolean',
   pdfUA: 'boolean',
+  flattenAlpha: 'boolean',
 };
 
 const PERMISSION_TYPES = {
@@ -454,7 +455,7 @@ export function unregisterHyphenationPatterns(lang) {
   return call((e) => e.ink_unregister_hyphenation_patterns(...put(e, key)) === 1);
 }
 
-export function validate(doc, format, images) {
+export function validate(doc, format, images, options) {
   const bytes = bytesOf(doc);
   const fmt = format === undefined || format === null ? new Uint8Array() : encoder.encode(stringOf(format));
   if (images !== undefined && images !== null) {
@@ -463,10 +464,25 @@ export function validate(doc, format, images) {
       if (!(v instanceof Uint8Array)) throw argumentError('expected Uint8Array images');
     }
   }
+  checkOptions(options);
+  const withOptions = options !== undefined && options !== null;
+  const { images: optionImages, attachments, deferredFonts, ...rest } = options ?? {};
+  images ??= optionImages;
   const has = images !== undefined && images !== null;
   const buf = has ? imagesBuffer(images) : new Uint8Array();
+  if (deferredFonts !== undefined) rest.deferredFonts = Object.keys(deferredFonts);
+  const json = withOptions ? encoder.encode(JSON.stringify(rest, finiteOrString)) : new Uint8Array();
+  const files = attachments === undefined ? new Uint8Array() : imagesBuffer(attachments);
   return call((e) => {
-    const status = e.ink_validate(...put(e, bytes), ...put(e, fmt), ...put(e, buf), has ? 1 : 0);
+    const status = e.ink_validate(
+      ...put(e, bytes),
+      ...put(e, fmt),
+      ...put(e, buf),
+      has ? 1 : 0,
+      ...put(e, json),
+      ...put(e, files),
+      withOptions ? 1 : 0,
+    );
     return JSON.parse(decoder.decode(outcome(e, status)));
   });
 }

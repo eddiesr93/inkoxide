@@ -36,9 +36,9 @@ fn decodes_png_alpha_and_drops_opaque_masks() {
         d.body,
         ImageBody::Raw {
             color: RawColor::Rgb,
-            alpha: Some(_),
+            alpha: Some(ref a),
             ..
-        }
+        } if !a.binary
     ));
     let d = ImageCrateDecoder.decode(&fixture("palette.png")).unwrap();
     assert!(matches!(d.body, ImageBody::Raw { alpha: None, .. }));
@@ -588,9 +588,10 @@ fn probes_and_decodes_gif_and_webp() {
     assert_eq!((lossless.width, lossless.height), (96, 96));
     assert!(probe(b"RIFF\0\0\0\0WEBPVP8Z").is_err());
 
-    // First frame of the animation, with GIF transparency as alpha.
+    // First frame of the animation, with GIF transparency as alpha, which
+    // is binary.
     let d = ImageCrateDecoder.decode(&fixture("anim.gif")).unwrap();
-    assert!(matches!(d.body, ImageBody::Raw { alpha: Some(_), .. }));
+    assert!(matches!(d.body, ImageBody::Raw { alpha: Some(ref a), .. } if a.binary));
     let d = ImageCrateDecoder
         .decode(&fixture("photo-lossy.webp"))
         .unwrap();
@@ -664,4 +665,32 @@ fn images_with_equal_hashes_stay_apart() {
     assert_eq!(set.images.len(), 2);
     let emoji = set.get(set.by_emoji["😀"]);
     assert_eq!((emoji.width, emoji.height), size("other"));
+}
+
+/// A stencil mask is 1 where the image is clear, each row padded to a
+/// byte; flattening draws the samples on white with their alpha.
+#[test]
+fn masks_and_flattens_alpha() {
+    let image = |samples: &[u8], alpha: &[u8], width: u32| DecodedImage {
+        width,
+        height: (alpha.len() as u32) / width,
+        orientation: 1,
+        body: ImageBody::Raw {
+            color: RawColor::Gray,
+            samples: crate::flate::deflate(samples, 6).unwrap(),
+            alpha: Some(super::decode::Alpha {
+                plane: crate::flate::deflate(alpha, 6).unwrap(),
+                binary: alpha.iter().all(|&a| a == 0 || a == 255),
+            }),
+        },
+    };
+    let mut alpha = vec![255u8; 18];
+    alpha[0] = 0;
+    alpha[8] = 0;
+    alpha[17] = 0;
+    let d = image(&[0; 18], &alpha, 9);
+    assert_eq!(d.stencil_mask().unwrap(), [0x80, 0x80, 0x00, 0x80]);
+    let d = image(&[0, 0, 100, 200], &[0, 255, 128, 51], 2);
+    // c·a + 255·(1 − a): 255, 0, 177.5 → 177, 255 − 55·0.2 = 244.
+    assert_eq!(d.flattened_samples().unwrap(), [255, 0, 177, 244]);
 }

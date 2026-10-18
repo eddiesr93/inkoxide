@@ -107,6 +107,7 @@ const OPTION_TYPES = {
   subsetFonts: 'boolean',
   tagged: 'boolean',
   pdfUA: 'boolean',
+  flattenAlpha: 'boolean',
 };
 
 const PERMISSION_TYPES = {
@@ -175,8 +176,10 @@ export const unregisterFont = (id) => call(native.unregisterFont, [id]);
 export const registerHyphenationPatterns = (lang, data) =>
   call(native.registerHyphenationPatterns, [lang, data]);
 export const unregisterHyphenationPatterns = (lang) => call(native.unregisterHyphenationPatterns, [lang]);
-export const validate = (doc, format, images) =>
-  call(native.validate, [doc, format ?? undefined, images ?? undefined]);
+export const validate = (doc, format, images, options) => {
+  checkOptions(options);
+  return call(native.validate, [doc, format ?? undefined, images ?? undefined, options ?? undefined]);
+};
 export const render = async (doc, options) => {
   try {
     checkOptions(options);

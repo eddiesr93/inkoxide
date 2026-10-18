@@ -810,6 +810,16 @@ fn render_with(
         options = options.with_pdf_a_level(level);
     }
     let result = inkoxide::render(doc, format, &options, fonts, images);
+    // With the render's options, validation finds the render's first
+    // problem when it is one validation can find.
+    let checked = inkoxide::validate_with_options(doc, format, &options, fonts, Some(images));
+    if let Some(first) = checked.first() {
+        assert!(
+            matches!(&result, Err(InkoxideError::Validation(e)) if e == first),
+            "validate_with_options found {first:?}; the render gave {:?}",
+            result.as_ref().map(|_| ())
+        );
+    }
     // Tagging changes what is written, not what renders: a quarter of the
     // documents render tagged too, and both render or fail alike; as
     // PDF/UA, only `UA_CONFLICT` may refuse more.
@@ -845,6 +855,11 @@ fn render_with(
         Err(InkoxideError::Validation(e))
             if e.code == ValidationCode::PdfaConflict && errors.is_empty() =>
         {
+            // Only a render finds the colour glyphs that need transparency.
+            assert!(
+                !checked.is_empty() || e.message.contains("colour glyph"),
+                "validate_with_options missed {e:?}"
+            );
             assert!(
                 pdf_a == Some(PdfALevel::A1b)
                     || (pdf_a.is_some() && e.message.contains("page side"))

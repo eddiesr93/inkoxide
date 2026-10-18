@@ -214,6 +214,12 @@ pub struct RenderOptions {
     /// The PDF/A level written when [`pdf_a`](Self::pdf_a) is set (default
     /// [`PdfALevel::A2b`]).
     pub pdf_a_level: PdfALevel,
+    /// At PDF/A-1b, which forbids transparency, draw images whose alpha is
+    /// partial (neither only clear nor only opaque) on white instead of
+    /// refusing them (default `false`). Other levels and plain PDF keep
+    /// the alpha. Binary alpha needs no option: PDF/A-1b writes it as a
+    /// stencil mask.
+    pub flatten_alpha: bool,
     /// Hyphenation patterns registered at runtime; they win over the
     /// built-in ones for their language. Default: none.
     pub hyphenation: HyphenationStore,
@@ -254,6 +260,7 @@ impl Default for RenderOptions {
             subset_fonts: true,
             pdf_a: false,
             pdf_a_level: PdfALevel::default(),
+            flatten_alpha: false,
             hyphenation: HyphenationStore::new(),
             encryption: None,
             deferred_fonts: Vec::new(),
@@ -317,6 +324,13 @@ impl RenderOptions {
         self
     }
 
+    /// Sets [`flatten_alpha`](Self::flatten_alpha).
+    #[must_use]
+    pub fn with_flatten_alpha(mut self, flatten: bool) -> Self {
+        self.flatten_alpha = flatten;
+        self
+    }
+
     /// Sets [`deferred_fonts`](Self::deferred_fonts).
     #[must_use]
     pub fn with_deferred_fonts(mut self, ids: impl IntoIterator<Item = impl Into<String>>) -> Self {
@@ -351,6 +365,59 @@ impl RenderOptions {
         self.tagged || self.pdf_ua || (self.pdf_a && self.pdf_a_level.accessible())
     }
 
+    /// What the writer is asked to conform to.
+    fn profile(&self) -> Profile {
+        Profile::new(self.pdf_a.then_some(self.pdf_a_level))
+            .with_ua(self.pdf_ua)
+            .with_flatten_alpha(self.flatten_alpha)
+    }
+
+    /// The options' own problems, as [`render`] reports them: a
+    /// `creation_date` that is not RFC 3339, and encryption that is not
+    /// valid or that PDF/A or PDF/UA does not allow. Otherwise the
+    /// creation date and the encryption parameters.
+    fn checked(
+        &self,
+    ) -> Result<(Option<date::Timestamp>, Option<pdf::crypt::Params>), ValidationError> {
+        let invalid = |path: &str, message: String| ValidationError {
+            code: ValidationCode::InvalidValue,
+            path: path.into(),
+            message,
+        };
+        let creation_date = match &self.creation_date {
+            Some(s) => Some(date::parse_rfc3339(s).ok_or_else(|| {
+                invalid(
+                    "options.creationDate",
+                    format!("`{s}` is not an RFC 3339 timestamp"),
+                )
+            })?),
+            None => None,
+        };
+        let encryption = match &self.encryption {
+            None => None,
+            Some(_) if self.pdf_a => {
+                return Err(invalid(
+                    "options.encryption",
+                    "PDF/A does not allow encryption".into(),
+                ));
+            }
+            // Assistive technology reads the content (ISO 14289-1, 7.16).
+            Some(e)
+                if self.pdf_ua
+                    && e.permissions
+                        .as_ref()
+                        .is_some_and(|p| !p.content_accessibility) =>
+            {
+                return Err(invalid(
+                    "options.encryption.permissions.contentAccessibility",
+                    "PDF/UA needs content accessibility on".into(),
+                ));
+            }
+            Some(e) => Some(e.params()?),
+        };
+        Ok((creation_date, encryption))
+    }
+
     /// Sets [`attachments`](Self::attachments).
     #[must_use]
     pub fn with_attachments(mut self, store: AttachmentStore) -> Self {
@@ -370,9 +437,10 @@ impl RenderOptions {
 /// every font must be registered, and every image must exist and decode.
 /// Returns every problem found (capped at 100). Empty means the document
 /// is valid; [`render`] can still fail on the options, on what the PDF/A
-/// level does not allow ([`ValidationCode::PdfaConflict`]), on the page
-/// limit or the limit on content repeated on every page, or when a font
-/// cannot be shaped or embedded.
+/// level does not allow ([`ValidationCode::PdfaConflict`]), which
+/// [`validate_with_options`] reports, on the page limit or the limit on
+/// content repeated on every page, or when a font cannot be shaped or
+/// embedded.
 #[must_use]
 pub fn validate(
     doc: &[u8],
@@ -406,6 +474,45 @@ fn validate_with(
         Ok(d) => validate::check(&d, fonts, &[], images, None, Profile::default()),
         Err(e) => vec![e],
     }
+}
+
+/// [`validate`] for a render with `options`: also reports what they do
+/// not allow, as [`render`] would. That is what the PDF/A level or PDF/UA
+/// forbids ([`ValidationCode::PdfaConflict`],
+/// [`ValidationCode::UaConflict`]), an attachment's `src` missing from
+/// `options.attachments`, and the options' own problems (an invalid
+/// `creation_date` or encryption), at paths that start with `options.`.
+/// Fonts in `options.deferred_fonts` may be missing. With `images`
+/// `None`, image ids are not looked up, as in [`validate_without_images`].
+/// [`render`] can still fail on what only layout finds: the page limit,
+/// the limit on content repeated on every page, a font that cannot be
+/// shaped or embedded, or at PDF/A-1b a colour glyph that needs
+/// transparency.
+#[must_use]
+pub fn validate_with_options(
+    doc: &[u8],
+    format: InputFormat,
+    options: &RenderOptions,
+    fonts: &FontStore,
+    images: Option<&ImageStore>,
+) -> Vec<ValidationError> {
+    let mut errors = match validate::parse(doc, format) {
+        Ok(d) => validate::check(
+            &d,
+            fonts,
+            &options.deferred_fonts,
+            images,
+            Some(&options.attachments),
+            options.profile(),
+        ),
+        Err(e) => return vec![e],
+    };
+    if let Err(e) = options.checked() {
+        if errors.len() < validate::MAX_ERRORS {
+            errors.push(e);
+        }
+    }
+    errors
 }
 
 /// Empties the process-wide caches renders share: decoded images, font
@@ -474,8 +581,7 @@ fn render_inner(
     images: &ImageStore,
     parallel: bool,
 ) -> Result<Vec<u8>, InkoxideError> {
-    let profile =
-        Profile::new(options.pdf_a.then_some(options.pdf_a_level)).with_ua(options.pdf_ua);
+    let profile = options.profile();
     let document = validate::parse(doc, format)?;
     // A deferred font may be missing: it stands in until a render needs it.
     let checked = validate::check(
@@ -490,46 +596,15 @@ fn render_inner(
         return Err(first.into());
     }
 
-    let creation_date = match &options.creation_date {
-        Some(s) => Some(date::parse_rfc3339(s).ok_or_else(|| {
-            InkoxideError::Validation(ValidationError {
-                code: ValidationCode::InvalidValue,
-                path: "options.creationDate".into(),
-                message: format!("`{s}` is not an RFC 3339 timestamp"),
-            })
-        })?),
-        // Already validated.
-        None => document
+    let (option_date, encryption) = options.checked()?;
+    // Already validated.
+    let creation_date = option_date.or_else(|| {
+        document
             .meta
             .creation_date
             .as_deref()
-            .and_then(date::parse_rfc3339),
-    };
-
-    let encryption = match &options.encryption {
-        None => None,
-        Some(_) if options.pdf_a => {
-            return Err(InkoxideError::Validation(ValidationError {
-                code: ValidationCode::InvalidValue,
-                path: "options.encryption".into(),
-                message: "PDF/A does not allow encryption".into(),
-            }));
-        }
-        // Assistive technology reads the content (ISO 14289-1, 7.16).
-        Some(e)
-            if options.pdf_ua
-                && e.permissions
-                    .as_ref()
-                    .is_some_and(|p| !p.content_accessibility) =>
-        {
-            return Err(InkoxideError::Validation(ValidationError {
-                code: ValidationCode::InvalidValue,
-                path: "options.encryption.permissions.contentAccessibility".into(),
-                message: "PDF/UA needs content accessibility on".into(),
-            }));
-        }
-        Some(e) => Some(e.params()?),
-    };
+            .and_then(date::parse_rfc3339)
+    });
 
     let mut font_set = FontSet::load_with(&document, fonts, &options.deferred_fonts)?;
     let hyphenator = text::ResolvedHyphenator::new(&options.hyphenation);

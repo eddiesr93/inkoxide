@@ -8,17 +8,24 @@ use pdf_writer::{Filter, Ref};
 use super::{Profile, Writer};
 use crate::images::{DecodedImage, ImageBody, JpegColor, RawColor};
 
-/// What in `img` needs transparency, which PDF/A-1 forbids: an alpha
-/// channel (written as a soft mask), or what [`super::svg::transparency`]
-/// finds in an SVG.
-pub(crate) fn transparency(img: &DecodedImage) -> Option<&'static str> {
+/// What needs transparency in an image whose alpha is neither clear nor
+/// opaque in places.
+pub(crate) const PARTIAL_ALPHA: &str = "partial alpha; the `flattenAlpha` option draws it on white";
+
+/// What in `img` needs transparency, which PDF/A-1 forbids, written with
+/// `profile`: partial alpha (written as a soft mask) unless the profile
+/// flattens it, or what [`super::svg::transparency`] finds in an SVG.
+/// Binary alpha is written as a stencil mask, without transparency.
+pub(crate) fn transparency(img: &DecodedImage, profile: Profile) -> Option<&'static str> {
     match &img.body {
-        ImageBody::Raw { alpha: Some(_), .. } => Some("an alpha channel"),
+        ImageBody::Raw {
+            alpha: Some(alpha), ..
+        } => (!alpha.binary && !profile.flattens_alpha()).then_some(PARTIAL_ALPHA),
         ImageBody::Svg {
             probed: Some(probed),
             tree,
             ..
-        } => super::svg::transparency(tree, Some(&probed.probes)),
+        } => super::svg::transparency(tree, Some(&probed.probes), profile),
         // Its text is drawn with the paint of its probes: scan a conversion
         // with a probe for each text and paint style, whatever the fonts.
         ImageBody::Svg {
@@ -27,8 +34,10 @@ pub(crate) fn transparency(img: &DecodedImage) -> Option<&'static str> {
             ..
         } => crate::images::svg::probe_tree(source, tree.size())
             .ok()
-            .and_then(|(tree, probed)| super::svg::transparency(&tree, Some(&probed.probes))),
-        ImageBody::Svg { tree, .. } => super::svg::transparency(tree, None),
+            .and_then(|(tree, probed)| {
+                super::svg::transparency(&tree, Some(&probed.probes), profile)
+            }),
+        ImageBody::Svg { tree, .. } => super::svg::transparency(tree, None, profile),
         ImageBody::Raw { .. } | ImageBody::Jpeg { .. } => None,
     }
 }
@@ -84,18 +93,40 @@ pub(crate) fn write_image(
             samples,
             alpha,
         } => {
-            if alpha.is_some() {
-                profile.allow_transparency("an image with an alpha channel")?;
-            }
-            let mask = alpha.as_ref().map(|a| {
-                let m = alloc.next();
-                out.image_xobject(pdf, m, a, |x| {
-                    x.width(w).height(h).bits_per_component(8);
-                    x.filter(Filter::FlateDecode);
-                    x.color_space().device_gray();
-                });
-                m
-            });
+            // Where transparency is forbidden, binary alpha is a stencil
+            // mask, and partial alpha is drawn on white when asked.
+            let flattened;
+            let mut samples = &samples[..];
+            let mask = match alpha {
+                None => None,
+                Some(a) if profile.transparency() => {
+                    let m = alloc.next();
+                    out.image_xobject(pdf, m, &a.plane, |x| {
+                        x.width(w).height(h).bits_per_component(8);
+                        x.filter(Filter::FlateDecode);
+                        x.color_space().device_gray();
+                    });
+                    Some(Mask::Soft(m))
+                }
+                Some(a) if a.binary => {
+                    let bits = super::deflate(&img.stencil_mask()?, crate::flate::LEVEL)?;
+                    let m = alloc.next();
+                    out.image_xobject(pdf, m, &bits, |x| {
+                        x.width(w).height(h).bits_per_component(1);
+                        x.filter(Filter::FlateDecode);
+                        x.image_mask(true);
+                    });
+                    Some(Mask::Stencil(m))
+                }
+                Some(_) => {
+                    if !profile.flattens_alpha() {
+                        profile.allow_transparency(PARTIAL_ALPHA)?;
+                    }
+                    flattened = super::deflate(&img.flattened_samples()?, crate::flate::LEVEL)?;
+                    samples = &flattened;
+                    None
+                }
+            };
             out.image_xobject(pdf, id, samples, |x| {
                 x.width(w).height(h).bits_per_component(8);
                 x.filter(Filter::FlateDecode);
@@ -103,12 +134,22 @@ pub(crate) fn write_image(
                     RawColor::Gray => x.color_space().device_gray(),
                     RawColor::Rgb => x.color_space().device_rgb(),
                 }
-                if let Some(m) = mask {
-                    x.s_mask(m);
-                }
+                match mask {
+                    Some(Mask::Soft(m)) => x.s_mask(m),
+                    Some(Mask::Stencil(m)) => x.stencil_mask(m),
+                    None => x,
+                };
             });
         }
         ImageBody::Svg { .. } => unreachable!("handled above"),
     }
     Ok(id)
+}
+
+/// The mask an image's alpha is written as.
+enum Mask {
+    /// A soft mask, which is transparency.
+    Soft(Ref),
+    /// An explicit stencil mask, of binary alpha (ISO 32000-1, 8.9.6.3).
+    Stencil(Ref),
 }

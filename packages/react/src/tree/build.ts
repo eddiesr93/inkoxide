@@ -417,6 +417,7 @@ class Builder {
     if (p.conformance !== undefined) this.output.pdfA = documentConformance(p.conformance, fail);
     if (p.tagged === true) this.output.tagged = true;
     if (p.pdfUA === true) this.output.pdfUA = true;
+    if (p.flattenAlpha === true) this.output.flattenAlpha = true;
     const encryption = documentEncryption(p, fail);
     if (encryption) this.output.encryption = encryption;
     // Checked against the schema's values with the rest of the document.

@@ -1778,6 +1778,19 @@ fn images_1b() -> ImageStore {
     images
 }
 
+/// [`crate::validate_with_options`] for a render as PDF/A-1b with
+/// [`images_1b`].
+fn validate_1b(doc: &str) -> Vec<ValidationError> {
+    let options = crate::RenderOptions::default().with_pdf_a_level(crate::PdfALevel::A1b);
+    crate::validate_with_options(
+        doc.as_bytes(),
+        InputFormat::Json,
+        &options,
+        &fonts(),
+        Some(&images_1b()),
+    )
+}
+
 /// Renders `doc` as PDF/A-1b with [`images_1b`].
 fn render_1b(doc: &str) -> Result<Vec<u8>, crate::InkoxideError> {
     let images = images_1b();
@@ -1835,7 +1848,7 @@ fn pdf_a_1b_rejects_transparency_at_its_path() {
         (
             r#"{"type":"image","src":"logo"}"#.into(),
             "children[0].src",
-            "image `logo` (an alpha channel)",
+            "image `logo` (partial alpha;",
         ),
         (
             r#"{"type":"image","src":"veil"}"#.into(),
@@ -1851,13 +1864,13 @@ fn pdf_a_1b_rejects_transparency_at_its_path() {
             r#"{"type":"box","backgroundImage":{"src":"logo"},"style":{"width":10,"height":10}}"#
                 .into(),
             "children[0].backgroundImage.src",
-            "image `logo` (an alpha channel)",
+            "image `logo` (partial alpha;",
         ),
         (
             r#"{"type":"text","runs":[{"font":"Inter-Regular","size":10,"image":{"src":"logo"}}]}"#
                 .into(),
             "children[0].runs[0].image.src",
-            "image `logo` (an alpha channel)",
+            "image `logo` (partial alpha;",
         ),
         // The first use is reported.
         (
@@ -1867,7 +1880,8 @@ fn pdf_a_1b_rejects_transparency_at_its_path() {
         ),
     ];
     for (child, path, what) in cases {
-        // Validation does not know the level.
+        // `validate` does not know the level; with the render's options it
+        // reports what the render does.
         let d = doc(&child);
         let errors = validate(d.as_bytes(), InputFormat::Json, &fonts(), &images_1b());
         assert_eq!(errors, [], "{child}");
@@ -1875,6 +1889,7 @@ fn pdf_a_1b_rejects_transparency_at_its_path() {
             Err(crate::InkoxideError::Validation(e)) => e,
             other => panic!("{child}: {:?}", other.map(|_| ())),
         };
+        assert_eq!(validate_1b(&d), std::slice::from_ref(&e), "{child}");
         assert_eq!(e.code, C::PdfaConflict, "{child}");
         assert_eq!(e.path, format!("pages[0].{path}"), "{child}");
         assert!(
@@ -1924,6 +1939,91 @@ fn pdf_a_1b_rejects_transparency_at_its_path() {
     // Another problem wins over transparency.
     let e = render_1b(&doc(r#"{"type":"box","debug":true,"style":{"width":-1}}"#)).unwrap_err();
     assert_eq!(e.code(), "OUT_OF_RANGE");
+}
+
+/// PDF/A-1b writes binary alpha (a GIF's transparency) as a stencil mask,
+/// and with `flatten_alpha` draws partial alpha on white, without a soft
+/// mask either way; other levels keep the soft mask.
+#[test]
+fn pdf_a_1b_masks_binary_alpha_and_flattens_partial_alpha_when_asked() {
+    let mut images = images_1b();
+    images.insert("gif", fixture("images/anim.gif"));
+    let render = |src: &str, options: &crate::RenderOptions| {
+        let d = doc(&format!(r#"{{"type":"image","src":"{src}"}}"#));
+        let errors = crate::validate_with_options(
+            d.as_bytes(),
+            InputFormat::Json,
+            options,
+            &fonts(),
+            Some(&images),
+        );
+        let pdf = crate::render(d.as_bytes(), InputFormat::Json, options, &fonts(), &images);
+        assert_eq!(errors.is_empty(), pdf.is_ok(), "{src}: {errors:?}");
+        pdf.map(|pdf| {
+            let has = |key: &[u8]| pdf.windows(key.len()).any(|w| w == key);
+            (has(b"/SMask"), has(b"/ImageMask true"), has(b"/Mask "))
+        })
+    };
+    let one_b = crate::RenderOptions::default().with_pdf_a_level(crate::PdfALevel::A1b);
+    let flatten = one_b.clone().with_flatten_alpha(true);
+    let two_b = crate::RenderOptions::default()
+        .with_pdf_a_level(crate::PdfALevel::A2b)
+        .with_flatten_alpha(true);
+    // A stencil mask, with or without the option.
+    assert_eq!(render("gif", &one_b).unwrap(), (false, true, true));
+    assert_eq!(render("gif", &flatten).unwrap(), (false, true, true));
+    assert_eq!(render("gif", &two_b).unwrap(), (true, false, false));
+    // Partial alpha: refused, or drawn on white, with no mask.
+    let e = render("logo", &one_b).unwrap_err();
+    assert!(e.to_string().contains("`flattenAlpha`"), "{e}");
+    assert_eq!(render("logo", &flatten).unwrap(), (false, false, false));
+    assert_eq!(render("logo", &two_b).unwrap(), (true, false, false));
+}
+
+/// With the render's options, validation reports their own problems too,
+/// at `options.` paths, and takes a deferred font as registered.
+#[test]
+fn validation_with_options_reports_what_the_render_would() {
+    let check = |d: &str, options: &crate::RenderOptions| {
+        crate::validate_with_options(d.as_bytes(), InputFormat::Json, options, &fonts(), None)
+    };
+    let plain = crate::RenderOptions::default();
+    let d = doc(r#"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":10}]}"#);
+    assert_eq!(check(&d, &plain), []);
+    let mut dated = plain.clone();
+    dated.creation_date = Some("yesterday".into());
+    let errors = check(&d, &dated);
+    assert_eq!(
+        errors
+            .iter()
+            .map(|e| (e.code, e.path.as_str()))
+            .collect::<Vec<_>>(),
+        [(C::InvalidValue, "options.creationDate")]
+    );
+    let render = crate::render(
+        d.as_bytes(),
+        InputFormat::Json,
+        &dated,
+        &fonts(),
+        &ImageStore::new(),
+    );
+    assert!(matches!(render, Err(crate::InkoxideError::Validation(e)) if e == errors[0]));
+    let encrypted = crate::RenderOptions::default()
+        .with_pdf_a(true)
+        .with_encryption(crate::Encryption::new().with_user_password("secret"));
+    assert_eq!(check(&d, &encrypted)[0].path, "options.encryption");
+    // The document's own problems come first.
+    let bad = doc(r#"{"type":"box","style":{"width":-1}}"#);
+    let errors = check(&bad, &dated);
+    assert_eq!(errors.len(), 2);
+    assert_eq!(errors[1].path, "options.creationDate");
+    // A font that a render may be given later.
+    let later = r#"{"version":1,"fonts":[{"id":"Later","family":"L"}],"pages":[{"size":{"width":10,"height":10}}]}"#;
+    assert_eq!(check(later, &plain)[0].code, C::FontNotRegistered);
+    assert_eq!(
+        check(later, &plain.clone().with_deferred_fonts(["Later"])),
+        []
+    );
 }
 
 /// PDF/A, at every level, takes page sides of 3 points or more: a smaller
@@ -2529,27 +2629,30 @@ fn pdf_a_1b_rejects_colour_glyphs_that_need_transparency() {
             &ImageStore::new(),
         )
     };
-    for (font, what) in [
-        ("EmojiTest-CBDT", "an alpha channel"),
-        ("EmojiTest-COLR", "(fill or stroke opacity)"),
-    ] {
-        let Err(crate::InkoxideError::Validation(e)) = render(font, "😀 b") else {
-            panic!("{font}: rendered");
-        };
-        assert_eq!(e.code, C::PdfaConflict, "{font}");
-        assert_eq!(e.path, "pages[0].children[1].children[0].runs[1]", "{font}");
-        assert!(
-            e.message.contains(&format!("`😀` of font `{font}`")),
-            "{}",
-            e.message
-        );
-        assert!(e.message.contains(what), "{}", e.message);
-    }
+    let Err(crate::InkoxideError::Validation(e)) = render("EmojiTest-COLR", "😀 b") else {
+        panic!("rendered");
+    };
+    assert_eq!(e.code, C::PdfaConflict);
+    assert_eq!(e.path, "pages[0].children[1].children[0].runs[1]");
+    assert!(
+        e.message.contains("`😀` of font `EmojiTest-COLR`"),
+        "{}",
+        e.message
+    );
+    assert!(
+        e.message.contains("(fill or stroke opacity)"),
+        "{}",
+        e.message
+    );
     // The COLR flag has solid layers only: it keeps its colour.
     let pdf = render("EmojiTest-COLR", "🇫🇷 b").unwrap();
     let count = |needle: &[u8]| pdf.windows(needle.len()).filter(|w| w == &needle).count();
     assert_eq!(count(b"/Subtype /Form"), 1);
     assert_eq!(count(b"/SMask"), 0);
+    // The CBDT image's alpha is binary: a stencil mask.
+    let pdf = render("EmojiTest-CBDT", "😀 b").unwrap();
+    let count = |needle: &[u8]| pdf.windows(needle.len()).filter(|w| w == &needle).count();
+    assert_eq!((count(b"/ImageMask true"), count(b"/SMask")), (1, 0));
 }
 
 #[test]

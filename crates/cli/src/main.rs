@@ -3,7 +3,7 @@
 //! ```text
 //! inkoxide render doc.json --fonts fixtures/fonts -o out.pdf [--msgpack] [--png-dir out/]
 //!   [--hyphenation en=hyph-en-us.tex]
-//! inkoxide validate doc.json --fonts fixtures/fonts
+//! inkoxide validate doc.json --fonts fixtures/fonts [--pdf-a=1b] [--flatten-alpha]
 //! inkoxide bench doc.json --fonts fixtures/fonts --iterations 30
 //! ```
 
@@ -60,16 +60,50 @@ struct Output {
     /// built-in patterns.
     #[arg(long, value_name = "LANG=PATH")]
     hyphenation: Vec<String>,
+    /// Write tagged PDF: a structure tree for screen readers and reflow.
+    #[arg(long)]
+    tagged: bool,
+}
+
+/// Render options that `validate` checks the document against too.
+#[derive(Args)]
+struct Checked {
+    /// Write PDF/A, at LEVEL: 1b, 2b (the default), 2a, 3b or 3a. The level
+    /// follows an equals sign (`--pdf-a=1b`), so `--pdf-a doc.json`
+    /// writes PDF/A-2b.
+    #[arg(long, value_name = "LEVEL", num_args = 0..=1, require_equals = true, default_missing_value = "2b", value_parser = str::parse::<PdfALevel>)]
+    pdf_a: Option<PdfALevel>,
+    /// Write PDF/UA-1 (tagged, with the metadata it requires).
+    #[arg(long)]
+    pdf_ua: bool,
+    /// At PDF/A-1b, draw images with partial alpha on white instead of
+    /// refusing them.
+    #[arg(long)]
+    flatten_alpha: bool,
     /// Directory of files for `attachments`; each is available to `src`
     /// under its whole file name (`invoice.xml`).
     #[arg(long, value_name = "DIR")]
     attachments: Vec<PathBuf>,
-    /// Write tagged PDF: a structure tree for screen readers and reflow.
-    #[arg(long)]
-    tagged: bool,
-    /// Write PDF/UA-1 (tagged, with the metadata it requires).
-    #[arg(long)]
-    pdf_ua: bool,
+}
+
+impl Checked {
+    /// The render options these set.
+    fn options(&self) -> Result<RenderOptions, String> {
+        let mut options = RenderOptions::default()
+            .with_pdf_ua(self.pdf_ua)
+            .with_flatten_alpha(self.flatten_alpha)
+            .with_attachments(load_attachments(&self.attachments)?);
+        if let Some(level) = self.pdf_a {
+            options = options.with_pdf_a_level(level);
+        }
+        Ok(options)
+    }
+
+    /// Whether any is set: `validate` then checks what a render with them
+    /// would refuse.
+    fn any(&self) -> bool {
+        self.pdf_a.is_some() || self.pdf_ua || self.flatten_alpha || !self.attachments.is_empty()
+    }
 }
 
 #[derive(Subcommand)]
@@ -83,6 +117,8 @@ enum Cmd {
         input: Input,
         #[command(flatten)]
         out: Output,
+        #[command(flatten)]
+        checked: Checked,
         /// Output file (default: the input path with a .pdf extension).
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -92,11 +128,6 @@ enum Cmd {
         /// RFC 3339 creation date to embed.
         #[arg(long)]
         creation_date: Option<String>,
-        /// Write PDF/A, at LEVEL: 1b, 2b (the default), 2a, 3b or 3a. The level
-        /// follows an equals sign (`--pdf-a=1b`), so `--pdf-a doc.json`
-        /// writes PDF/A-2b.
-        #[arg(long, value_name = "LEVEL", num_args = 0..=1, require_equals = true, default_missing_value = "2b", value_parser = str::parse::<PdfALevel>)]
-        pdf_a: Option<PdfALevel>,
         /// Also rasterise every page to PNG with `pdftoppm`, which must be
         /// installed: without it the PDF is written and the exit code is 2.
         #[arg(long)]
@@ -109,13 +140,16 @@ enum Cmd {
         #[arg(long)]
         threads: Option<usize>,
     },
-    /// Validate a document; prints the problems found (at most 100).
+    /// Validate a document; prints the problems found (at most 100). With
+    /// render options, also what a render with them would refuse.
     Validate {
         doc: PathBuf,
         #[command(flatten)]
         res: Resources,
         #[command(flatten)]
         input: Input,
+        #[command(flatten)]
+        checked: Checked,
         /// Print errors as a JSON array.
         #[arg(long)]
         json: bool,
@@ -129,6 +163,8 @@ enum Cmd {
         input: Input,
         #[command(flatten)]
         out: Output,
+        #[command(flatten)]
+        checked: Checked,
         #[arg(long, default_value_t = 30)]
         iterations: u32,
         /// Worker threads (default: all cores; 0 and 1 render on the calling
@@ -192,9 +228,9 @@ fn load_hyphenation(out: &Output) -> Result<HyphenationStore, String> {
 /// The files of the `--attachments` directories, by file name. One over
 /// an attachment's limit (64 MiB) is not read: the store knows its size,
 /// and a document that uses it fails with `ATTACHMENT_TOO_LARGE`.
-fn load_attachments(out: &Output) -> Result<AttachmentStore, String> {
+fn load_attachments(dirs: &[PathBuf]) -> Result<AttachmentStore, String> {
     let mut store = AttachmentStore::new();
-    for dir in &out.attachments {
+    for dir in dirs {
         for (_, path) in dir_files(dir)? {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
@@ -249,10 +285,17 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             doc,
             res,
             input,
+            checked,
             json,
         } => {
             let (fonts, images) = load_resources(&res)?;
-            let errors = inkoxide::validate(&read(&doc)?, format_of(&doc, &input), &fonts, &images);
+            let (bytes, format) = (read(&doc)?, format_of(&doc, &input));
+            let errors = if checked.any() {
+                let options = checked.options()?;
+                inkoxide::validate_with_options(&bytes, format, &options, &fonts, Some(&images))
+            } else {
+                inkoxide::validate(&bytes, format, &fonts, &images)
+            };
             print_errors(&errors, json);
             if errors.is_empty() {
                 if !json {
@@ -268,27 +311,23 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             res,
             input,
             out,
+            checked,
             output,
             no_compress,
             creation_date,
-            pdf_a,
             png_dir,
             dpi,
             threads,
         } => {
             let (fonts, images) = load_resources(&res)?;
             let bytes = read(&doc)?;
-            let mut opts = RenderOptions::default()
+            let mut opts = checked
+                .options()?
                 .with_compress(!no_compress)
                 .with_threads(threads)
                 .with_subset_fonts(!out.full_fonts)
                 .with_hyphenation(load_hyphenation(&out)?)
-                .with_attachments(load_attachments(&out)?)
-                .with_tagged(out.tagged)
-                .with_pdf_ua(out.pdf_ua);
-            if let Some(level) = pdf_a {
-                opts = opts.with_pdf_a_level(level);
-            }
+                .with_tagged(out.tagged);
             opts.creation_date = creation_date;
             let start = Instant::now();
             let pdf =
@@ -318,18 +357,18 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
             res,
             input,
             out,
+            checked,
             iterations,
             threads,
         } => {
             let bytes = read(&doc)?;
             let format = format_of(&doc, &input);
-            let opts = RenderOptions::default()
+            let opts = checked
+                .options()?
                 .with_threads(threads)
                 .with_subset_fonts(!out.full_fonts)
                 .with_hyphenation(load_hyphenation(&out)?)
-                .with_attachments(load_attachments(&out)?)
-                .with_tagged(out.tagged)
-                .with_pdf_ua(out.pdf_ua);
+                .with_tagged(out.tagged);
             // Cold start: font registration plus the first render, which
             // also fills the process-wide caches.
             let cold = Instant::now();
@@ -434,6 +473,43 @@ mod tests {
         ])
         .is_ok());
         assert!(parse(&["bench", "d.json", "--full-fonts", "--msgpack"]).is_ok());
+        // What a render checks, validation checks too.
+        assert!(parse(&[
+            "validate",
+            "d.json",
+            "--pdf-a=1b",
+            "--flatten-alpha",
+            "--pdf-ua"
+        ])
+        .is_ok());
+        assert!(parse(&["validate", "d.json", "--attachments", "files"]).is_ok());
+    }
+
+    /// With `--pdf-a=1b`, `validate` reports partial alpha, as `render`
+    /// does, and `--flatten-alpha` accepts it.
+    #[test]
+    fn validate_checks_the_pdf_a_level() {
+        let dir = std::env::temp_dir().join(format!("inkoxide-cli-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let doc = dir.join("d.json");
+        fs::write(
+            &doc,
+            r#"{"version":1,"pages":[{"size":{"width":10,"height":10},"children":[{"type":"image","src":"logo"}]}]}"#,
+        )
+        .unwrap();
+        let images = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/images");
+        let validate = |flags: &[&str]| {
+            let args = ["inkoxide", "validate", doc.to_str().unwrap(), "--images"];
+            let args = args.into_iter().chain([images.to_str().unwrap(), "--json"]);
+            run(Cli::try_parse_from(args.chain(flags.iter().copied())).unwrap()).unwrap()
+        };
+        assert_eq!(validate(&[]), ExitCode::SUCCESS);
+        assert_eq!(validate(&["--pdf-a=1b"]), ExitCode::from(1));
+        assert_eq!(
+            validate(&["--pdf-a=1b", "--flatten-alpha"]),
+            ExitCode::SUCCESS
+        );
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -441,10 +517,10 @@ mod tests {
         let level = |args: &[&str]| {
             let cli = Cli::try_parse_from(["inkoxide", "render", "d.json"].iter().chain(args))
                 .map_err(|e| e.to_string())?;
-            let Cmd::Render { pdf_a, .. } = cli.command else {
+            let Cmd::Render { checked, .. } = cli.command else {
                 unreachable!()
             };
-            Ok::<_, String>(pdf_a)
+            Ok::<_, String>(checked.pdf_a)
         };
         assert_eq!(level(&[]), Ok(None));
         assert_eq!(level(&["--pdf-a"]), Ok(Some(PdfALevel::A2b)));
@@ -457,11 +533,11 @@ mod tests {
             Ok(Some(PdfALevel::A2b))
         );
         let cli = Cli::try_parse_from(["inkoxide", "render", "--pdf-a", "doc.json"]).unwrap();
-        let Cmd::Render { doc, pdf_a, .. } = cli.command else {
+        let Cmd::Render { doc, checked, .. } = cli.command else {
             unreachable!()
         };
         assert_eq!(
-            (doc, pdf_a),
+            (doc, checked.pdf_a),
             (PathBuf::from("doc.json"), Some(PdfALevel::A2b))
         );
         // The level follows an equals sign.

@@ -74,13 +74,41 @@ pub fn unregister_hyphenation_patterns(lang: &[u8]) -> bool {
     std::str::from_utf8(lang).is_ok_and(|l| HYPHENATION.with(|h| h.borrow_mut().unregister(l)))
 }
 
-/// Validation errors as JSON; `images` checks image references too.
-pub fn validate(doc: &[u8], format: &[u8], images: Option<&[u8]>) -> Result<String, Failure> {
+/// Validation errors as JSON; `images` checks image references too. With
+/// `options` (JSON, as [`render`] takes them) and `files`, also what a
+/// render with them would refuse.
+pub fn validate(
+    doc: &[u8],
+    format: &[u8],
+    images: Option<&[u8]>,
+    options: Option<(&[u8], &[u8])>,
+) -> Result<String, Failure> {
     let format = match format {
         [] => None,
         f => Some(text(f, "options.format")?),
     };
-    let format = inkoxide_binding::input_format(format.as_deref(), "options.format")?;
+    let options = match options {
+        None => None,
+        Some((json, files)) => {
+            let options::Parsed {
+                mut options,
+                deferred_fonts,
+            } = options::parse(json)?;
+            if format.is_some() {
+                options.format.clone_from(&format);
+            }
+            let hyphenation = HYPHENATION.with(|h| h.borrow().clone());
+            let (format, core) = options.into_core(hyphenation, threads::max_threads())?;
+            let core = core
+                .with_deferred_fonts(deferred_fonts)
+                .with_attachments(images::parse_files(files)?);
+            Some((format, core))
+        }
+    };
+    let format = match &options {
+        Some((format, _)) => *format,
+        None => inkoxide_binding::input_format(format.as_deref(), "options.format")?,
+    };
     if format == InputFormat::MessagePack {
         let e = Failure::new("PARSE_ERROR", "", inkoxide::JSON_ONLY);
         return Ok(format!("[{}]", e.to_json()));
@@ -88,9 +116,12 @@ pub fn validate(doc: &[u8], format: &[u8], images: Option<&[u8]>) -> Result<Stri
     let images = images.map(images::parse).transpose()?;
     let errors = FONTS.with(|f| {
         let fonts = f.borrow();
-        match &images {
-            Some(images) => inkoxide::validate(doc, format, &fonts, images),
-            None => inkoxide::validate_without_images(doc, format, &fonts),
+        match (&options, &images) {
+            (Some((_, core)), images) => {
+                inkoxide::validate_with_options(doc, format, core, &fonts, images.as_ref())
+            }
+            (None, Some(images)) => inkoxide::validate(doc, format, &fonts, images),
+            (None, None) => inkoxide::validate_without_images(doc, format, &fonts),
         }
     });
     Ok(inkoxide_binding::validation_json(&errors))
@@ -281,8 +312,10 @@ pub unsafe extern "C" fn ink_unregister_hyphenation_patterns(
     u32::from(unregister_hyphenation_patterns(&lang))
 }
 
-/// [`validate`]; `format` is empty for JSON, and `has_images` 0 leaves
-/// the image references unchecked (`images` is then empty).
+/// [`validate`]; `format` is empty for JSON, `has_images` 0 leaves the
+/// image references unchecked (`images` is then empty), and
+/// `has_options` 0 validates without a render's `options` and `files`
+/// (then empty).
 ///
 /// # Safety
 ///
@@ -296,16 +329,24 @@ pub unsafe extern "C" fn ink_validate(
     images: *mut u8,
     images_len: usize,
     has_images: u32,
+    options: *mut u8,
+    options_len: usize,
+    files: *mut u8,
+    files_len: usize,
+    has_options: u32,
 ) -> u32 {
-    let (doc, format, images) = unsafe {
+    let (doc, format, images, options, files) = unsafe {
         (
             take(doc, doc_len),
             take(format, format_len),
             take(images, images_len),
+            take(options, options_len),
+            take(files, files_len),
         )
     };
     let images = (has_images != 0).then_some(&images[..]);
-    finish(validate(&doc, &format, images).map(String::into_bytes))
+    let options = (has_options != 0).then_some((&options[..], &files[..]));
+    finish(validate(&doc, &format, images, options).map(String::into_bytes))
 }
 
 /// [`render`]: the result is the PDF or an error.

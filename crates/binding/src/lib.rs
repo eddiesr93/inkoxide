@@ -153,6 +153,7 @@ pub struct Options {
     pub encryption: Option<EncryptionOptions>,
     pub tagged: Option<bool>,
     pub pdf_ua: Option<bool>,
+    pub flatten_alpha: Option<bool>,
 }
 
 /// `options.encryption`: mirrors Rust `Encryption`.
@@ -210,6 +211,7 @@ impl Options {
         }
         core.tagged = self.tagged.unwrap_or(false);
         core.pdf_ua = self.pdf_ua.unwrap_or(false);
+        core.flatten_alpha = self.flatten_alpha.unwrap_or(false);
         Ok((format, core))
     }
 }

@@ -275,6 +275,8 @@ export async function renderPdf(
   if (tagged !== undefined) options.tagged = tagged;
   const pdfUA = opts.pdfUA ?? output.pdfUA;
   if (pdfUA !== undefined) options.pdfUA = pdfUA;
+  const flattenAlpha = opts.flattenAlpha ?? output.flattenAlpha;
+  if (flattenAlpha !== undefined) options.flattenAlpha = flattenAlpha;
   const encryption = opts.encryption ?? output.encryption;
   if (encryption !== undefined) options.encryption = encryption;
   const signal = withTimeout(opts.signal, opts.timeoutMs);

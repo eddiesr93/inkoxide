@@ -30,6 +30,11 @@ export interface RenderOpts {
   /** Write PDF/UA-1 (see `<Document pdfUA>`), which it overrides. */
   pdfUA?: boolean;
   /**
+   * At PDF/A-1b, draw images with partial alpha on white instead of failing (see
+   * `<Document flattenAlpha>`), which it overrides.
+   */
+  flattenAlpha?: boolean;
+  /**
    * Encrypt the PDF with AES-256: `{ userPassword, ownerPassword, permissions }` (see the
    * guide). Replaces `<Document userPassword ownerPassword permissions>` as a whole. Not with
    * `pdfA`. A bad value fails the render with `ENGINE_REJECTED` at its path, never with the

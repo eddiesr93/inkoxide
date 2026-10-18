@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 use super::Cache;
 use crate::fonts::{FontKey, FontSet};
 use crate::images::{ImageBody, ImageKey, ImageSet};
-use crate::pdf::image_transparency;
+use crate::pdf::{image_transparency, Profile};
 use crate::schema::{Display, Document, Node, NodeKind};
 use crate::text::ColorGlyphs;
 use crate::ValidationError;
@@ -20,13 +20,15 @@ pub(super) fn transparent_color_glyph(
     text: &Cache<'_, '_, '_>,
     images: &ImageSet,
     colors: &ColorGlyphs,
+    profile: Profile,
 ) -> Option<ValidationError> {
     let mut seen: HashMap<(FontKey, u16), Option<&'static str>> = HashMap::new();
     find_shown(doc, |node, path| {
         for (run, font, gid) in text.run_glyphs(node) {
-            let need = *seen
-                .entry((font, gid))
-                .or_insert_with(|| colors.image(font, gid, images).and_then(image_transparency));
+            let need = *seen.entry((font, gid)).or_insert_with(|| {
+                let image = colors.image(font, gid, images)?;
+                image_transparency(image, profile)
+            });
             let Some(need) = need else { continue };
             let glyph =
                 (text.unicode().text(font, gid)).map_or(String::new(), |t| format!(" `{t}`"));
@@ -48,6 +50,7 @@ pub(super) fn transparent_svg_color_glyph(
     fonts: &FontSet<'_>,
     images: &ImageSet,
     colors: &ColorGlyphs,
+    profile: Profile,
 ) -> Option<ValidationError> {
     let mut seen: HashMap<(FontKey, u16), Option<&'static str>> = HashMap::new();
     let mut need = |key: ImageKey| -> Option<String> {
@@ -62,9 +65,8 @@ pub(super) fn transparent_svg_color_glyph(
         for g in glyphs {
             let font = fonts.get(g.font);
             let need = *seen.entry((g.font, g.id)).or_insert_with(|| {
-                colors
-                    .image(g.font, g.id, images)
-                    .and_then(image_transparency)
+                let image = colors.image(g.font, g.id, images)?;
+                image_transparency(image, profile)
             });
             if let Some(need) = need {
                 return Some(format!(

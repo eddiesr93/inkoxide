@@ -89,6 +89,9 @@ pub struct RenderOptions {
     /// Write PDF/UA-1 (default `false`).
     #[napi(js_name = "pdfUA")]
     pub pdf_ua: Option<bool>,
+    /// At PDF/A-1b, draw images with partial alpha on white instead of
+    /// refusing them (default `false`).
+    pub flatten_alpha: Option<bool>,
 }
 
 /// `options.encryption`: mirrors Rust `Encryption`.
@@ -153,51 +156,59 @@ impl From<PermissionOptions> for inkoxide_binding::PermissionOptions {
     }
 }
 
-impl RenderJob {
-    fn new(doc: Either<Uint8Array, String>, options: Option<RenderOptions>) -> Result<Self> {
-        let mut images = ImageStore::new();
-        let mut attachments = inkoxide::AttachmentStore::new();
-        let mut shared = inkoxide_binding::Options::default();
-        if let Some(o) = options {
-            shared = inkoxide_binding::Options {
-                format: o.format,
-                compress: o.compress,
-                compression_level: o.compression_level,
-                creation_date: o.creation_date,
-                threads: o.threads,
-                subset_fonts: o.subset_fonts,
-                pdf_a: o.pdf_a.map(|p| match p {
-                    Either::A(on) => PdfA::On(on),
-                    Either::B(level) => PdfA::Level(level),
-                }),
-                encryption: o.encryption.map(|e| inkoxide_binding::EncryptionOptions {
-                    user_password: e.user_password,
-                    owner_password: e.owner_password,
-                    permissions: e.permissions.map(Into::into),
-                }),
-                tagged: o.tagged,
-                pdf_ua: o.pdf_ua,
-            };
-            if let Some(map) = o.images {
-                for (id, bytes) in map {
-                    images.insert(id, bytes.to_vec());
-                }
-            }
-            if let Some(map) = o.attachments {
-                for (id, bytes) in map {
-                    attachments.insert(id, bytes.to_vec());
-                }
+/// The input format, engine options and images of `options`.
+fn engine_options(
+    options: Option<RenderOptions>,
+) -> Result<(InputFormat, inkoxide::RenderOptions, ImageStore)> {
+    let mut images = ImageStore::new();
+    let mut attachments = inkoxide::AttachmentStore::new();
+    let mut shared = inkoxide_binding::Options::default();
+    if let Some(o) = options {
+        shared = inkoxide_binding::Options {
+            format: o.format,
+            compress: o.compress,
+            compression_level: o.compression_level,
+            creation_date: o.creation_date,
+            threads: o.threads,
+            subset_fonts: o.subset_fonts,
+            pdf_a: o.pdf_a.map(|p| match p {
+                Either::A(on) => PdfA::On(on),
+                Either::B(level) => PdfA::Level(level),
+            }),
+            encryption: o.encryption.map(|e| inkoxide_binding::EncryptionOptions {
+                user_password: e.user_password,
+                owner_password: e.owner_password,
+                permissions: e.permissions.map(Into::into),
+            }),
+            tagged: o.tagged,
+            pdf_ua: o.pdf_ua,
+            flatten_alpha: o.flatten_alpha,
+        };
+        if let Some(map) = o.images {
+            for (id, bytes) in map {
+                images.insert(id, bytes.to_vec());
             }
         }
-        let hyphenation = HYPHENATION.read().map(|h| h.clone()).unwrap_or_default();
-        let (format, core) = shared
-            .into_core(hyphenation, MAX_THREADS)
-            .map_err(js_error)?;
-        let core = core.with_attachments(attachments);
+        if let Some(map) = o.attachments {
+            for (id, bytes) in map {
+                attachments.insert(id, bytes.to_vec());
+            }
+        }
+    }
+    let hyphenation = HYPHENATION.read().map(|h| h.clone()).unwrap_or_default();
+    let (format, core) = shared
+        .into_core(hyphenation, MAX_THREADS)
+        .map_err(js_error)?;
+    Ok((format, core.with_attachments(attachments), images))
+}
+
+impl RenderJob {
+    fn new(doc: Either<Uint8Array, String>, options: Option<RenderOptions>) -> Result<Self> {
+        let (format, options, images) = engine_options(options)?;
         Ok(Self {
             doc: input_bytes(doc),
             format,
-            options: core,
+            options,
             images,
             fonts: fonts_snapshot(),
         })
@@ -269,28 +280,50 @@ pub fn unregister_hyphenation_patterns(lang: String) -> bool {
 
 /// Validates a document against the schema and the registered fonts.
 /// Images are not available here, so `src` references are not checked
-/// unless `images` is given.
+/// unless `images` is given. With `options`, a render's (whose `format`
+/// and `images` the arguments override), also reports what a render with
+/// them would refuse.
 #[napi]
 pub fn validate(
     doc: Either<Uint8Array, String>,
     format: Option<String>,
     images: Option<HashMap<String, Uint8Array>>,
+    options: Option<RenderOptions>,
 ) -> Result<Vec<ValidationError>> {
-    let format =
-        inkoxide_binding::input_format(format.as_deref(), "options.format").map_err(js_error)?;
     let bytes = input_bytes(doc);
     let fonts = fonts_snapshot();
-    let store = images.map(|images| {
+    let store = |images: HashMap<String, Uint8Array>| {
         let mut store = ImageStore::new();
         for (id, b) in images {
             store.insert(id, b.to_vec());
         }
         store
-    });
-    let errors = catch_panic(|| match &store {
-        Some(store) => inkoxide::validate(&bytes, format, &fonts, store),
-        None => inkoxide::validate_without_images(&bytes, format, &fonts),
-    })?;
+    };
+    let errors = match options {
+        None => {
+            let format = inkoxide_binding::input_format(format.as_deref(), "options.format")
+                .map_err(js_error)?;
+            let store = images.map(store);
+            catch_panic(|| match &store {
+                Some(store) => inkoxide::validate(&bytes, format, &fonts, store),
+                None => inkoxide::validate_without_images(&bytes, format, &fonts),
+            })?
+        }
+        Some(mut options) => {
+            if format.is_some() {
+                options.format = format;
+            }
+            let given = images.is_some() || options.images.is_some();
+            if let Some(images) = images {
+                options.images = Some(images);
+            }
+            let (format, options, store) = engine_options(Some(options))?;
+            let store = given.then_some(store);
+            catch_panic(|| {
+                inkoxide::validate_with_options(&bytes, format, &options, &fonts, store.as_ref())
+            })?
+        }
+    };
     Ok(errors
         .into_iter()
         .map(|e| ValidationError {

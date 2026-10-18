@@ -36,7 +36,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 
 | Component | What it is |
 |---|---|
-| `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `creator`, `producer`, `lang` (`"en-US"`), `creationDate`, `pageMode`, `pageLayout` and `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)); `conformance` ([PDF/A](#pdfa)), `userPassword`, `ownerPassword` and `permissions` ([passwords](#passwords-and-permissions)), `tagged` and `pdfUA` ([accessibility](#accessibility)), `attachments` and `xmpExtensions` ([attachments](#attachments)). |
+| `Document` | The PDF: `title`, `author`, `subject`, `keywords`, `creator`, `producer`, `lang` (`"en-US"`), `creationDate`, `pageMode`, `pageLayout` and `fallbackFonts` ([metadata](#links-bookmarks-and-metadata)); `conformance` and `flattenAlpha` ([PDF/A](#pdfa)), `userPassword`, `ownerPassword` and `permissions` ([passwords](#passwords-and-permissions)), `tagged` and `pdfUA` ([accessibility](#accessibility)), `attachments` and `xmpExtensions` ([attachments](#attachments)). |
 | `Page` | One page layout; content flows over as many sheets as it needs. `size` (a [preset](#page-sizes) such as `"A4"`, `"letter"` or `"A4-landscape"`, `[width, height]`, `{ width, height }`, or `[width]` or one length for a square), `orientation`, `margin`. Padding on a page is its margin; a percentage is of the page width, on every side, as in CSS. |
 | `View` | A box: flex column by default, and also grid. |
 | `Text` | A paragraph. A `Text` inside a `Text` is an inline run (bold, colour, link). |
@@ -681,9 +681,18 @@ wins over it:
 
 PDF/A-1b has no transparency, so a render fails with `ENGINE_REJECTED` (`engineCode`
 `PDFA_CONFLICT`) and the component at fault for a colour with alpha below 1 (a transparent
-background is fine: it draws nothing), an `opacity` between 0 and 1, an image with an alpha
-channel such as most PNG logos, an SVG drawn with opacity, a mask or a blend mode, or `debug`.
-PDF/A-2b and 3b allow all of these. The u levels (`'PDF/A-2u'`) and PDF/A-1a are not
+background is fine: it draws nothing), an `opacity` between 0 and 1, an image with partial
+alpha such as most PNG logos, an SVG drawn with opacity, a mask or a blend mode, or `debug`.
+PDF/A-2b and 3b allow all of these. An image whose alpha is only clear or opaque, such as a
+GIF's, is drawn with a stencil mask, which PDF/A-1b allows. `flattenAlpha` (a `<Document>` prop
+and a render option, which wins over it) draws images with partial alpha on white instead:
+
+```tsx
+<Document conformance="PDF/A-1b" flattenAlpha>…</Document>
+```
+
+A flattened image is opaque: on a coloured background it shows a white box where it was
+transparent. The u levels (`'PDF/A-2u'`) and PDF/A-1a are not
 supported: they fail with `TEMPLATE_ERROR`.
 
 `conformance` is not part of the document tree: to render a stored `result.document` again at
@@ -1282,6 +1291,7 @@ All three take the same options:
 | `pdfA` | `false` | Write PDF/A, for archiving: `true` or `'2b'`, `'3b'`, `'1b'`, `'2a'` or `'3a'` (see [PDF/A](#pdfa)). Wins over `<Document conformance>`. |
 | `tagged` | `false` | Write tagged PDF (see [Accessibility](#accessibility)). Wins over `<Document tagged>`. |
 | `pdfUA` | `false` | Write PDF/UA-1 (see [Accessibility](#accessibility)). Wins over `<Document pdfUA>`. |
+| `flattenAlpha` | `false` | At PDF/A-1b, draw images with partial alpha on white instead of failing (see [PDF/A](#pdfa)). Wins over `<Document flattenAlpha>`. |
 | `attachments` | none | The bytes of the files a document written as JSON names in `src`, by id (see [Attachments](#attachments)). `<Document attachments>` carries its files itself. |
 | `encryption` | none | `{ userPassword, ownerPassword, permissions }`: encrypt the PDF (see [Passwords and permissions](#passwords-and-permissions)). Replaces the `<Document>` props of the same names. |
 | `compress` | `true` | Compress the page content |

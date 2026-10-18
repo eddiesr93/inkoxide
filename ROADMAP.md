@@ -15,6 +15,3 @@ or should come sooner.
 - **Encryption**: an `entropy` option, for output that cannot be linked to its input; Unicode
   passwords, prepared with SASLprep (passwords are printable ASCII now); and an independent
   review of the key derivation by cryptographers. It has had an internal review only.
-- **PDF/A-1b**: images with partial alpha flattened onto white, as an option, and binary alpha
-  written as a stencil mask, which PDF/A-1b allows; both are refused now. A `validate` that knows
-  the PDF/A level, so that it reports what only `render` reports now.

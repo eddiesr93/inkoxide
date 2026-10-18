@@ -55,12 +55,16 @@ test('pdfA writes PDF/A metadata and an output intent', () => {
   assert.match(one, /^%PDF-1\.4/);
   assert.match(one, /<pdfaid:part>1<\/pdfaid:part>/);
   assert.match(one, /\/CIDSet/);
-  // PDF/A-1b has no transparency; validate does not know the level.
+  // PDF/A-1b has no transparency; validate knows the level from the render's options.
   const veiled = JSON.stringify({
     version: 1,
     pages: [{ size: { width: 10, height: 10 }, children: [{ type: 'box', style: { opacity: 0.5 } }] }],
   });
   assert.deepStrictEqual(ink.validate(veiled), []);
+  assert.deepStrictEqual(
+    ink.validate(veiled, undefined, undefined, { pdfA: '1b' }).map((e) => [e.code, e.path]),
+    [['PDFA_CONFLICT', 'pages[0].children[0].style.opacity']],
+  );
   assert.throws(
     () => ink.renderSync(veiled, { pdfA: '1b' }),
     (e) => e.code === 'PDFA_CONFLICT' && e.path === 'pages[0].children[0].style.opacity',
@@ -93,9 +97,13 @@ test('tagged writes a structure tree, and pdfUA PDF/UA-1 or the first thing it l
   const ua = render(ok, { pdfUA: true });
   assert.match(ua, /\/StructTreeRoot/);
   assert.match(ua, /<pdfuaid:part>1<\/pdfuaid:part>/);
-  // validate does not know the output: PDF/UA's needs are the render's.
+  // PDF/UA's needs are the render's: validate checks them with its options.
   const bare = doc({ title: 'Form', lang: 'en' }, { name: 'agree', kind: 'checkbox' });
   assert.deepStrictEqual(ink.validate(bare), []);
+  assert.deepStrictEqual(
+    ink.validate(bare, 'json', undefined, { pdfUA: true }).map((e) => e.code),
+    ['UA_CONFLICT'],
+  );
   assert.ok(ink.renderSync(bare).length > 0);
   assert.throws(
     () => ink.renderSync(bare, { pdfUA: true }),
@@ -375,6 +383,46 @@ test('validate without images still finds the problems after many image referenc
   assert.deepStrictEqual(
     ink.validate(doc, 'json', { logo: images.logo }).map((e) => [e.code, e.path]),
     font,
+  );
+});
+
+test('PDF/A-1b masks binary alpha, and flattenAlpha draws partial alpha on white', () => {
+  const doc = (src) =>
+    JSON.stringify({
+      version: 1,
+      pages: [
+        { size: { width: 100, height: 100 }, children: [{ type: 'image', src, style: { width: 50 } }] },
+      ],
+    });
+  const options = { pdfA: '1b', images: { gif: images['anim.gif'], logo: images.logo } };
+  const render = (src, extra) =>
+    Buffer.from(ink.renderSync(doc(src), { ...options, ...extra })).toString('latin1');
+  assert.deepStrictEqual(ink.validate(doc('gif'), undefined, undefined, options), []);
+  assert.match(render('gif'), /\/ImageMask true/);
+  assert.doesNotMatch(render('gif'), /\/SMask/);
+  const partial = ink.validate(doc('logo'), undefined, undefined, options);
+  assert.deepStrictEqual(
+    partial.map((e) => [e.code, e.path]),
+    [['PDFA_CONFLICT', 'pages[0].children[0].src']],
+  );
+  assert.match(partial[0].message, /flattenAlpha/);
+  assert.throws(
+    () => render('logo'),
+    (e) => e.code === 'PDFA_CONFLICT',
+  );
+  assert.deepStrictEqual(
+    ink.validate(doc('logo'), undefined, undefined, { ...options, flattenAlpha: true }),
+    [],
+  );
+  assert.doesNotMatch(render('logo', { flattenAlpha: true }), /\/SMask|\/ImageMask/);
+  // The options' own problems: invalid values are reported, wrong types thrown.
+  assert.deepStrictEqual(
+    ink.validate(doc('gif'), undefined, undefined, { ...options, creationDate: 'soon' }).map((e) => e.path),
+    ['options.creationDate'],
+  );
+  assert.throws(
+    () => ink.validate(doc('gif'), undefined, undefined, { flattenAlpha: 'yes' }),
+    (e) => e.code === 'INVALID_ARGUMENT' && e.path === 'options.flattenAlpha',
   );
 });
 

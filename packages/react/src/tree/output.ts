@@ -11,6 +11,8 @@ export interface OutputOptions {
   tagged?: boolean;
   /** `<Document pdfUA>`: PDF/UA-1. */
   pdfUA?: boolean;
+  /** `<Document flattenAlpha>`: images with partial alpha drawn on white at PDF/A-1b. */
+  flattenAlpha?: boolean;
   /**
    * The encryption of `<Document userPassword ownerPassword permissions>`; the render option
    * `encryption` replaces it. JSON and `util.inspect` show it as `'<redacted>'`.

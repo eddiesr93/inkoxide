@@ -1476,7 +1476,7 @@ describe('form fields', () => {
 describe('tagged output', () => {
   it('passes roles, alternative text, header cells and labels, and the Document flags', () => {
     const r = renderTemplate(
-      <Document title="T" lang="en" tagged pdfUA conformance="PDF/A-2a">
+      <Document title="T" lang="en" tagged pdfUA conformance="PDF/A-2a" flattenAlpha>
         <Page>
           <Text role="h1">Title</Text>
           <View role="figure" alt="A chart">
@@ -1494,7 +1494,7 @@ describe('tagged output', () => {
       </Document>,
       { fonts },
     );
-    expect(r.output).toEqual({ pdfA: '2a', tagged: true, pdfUA: true });
+    expect(r.output).toEqual({ pdfA: '2a', tagged: true, pdfUA: true, flattenAlpha: true });
     const [h1, figure, image, table, field] = r.document.pages[0].children as [
       TextNode,
       BoxNode,

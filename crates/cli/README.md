@@ -13,13 +13,16 @@ cargo install inkoxide-cli
 inkoxide render invoice.json --fonts fonts/ --images images/ -o invoice.pdf
 
 # Validate: prints every problem, with its path (--json for a JSON array).
-inkoxide validate invoice.json --fonts fonts/
+# With --pdf-a, --pdf-ua, --flatten-alpha or --attachments, also what a
+# render with them would refuse.
+inkoxide validate invoice.json --fonts fonts/ --pdf-a=1b
 
 # Render repeatedly and report timings.
 inkoxide bench invoice.json --fonts fonts/ --iterations 50
 ```
 
-`inkoxide render --help` lists the options: PDF/A (`--pdf-a=1b`, `2b`, `2a`, `3b` or `3a`), tagged
+`inkoxide render --help` lists the options: PDF/A (`--pdf-a=1b`, `2b`, `2a`, `3b` or `3a`, and
+`--flatten-alpha`, which draws images with partial alpha on white at PDF/A-1b), tagged
 PDF (`--tagged`) and PDF/UA-1 (`--pdf-ua`), the files of the document's attachments
 (`--attachments <DIR>`, registered under their file name), the creation date, hyphenation patterns,
 the number of threads, and PNG output through `pdftoppm`.

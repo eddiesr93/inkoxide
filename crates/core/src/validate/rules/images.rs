@@ -74,7 +74,7 @@ impl Checker<'_> {
                 let what = *self
                     .image_transparency
                     .entry(data.key())
-                    .or_insert_with(|| crate::pdf::image_transparency(&img));
+                    .or_insert_with(|| crate::pdf::image_transparency(&img, self.profile));
                 if let Some(what) = what {
                     let image = id.map_or("the image".into(), |id| format!("image `{id}`"));
                     self.transparent(Some(field), &format!("{image} ({what})"));

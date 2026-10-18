@@ -113,6 +113,7 @@ const ENGINE_OPTION_TYPES = {
   subsetFonts: 'boolean',
   tagged: 'boolean',
   pdfUA: 'boolean',
+  flattenAlpha: 'boolean',
 } as const;
 
 const PERMISSION_TYPES = {

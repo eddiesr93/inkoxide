@@ -180,8 +180,8 @@ pub(crate) fn run<'d, T: Send>(
     }
     let colors = ColorGlyphs::load(fonts, &used, images, parallel);
     if !profile.transparency() {
-        let conflict = transparent_color_glyph(doc, fonts, text, images, &colors)
-            .or_else(|| transparent_svg_color_glyph(doc, fonts, images, &colors));
+        let conflict = transparent_color_glyph(doc, fonts, text, images, &colors, profile)
+            .or_else(|| transparent_svg_color_glyph(doc, fonts, images, &colors, profile));
         if let Some(conflict) = conflict {
             return Err(conflict.into());
         }

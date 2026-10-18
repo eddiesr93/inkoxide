@@ -21,16 +21,26 @@ pub(crate) enum RawColor {
     Rgb,
 }
 
+/// The alpha plane of an image that is not fully opaque.
+#[derive(Debug)]
+pub(crate) struct Alpha {
+    /// 8-bit samples, zlib-compressed.
+    pub plane: Vec<u8>,
+    /// Every sample is 0 or 255: a stencil mask draws it, without
+    /// transparency (which PDF/A-1b forbids).
+    pub binary: bool,
+}
+
 #[derive(Debug)]
 pub(crate) enum ImageBody {
     /// The original JPEG bytes, embedded with `DCTDecode`.
     Jpeg { bytes: Arc<[u8]>, color: JpegColor },
     /// 8-bit samples, zlib-compressed (`FlateDecode`), with an optional
-    /// zlib-compressed 8-bit alpha plane.
+    /// alpha plane.
     Raw {
         color: RawColor,
         samples: Vec<u8>,
-        alpha: Option<Vec<u8>>,
+        alpha: Option<Alpha>,
     },
     /// A parsed SVG, written as a Form `XObject` with vector content, and
     /// its root `viewBox`.
@@ -97,6 +107,65 @@ impl DecodedImage {
             ));
         }
         Ok(rgb.into_raw())
+    }
+
+    /// The samples and the alpha plane of a raster image with alpha,
+    /// inflated, and its samples per pixel.
+    fn raw_with_alpha(&self) -> Result<(Vec<u8>, Vec<u8>, usize), crate::InkoxideError> {
+        let ImageBody::Raw {
+            color,
+            samples,
+            alpha: Some(alpha),
+        } = &self.body
+        else {
+            return Err(crate::InkoxideError::Internal(
+                "not an image with alpha".into(),
+            ));
+        };
+        let channels = match color {
+            RawColor::Gray => 1,
+            RawColor::Rgb => 3,
+        };
+        let pixels = self.width as usize * self.height as usize;
+        let inflate = |data: &[u8], len: usize| {
+            crate::flate::inflate(data, len)
+                .map_err(|e| crate::InkoxideError::Internal(format!("image samples: {e}")))
+        };
+        Ok((
+            inflate(samples, pixels * channels)?,
+            inflate(&alpha.plane, pixels)?,
+            channels,
+        ))
+    }
+
+    /// The 1-bit stencil mask of a binary alpha plane, each row padded to
+    /// a byte: 1 where the image is clear, which an explicit mask leaves
+    /// unpainted (ISO 32000-1, 8.9.6.3).
+    pub fn stencil_mask(&self) -> Result<Vec<u8>, crate::InkoxideError> {
+        let (_, plane, _) = self.raw_with_alpha()?;
+        let width = self.width as usize;
+        let row = width.div_ceil(8);
+        let mut mask = vec![0u8; row * self.height as usize];
+        for (line, out) in plane.chunks_exact(width).zip(mask.chunks_exact_mut(row)) {
+            for (x, _) in line.iter().enumerate().filter(|&(_, &a)| a < 128) {
+                out[x / 8] |= 0x80 >> (x % 8);
+            }
+        }
+        Ok(mask)
+    }
+
+    /// The samples of a raster image with alpha drawn on white, which
+    /// need no alpha.
+    pub fn flattened_samples(&self) -> Result<Vec<u8>, crate::InkoxideError> {
+        let (mut samples, plane, channels) = self.raw_with_alpha()?;
+        for (px, &a) in samples.chunks_exact_mut(channels).zip(&plane) {
+            for c in px {
+                // c·a + 255·(1 − a), rounded.
+                let clear = (255 - u32::from(*c)) * u32::from(a);
+                *c = 255 - ((clear + 127) / 255) as u8;
+            }
+        }
+        Ok(samples)
     }
 }
 
@@ -192,7 +261,10 @@ fn decode_raster(bytes: &[u8], format: image::ImageFormat) -> Result<DecodedImag
     };
     // A fully opaque alpha plane is dropped (no SMask needed).
     let alpha = match alpha_plane {
-        Some(a) if a.iter().any(|&v| v != 255) => Some(zlib(&a)?),
+        Some(a) if a.iter().any(|&v| v != 255) => Some(Alpha {
+            plane: zlib(&a)?,
+            binary: a.iter().all(|&v| v == 0 || v == 255),
+        }),
         _ => None,
     };
     Ok(DecodedImage {
