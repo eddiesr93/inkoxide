@@ -531,11 +531,14 @@ fn render_inner(
         Some(e) => Some(e.params()?),
     };
 
-    let font_set = FontSet::load_with(&document, fonts, &options.deferred_fonts)?;
+    let mut font_set = FontSet::load_with(&document, fonts, &options.deferred_fonts)?;
     let hyphenator = text::ResolvedHyphenator::new(&options.hyphenation);
     let mut image_set =
         images::ImageSet::load(&document.pages, images, &images::ImageCrateDecoder)?;
     image_set.load_emoji(&document.emoji_images, images, &images::ImageCrateDecoder)?;
+    // The instances of variable fonts text asks for besides the declared
+    // ones, before the shaper loads a face for each.
+    font_set.add_variants(text::font_asks(&document, &font_set, &image_set));
     let shaper = RustybuzzShaper::new(&font_set)?
         .with_hyphenator(&hyphenator)
         .with_objects(Arc::new(image_set.inline_objects()));

@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 pub(crate) use color::{ColorGlyph, TextColor, BLACK_TEXT};
 
-use crate::schema::{Document, FontDecl, FontStyle, FontVariation};
+use crate::schema::{Document, FontDecl, FontStyle, FontVariation, OpticalSizing};
 use crate::InkoxideError;
 
 /// Metrics read once at registration, in font units unless noted.
@@ -836,68 +836,155 @@ impl LoadedFont<'_> {
     }
 }
 
-/// CSS font matching (CSS Fonts 4 §5.2) over `faces`, the family, weight
-/// and style of each face in order: the first family of `families` that
-/// has a face (else the first face's family), then the faces of `style`
-/// (else every face of the family), then the nearest weight. Family names
-/// match ignoring ASCII case, as in CSS. The same algorithm as `FontRegistry` in
+/// A declared face as CSS matching sees it: its family, the weights and
+/// widths (percentages) it draws, lowest first (one value twice for a
+/// static face), and its style.
+#[derive(Debug, Clone, Copy)]
+struct Face<'f> {
+    family: &'f str,
+    weights: [f32; 2],
+    stretches: [f32; 2],
+    style: FontStyle,
+}
+
+/// CSS font matching (CSS Fonts 4 §5.2) over `faces`, in order: the first
+/// family of `families` that has a face (else the first face's family),
+/// then the faces nearest width `stretch`, then those of `style` (else
+/// every face left), then the nearest weight. Family names match ignoring
+/// ASCII case, as in CSS. The same algorithm as `FontRegistry` in
 /// `@inkoxide/react`; `fixtures/fonts/matching.json` holds the cases both
 /// are tested with. Returns the index of the face.
 fn match_face(
-    faces: &[(&str, u16, FontStyle)],
+    faces: &[Face<'_>],
     families: &[&str],
-    weight: u16,
+    weight: f32,
     style: FontStyle,
+    stretch: f32,
 ) -> Option<usize> {
     let first = faces.first()?;
     let family = families
         .iter()
-        .find(|f| faces.iter().any(|x| x.0.eq_ignore_ascii_case(f)))
-        .map_or(first.0, |f| *f);
-    let in_family = || (0..faces.len()).filter(|&i| faces[i].0.eq_ignore_ascii_case(family));
-    let same_style: Vec<usize> = in_family().filter(|&i| faces[i].2 == style).collect();
+        .find(|f| faces.iter().any(|x| x.family.eq_ignore_ascii_case(f)))
+        .map_or(first.family, |f| *f);
+    let in_family: Vec<usize> = (0..faces.len())
+        .filter(|&i| faces[i].family.eq_ignore_ascii_case(family))
+        .collect();
+    let widest = nearest_stretch(&in_family, |i| faces[i].stretches, stretch);
+    let same_style: Vec<usize> = widest
+        .iter()
+        .copied()
+        .filter(|&i| faces[i].style == style)
+        .collect();
     let pool = if same_style.is_empty() {
-        in_family().collect()
+        widest
     } else {
         same_style
     };
-    nearest_weight(&pool, |i| faces[i].1, weight)
+    nearest_weight(&pool, |i| faces[i].weights, weight)
 }
 
-/// CSS Fonts 4 §5.2 weight matching: the face of `pool` with weight `w`,
-/// else, nearest first, for 400 to 500 the heavier ones up to 500, then the
-/// lighter ones, then the heavier ones; below 400 the lighter, then the
-/// heavier; above 500 the heavier, then the lighter. Of equal weights, the
+/// Where a face of values `range` stands for `want`: `want` within it,
+/// else the end nearer.
+fn stands(range: [f32; 2], want: f32) -> f32 {
+    want.clamp(range[0], range[1].max(range[0]))
+}
+
+/// CSS Fonts 4 §5.2 width matching: the faces of `pool` whose widths hold
+/// `want`, else those nearest it, for 100% or less the narrower first,
+/// above it the wider first.
+fn nearest_stretch(pool: &[usize], range_of: impl Fn(usize) -> [f32; 2], want: f32) -> Vec<usize> {
+    let at = |i: usize| stands(range_of(i), want);
+    let narrower = pool
+        .iter()
+        .map(|&i| at(i))
+        .filter(|&a| a < want)
+        .reduce(f32::max);
+    let wider = pool
+        .iter()
+        .map(|&i| at(i))
+        .filter(|&a| a > want)
+        .reduce(f32::min);
+    let best = if pool.iter().any(|&i| at(i) == want) {
+        Some(want)
+    } else if want <= 100.0 {
+        narrower.or(wider)
+    } else {
+        wider.or(narrower)
+    };
+    pool.iter()
+        .copied()
+        .filter(|&i| Some(at(i)) == best)
+        .collect()
+}
+
+/// CSS Fonts 4 §5.2 weight matching: the face of `pool` whose weights hold
+/// `w`, else, nearest first, each face standing at the end of its weights
+/// nearer `w`: for 400 to 500 the heavier ones up to 500, then the lighter
+/// ones, then the heavier ones; below 400 the lighter, then the heavier;
+/// above 500 the heavier, then the lighter. Of faces that stand alike, the
 /// first in `pool` wins when exact or heavier, and the last when lighter,
 /// as in `FontRegistry`.
-fn nearest_weight(pool: &[usize], weight_of: impl Fn(usize) -> u16, w: u16) -> Option<usize> {
-    if let Some(&exact) = pool.iter().find(|&&i| weight_of(i) == w) {
+fn nearest_weight(pool: &[usize], range_of: impl Fn(usize) -> [f32; 2], w: f32) -> Option<usize> {
+    let at = |i: usize| stands(range_of(i), w);
+    if let Some(&exact) = pool.iter().find(|&&i| at(i) == w) {
         return Some(exact);
     }
     let mut asc = pool.to_vec();
-    asc.sort_by_key(|&i| weight_of(i));
-    let mut above = asc.iter().copied().filter(|&i| weight_of(i) > w);
-    let mut below = asc.iter().copied().rev().filter(|&i| weight_of(i) < w);
-    if (400..=500).contains(&w) {
-        let up_to_500 = asc
-            .iter()
-            .copied()
-            .find(|&i| weight_of(i) > w && weight_of(i) <= 500);
+    asc.sort_by(|&a, &b| at(a).total_cmp(&at(b)));
+    let mut above = asc.iter().copied().filter(|&i| at(i) > w);
+    let mut below = asc.iter().copied().rev().filter(|&i| at(i) < w);
+    if (400.0..=500.0).contains(&w) {
+        let up_to_500 = asc.iter().copied().find(|&i| at(i) > w && at(i) <= 500.0);
         up_to_500.or_else(|| below.next()).or_else(|| above.next())
-    } else if w < 400 {
+    } else if w < 400.0 {
         below.next().or_else(|| above.next())
     } else {
         above.next().or_else(|| below.next())
     }
 }
 
-/// The fonts of one document, parsed once per render.
+/// What text asks of a font beyond its declaration: its size, which a
+/// font with an `opsz` axis draws at, and in SVG text the weight and width
+/// (a percentage) it was matched by, which a declaration's `weightRange`
+/// and `stretchRange` draw at.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Ask {
+    pub size: f32,
+    pub weight: Option<f32>,
+    pub stretch: Option<f32>,
+}
+
+impl Ask {
+    /// Text of `size`, matched by nothing else.
+    pub fn sized(size: f32) -> Self {
+        Self {
+            size,
+            weight: None,
+            stretch: None,
+        }
+    }
+}
+
+/// Most instances one declaration draws besides its own (its sizes, its
+/// weights and widths): each is a font program of its own in the PDF.
+/// Text that asks for more draws with the declaration's instance.
+const MAX_VARIANTS: usize = 64;
+
+/// Axis values, by tag, as the bits of their values: what tells variants
+/// apart.
+type AxisKey = Vec<([u8; 4], u32)>;
+
+/// The fonts of one document, parsed once per render: the declarations',
+/// by key, then the instances text asks for besides theirs (see
+/// [`FontSet::add_variants`]).
 pub(crate) struct FontSet<'a> {
     pub fonts: Vec<LoadedFont<'a>>,
     by_id: BTreeMap<&'a str, FontKey>,
     fallbacks: Vec<FontKey>,
     /// The declarations, by key: family, weight and style for `select`.
     decls: &'a [FontDecl],
+    /// The variants: a declaration's key and the axis values asked of it.
+    variants: BTreeMap<(FontKey, AxisKey), FontKey>,
     needed: Needed,
 }
 
@@ -982,8 +1069,107 @@ impl<'a> FontSet<'a> {
             by_id,
             fallbacks,
             decls: &doc.fonts,
+            variants: BTreeMap::new(),
             needed,
         })
+    }
+
+    /// The axis values `ask` sets on declared font `key` over its
+    /// declaration's, each clamped to its axis, by tag: `opsz` from the
+    /// size, unless the declaration sets it or `opticalSizing: none`;
+    /// `wght` and `wdth` from the weight and width, within the
+    /// declaration's `weightRange` and `stretchRange`.
+    fn asked(&self, key: FontKey, ask: Ask) -> Vec<Coord> {
+        let (Some(decl), Some(font)) = (self.decls.get(key as usize), self.fonts.get(key as usize))
+        else {
+            return Vec::new();
+        };
+        if font.is_deferred() || font.data.axes.is_empty() {
+            return Vec::new();
+        }
+        let set = |tag: &str| {
+            decl.variations
+                .as_deref()
+                .is_some_and(|v| v.iter().any(|v| v.tag == tag))
+        };
+        let mut out = Vec::new();
+        let mut put = |tag: &[u8; 4], v: f32| {
+            if let Some(a) = font.data.axes.iter().find(|a| a.tag == *tag) {
+                if v.is_finite() {
+                    out.push((*tag, v.clamp(a.min.min(a.max), a.max.max(a.min))));
+                }
+            }
+        };
+        if decl.optical_sizing != Some(OpticalSizing::None) && !set("opsz") && ask.size > 0.0 {
+            put(b"opsz", ask.size);
+        }
+        if let (Some(range), Some(w)) = (decl.weight_range, ask.weight) {
+            put(b"wght", stands(range, w));
+        }
+        if let (Some(range), Some(s)) = (decl.stretch_range, ask.stretch) {
+            put(b"wdth", stands(range, s));
+        }
+        out.sort_by_key(|(t, _)| *t);
+        out
+    }
+
+    /// The font text that asks `ask` of font `key` draws with: the variant
+    /// made for it ([`Self::add_variants`]), else `key`.
+    pub fn variant(&self, key: FontKey, ask: Ask) -> FontKey {
+        let asked = self.asked(key, ask);
+        if asked.is_empty() {
+            return key;
+        }
+        let bits = asked.iter().map(|(t, v)| (*t, v.to_bits())).collect();
+        self.variants.get(&(key, bits)).copied().unwrap_or(key)
+    }
+
+    /// Makes the instances `asks` ask of the declared fonts besides
+    /// theirs, in order of key and axis values (so that their keys do not
+    /// depend on the order of `asks`), at most [`MAX_VARIANTS`] per
+    /// declaration. Before shaping: the shaper loads a face per key.
+    pub fn add_variants(&mut self, asks: impl IntoIterator<Item = (FontKey, Ask)>) {
+        let mut wanted: std::collections::BTreeSet<(FontKey, AxisKey)> =
+            std::collections::BTreeSet::new();
+        for (key, ask) in asks {
+            let asked = self.asked(key, ask);
+            if !asked.is_empty() {
+                wanted.insert((key, asked.iter().map(|(t, v)| (*t, v.to_bits())).collect()));
+            }
+        }
+        let mut made: BTreeMap<FontKey, usize> = BTreeMap::new();
+        for (key, bits) in wanted {
+            let n = made.entry(key).or_default();
+            if *n >= MAX_VARIANTS || self.fonts.len() >= usize::from(FontKey::MAX) {
+                continue;
+            }
+            let base = &self.fonts[key as usize];
+            let decl = &self.decls[key as usize];
+            let mut variations: Vec<FontVariation> =
+                decl.variations.as_deref().unwrap_or(&[]).to_vec();
+            variations.extend(bits.iter().map(|(t, v)| FontVariation {
+                tag: String::from_utf8_lossy(t).into_owned(),
+                value: f32::from_bits(*v),
+            }));
+            let instance = base.data.instance(&variations, |_| {});
+            if instance.as_ref().map(|i| &i.coords) == base.instance.as_ref().map(|i| &i.coords) {
+                continue;
+            }
+            let mut face = base.face.clone();
+            set_coords(&mut face, instance.as_ref().map_or(&[][..], |i| &i.coords));
+            let variant = LoadedFont {
+                id: base.id,
+                source: base.source,
+                data: base.data,
+                instance,
+                face,
+                deferred: None,
+            };
+            *n += 1;
+            self.variants
+                .insert((key, bits), self.fonts.len() as FontKey);
+            self.fonts.push(variant);
+        }
     }
 
     /// The first fallback font, in the listed order, that `want` accepts. A
@@ -1010,15 +1196,35 @@ impl<'a> FontSet<'a> {
     }
 
     /// The declared font CSS matching picks for `families` (in order of
-    /// preference), `weight` and `style`, by the family, weight and style
-    /// the document declares for each font; `None` when it declares none.
-    pub fn select(&self, families: &[&str], weight: u16, style: FontStyle) -> Option<FontKey> {
+    /// preference), `weight`, `style` and width `stretch` (a percentage),
+    /// by the family, weights, style and widths the document declares for
+    /// each font; `None` when it declares none.
+    pub fn select(
+        &self,
+        families: &[&str],
+        weight: f32,
+        style: FontStyle,
+        stretch: f32,
+    ) -> Option<FontKey> {
         let faces: Vec<_> = self
             .decls
             .iter()
-            .map(|d| (d.family.as_str(), d.weight, d.style))
+            .map(|d| Face {
+                family: d.family.as_str(),
+                weights: d.weights(),
+                stretches: d.stretches(),
+                style: d.style,
+            })
             .collect();
-        FontKey::try_from(match_face(&faces, families, weight, style)?).ok()
+        FontKey::try_from(match_face(&faces, families, weight, style, stretch)?).ok()
+    }
+
+    /// The declared fonts that some text could ask for an instance of
+    /// besides theirs ([`Self::asked`]): those of variable fonts.
+    pub fn variable(&self) -> impl Iterator<Item = FontKey> + '_ {
+        (0..self.decls.len().min(self.fonts.len()))
+            .filter(|&k| !self.fonts[k].data.axes.is_empty() && !self.fonts[k].is_deferred())
+            .map(|k| k as FontKey)
     }
 
     pub fn get(&self, key: FontKey) -> &LoadedFont<'a> {
@@ -1092,6 +1298,89 @@ mod tests {
             let e = s.register("x", fixture(file)).unwrap_err().to_string();
             assert!(e.contains(why), "{file}: {e}");
         }
+    }
+
+    #[test]
+    fn text_draws_at_its_optical_size_and_svg_text_within_the_ranges() {
+        let mut store = FontStore::new();
+        store.register("opsz", fixture("VarTest-opsz.ttf")).unwrap();
+        store.register("glyf", fixture("VarTest-glyf.ttf")).unwrap();
+        let json = r#"{"version":1,"fonts":[
+            {"id":"o","family":"O","source":"opsz"},
+            {"id":"fixed","family":"O","source":"opsz","opticalSizing":"none"},
+            {"id":"set","family":"O","source":"opsz","variations":{"opsz":20}},
+            {"id":"r","family":"R","source":"glyf","weightRange":[100,900],"stretchRange":[50,100]}],
+            "pages":[{"size":{"width":10,"height":10}}]}"#;
+        let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+        let mut set = FontSet::load(&doc, &store).unwrap();
+        let [o, fixed, opsz_set, r] = ["o", "fixed", "set", "r"].map(|id| set.key(id).unwrap());
+        assert_eq!(set.variable().collect::<Vec<_>>(), [o, fixed, opsz_set, r]);
+        let svg = |weight, stretch| Ask {
+            size: 10.0,
+            weight: Some(weight),
+            stretch: Some(stretch),
+        };
+        let asks = [
+            (o, Ask::sized(8.0)),
+            (o, Ask::sized(1000.0)),
+            (o, Ask::sized(12.0)),
+            (fixed, Ask::sized(8.0)),
+            (opsz_set, Ask::sized(8.0)),
+            (r, svg(300.0, 75.0)),
+            (r, svg(1000.0, 10.0)),
+        ];
+        set.add_variants(asks);
+        let coords = |k: FontKey| {
+            set.get(k)
+                .instance
+                .as_ref()
+                .map(|i| i.coords.to_vec())
+                .unwrap_or_default()
+        };
+        let small = set.variant(o, Ask::sized(8.0));
+        assert_ne!(small, o);
+        assert_eq!(coords(small), [(*b"opsz", 8.0)]);
+        // Clamped to the axis; at its default, the declaration's own.
+        assert_eq!(
+            coords(set.variant(o, Ask::sized(1000.0))),
+            [(*b"opsz", 72.0)]
+        );
+        assert_eq!(set.variant(o, Ask::sized(12.0)), o);
+        // Not asked for before shaping: the declaration's own.
+        assert_eq!(set.variant(o, Ask::sized(30.0)), o);
+        // `opticalSizing: none`, and `opsz` in the variations, keep theirs.
+        assert_eq!(set.variant(fixed, Ask::sized(8.0)), fixed);
+        assert_eq!(set.variant(opsz_set, Ask::sized(8.0)), opsz_set);
+        assert_eq!(coords(opsz_set), [(*b"opsz", 20.0)]);
+        // SVG text draws at its weight and width, within the ranges.
+        let light = set.variant(r, svg(300.0, 75.0));
+        assert_eq!(coords(light), [(*b"wdth", 75.0), (*b"wght", 300.0)]);
+        let heavy = set.variant(r, svg(1000.0, 10.0));
+        assert_eq!(coords(heavy), [(*b"wdth", 50.0), (*b"wght", 900.0)]);
+        // Text that is not SVG text draws a range's font at its default.
+        assert_eq!(set.variant(r, Ask::sized(10.0)), r);
+        assert_eq!(set.get(light).id, "r");
+    }
+
+    #[test]
+    fn a_declaration_has_at_most_64_variants() {
+        let mut store = FontStore::new();
+        store.register("opsz", fixture("VarTest-opsz.ttf")).unwrap();
+        let json = r#"{"version":1,"fonts":[{"id":"o","family":"O","source":"opsz"}],
+            "pages":[{"size":{"width":10,"height":10}}]}"#;
+        let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
+        let mut set = FontSet::load(&doc, &store).unwrap();
+        let o = set.key("o").unwrap();
+        // In reverse, to show the smallest sizes win whatever the order.
+        let sizes: Vec<f32> = (0..100).map(|i| 72.0 - 0.5 * i as f32).collect();
+        set.add_variants(sizes.iter().map(|&s| (o, Ask::sized(s))));
+        let made = sizes
+            .iter()
+            .filter(|&&s| set.variant(o, Ask::sized(s)) != o)
+            .count();
+        assert_eq!(made, MAX_VARIANTS);
+        assert_ne!(set.variant(o, Ask::sized(22.5)), o);
+        assert_eq!(set.variant(o, Ask::sized(72.0)), o);
     }
 
     #[test]
@@ -1339,6 +1628,23 @@ mod tests {
     }
 
     #[test]
+    fn embeds_the_glyphs_used_of_an_instance_not_every_glyph_has() {
+        // One glyph's outline cannot be varied; the text does not use it.
+        let mut bytes = fixture("VarTest-glyf.ttf");
+        bytes[1354..1358].copy_from_slice(&[0xff, 0xff, 0xff, 0x1f]);
+        let mut fonts = FontStore::new();
+        fonts.register("Var", bytes).unwrap();
+        let doc = br#"{"version":1,"fonts":[{"id":"Var","family":"Var","weight":900,"variations":{"wght":900}}],
+            "pages":[{"size":{"width":300,"height":200},"children":[
+              {"type":"text","runs":[{"text":"Hello","font":"Var","size":12}]}]}]}"#;
+        let images = crate::ImageStore::new();
+        for subset in [true, false] {
+            let opts = crate::RenderOptions::default().with_subset_fonts(subset);
+            crate::render(doc, crate::InputFormat::Json, &opts, &fonts, &images).unwrap();
+        }
+    }
+
+    #[test]
     fn rejects_garbage() {
         let mut s = FontStore::new();
         let e = s.register("x", vec![0u8; 100]).unwrap_err();
@@ -1539,10 +1845,11 @@ mod tests {
                 "italic" => FontStyle::Italic,
                 _ => FontStyle::Normal,
             };
-            let weight = u16::try_from(case["weight"].as_u64().unwrap()).unwrap();
+            let weight = case["weight"].as_f64().unwrap() as f32;
+            let stretch = case["stretch"].as_f64().unwrap_or(100.0) as f32;
             // `exact` is for the registry, which warns when a face falls
             // back.
-            let key = set.select(&families, weight, style).unwrap();
+            let key = set.select(&families, weight, style, stretch).unwrap();
             assert_eq!(set.get(key).id, case["id"].as_str().unwrap(), "{name}");
         }
 
@@ -1552,7 +1859,10 @@ mod tests {
         )
         .unwrap();
         let none = FontSet::load(&doc, &store).unwrap();
-        assert_eq!(none.select(&["Inter"], 400, FontStyle::Normal), None);
+        assert_eq!(
+            none.select(&["Inter"], 400.0, FontStyle::Normal, 100.0),
+            None
+        );
     }
 
     #[test]

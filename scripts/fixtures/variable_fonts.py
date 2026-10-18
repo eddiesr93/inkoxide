@@ -16,6 +16,8 @@ no third-party artwork), so they are small and free of licences:
   wght through a VariationIndex device into `GDEF`'s variation store;
 - fixtures/fonts/VarTest-COLRv1.ttf: a square (U+25A0) in COLR v1 whose
   colour fades with wght (PaintVarSolid), and outlines that do not vary;
+- fixtures/fonts/VarTest-opsz.ttf: VarTest-glyf with an `opsz` axis (6 to
+  72, default 12; the stems grow) in place of `wght`;
 - fixtures/fonts/limits/var-avar2.ttf: VarTest-glyf with an `avar` 2.0
   table, which the engine refuses;
 - fixtures/fonts/limits/var-64-axes.ttf: VarTest-glyf with 64 axes, which
@@ -25,8 +27,10 @@ no third-party artwork), so they are small and free of licences:
   the engine refuses;
 - fixtures/fonts/limits/var-cff-and-cff2.otf: VarTest-CFF2 with a `CFF `
   table too, which the engine refuses: CFF, read first, has no variations;
-- fixtures/docs/variable-fonts.json: both fonts at several instances, and
-  SVG text matched to the nearest declared one.
+- fixtures/docs/variable-fonts.json: both fonts at several instances, text
+  at the optical size of its size, and SVG text matched to the nearest
+  declared instance, or drawn at its weight and width within a
+  declaration's ranges.
 
 Every coordinate is a sum of a term in the width and a term in the stem,
 so the deltas of the single-axis regions add up to the exact outline at
@@ -105,6 +109,8 @@ REGIONS = [((-1, -1, 0), (0, 0, 0)), ((0, 1, 1), (0, 0, 0)), ((0, 0, 0), (-1, -1
 EXTREMES = [glyphs_at(STEM[-1], SCALE[0]), glyphs_at(STEM[1], SCALE[0]), glyphs_at(STEM[0], SCALE[-1])]
 MAPPING = {0x20: 1, **{ord(n): i + 2 for i, n in enumerate(NAMES)}}
 AXES = [(b"wght", 100, 400, 900, 256), (b"wdth", 50, 100, 100, 257)]
+# The first axis optical size instead: the same outlines at its ends.
+OPSZ_AXES = [(b"opsz", 6, 12, 72, 256), (b"wdth", 50, 100, 100, 257)]
 
 
 def f2dot14(v):
@@ -210,9 +216,11 @@ def avar(version=1, extra_axes=0):
     return out
 
 
-def fvar(extra_axes=0):
-    axes = list(AXES) + [(b"x%03d" % i, 0, 0, 1, 256) for i in range(extra_axes)]
-    instances = [(2, (400, 100)), (258, (700, 100)), (259, (400, 50))]
+def fvar(extra_axes=0, axes=AXES):
+    instances = [(2, (axes[0][2], 100)), (258, (700, 100)), (259, (400, 50))]
+    if axes is not AXES:
+        instances = instances[:1]
+    axes = list(axes) + [(b"x%03d" % i, 0, 0, 1, 256) for i in range(extra_axes)]
     n = len(axes)
     out = struct.pack(">HHHHHHHH", 1, 0, 16, 2, n, 20, len(instances), 4 + 4 * n)
     for tag, lo, default, hi, name_id in axes:
@@ -222,9 +230,9 @@ def fvar(extra_axes=0):
     return out
 
 
-def name():
-    records = [(1, "VarTest"), (2, "Regular"), (4, "VarTest Regular"), (6, "VarTest-Regular"),
-               (25, "VarTest"), (256, "Weight"), (257, "Width"), (258, "Bold"), (259, "Condensed")]
+def name(family="VarTest", first_axis="Weight"):
+    records = [(1, family), (2, "Regular"), (4, f"{family} Regular"), (6, f"{family}-Regular"),
+               (25, family), (256, first_axis), (257, "Width"), (258, "Bold"), (259, "Condensed")]
     data = b""
     entries = b""
     for nid, text in records:
@@ -316,15 +324,15 @@ def gdef(extra_axes=0):
     return struct.pack(">HHHHHHHI", 1, 3, 0, 0, 0, 0, 0, 18) + store
 
 
-def glyf_font(avar_version=1, extra_axes=0, gvar_len=None, layout=False):
+def glyf_font(avar_version=1, extra_axes=0, gvar_len=None, layout=False, opsz=False):
     variations = gvar(extra_axes=extra_axes)
     extra = {
-        "fvar": fvar(extra_axes),
+        "fvar": fvar(extra_axes, OPSZ_AXES if opsz else AXES),
         "gvar": variations[:gvar_len],
         "HVAR": hvar(extra_axes),
         "MVAR": mvar(extra_axes),
         "avar": avar(avar_version, extra_axes),
-        "name": name(),
+        "name": name("VarTestOpsz", "Optical size") if opsz else name(),
     }
     if layout:
         extra.update({"GSUB": gsub(), "GPOS": gpos(), "GDEF": gdef(extra_axes)})
@@ -493,12 +501,28 @@ def document():
             common.text(common.run("HELLO HOTEL FILE TOE", font=fid, size=24)),
             flexDirection="row", alignItems="center", margin={"bottom": 8},
         ))
-    svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="60">'
+    # The stems of VarTest-opsz grow with the size, but for `opticalSizing: none`.
+    fonts += [{"id": "Opsz", "family": "VarOpsz", "source": "VarTest-opsz"},
+              {"id": "Opsz-fixed", "family": "VarOpsz", "source": "VarTest-opsz", "opticalSizing": "none"}]
+    for fid, size in [("Opsz", 8), ("Opsz", 16), ("Opsz", 40), ("Opsz-fixed", 40)]:
+        lines.append(common.box(
+            common.text(common.run(f"{fid} at {size} pt", size=8), width=150),
+            common.text(common.run("HOTEL FILE", font=fid, size=size)),
+            flexDirection="row", alignItems="center", margin={"bottom": 8},
+        ))
+    # SVG text in a declaration's ranges draws at its weight and width.
+    fonts.append({"id": "VarRange", "family": "VarRange", "source": "VarTest-glyf",
+                  "weightRange": [100, 900], "stretchRange": [50, 100]})
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100">'
            '<text x="0" y="40" font-family="VarTest" font-weight="650" font-size="30">HOTEL</text>'
-           '<text x="220" y="40" font-family="VarTest" font-weight="900" font-size="30">FOIL</text></svg>')
+           '<text x="220" y="40" font-family="VarTest" font-weight="900" font-size="30">FOIL</text>'
+           '<text x="0" y="90" font-family="VarRange" font-weight="300" font-size="30">HOTEL</text>'
+           '<text x="140" y="90" font-family="VarRange" font-weight="800" font-stretch="condensed" '
+           'font-size="30">HOTEL</text>'
+           '<text x="280" y="90" style="font: condensed 900 30px VarRange">FOIL</text></svg>')
     import base64
     lines.append({"type": "image", "data": "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode(),
-                  "style": {"width": 400, "height": 60}})
+                  "style": {"width": 400, "height": 100}})
     return {
         "version": 1,
         "meta": {"title": "Variable fonts", "lang": "en"},
@@ -514,6 +538,7 @@ def main():
         FONTS / "VarTest-CFF2.otf": cff2_font(),
         FONTS / "VarTest-layout.ttf": glyf_font(layout=True),
         FONTS / "VarTest-COLRv1.ttf": colr_font(),
+        FONTS / "VarTest-opsz.ttf": glyf_font(opsz=True),
         FONTS / "limits" / "var-avar2.ttf": glyf_font(avar_version=2),
         FONTS / "limits" / "var-64-axes.ttf": glyf_font(extra_axes=62),
         FONTS / "limits" / "var-no-gvar.ttf": glyf_font(gvar_len=0),

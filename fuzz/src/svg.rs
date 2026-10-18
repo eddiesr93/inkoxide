@@ -217,7 +217,7 @@ fn words(s: &mut Src) -> &'static str {
 fn text_attributes(s: &mut Src, out: &mut String) {
     let mut seen: Vec<&str> = Vec::new();
     for _ in 0..s.below(6) {
-        let (name, value) = match s.below(20) {
+        let (name, value) = match s.below(21) {
             0 => ("x", lengths(s)),
             1 => ("y", lengths(s)),
             2 => ("dx", lengths(s)),
@@ -232,6 +232,7 @@ fn text_attributes(s: &mut Src, out: &mut String) {
                     "Missing",
                     "monospace",
                     "Vert Test, Inter",
+                    "VarRange",
                 ])
                 .into(),
             ),
@@ -269,6 +270,7 @@ fn text_attributes(s: &mut Src, out: &mut String) {
                 s.pick(&[
                     "letter-spacing:3px;word-spacing:1em",
                     "font:italic bold 20px Inter",
+                    "font:condensed 800 30px VarRange",
                     "text-decoration:underline line-through overline",
                     "direction:rtl",
                     "paint-order:stroke;stroke:red",
@@ -314,7 +316,12 @@ fn text_attributes(s: &mut Src, out: &mut String) {
                 s.pick(&["small-caps", "none", "tabular-nums oldstyle-nums"])
                     .into(),
             ),
-            _ => ("font-kerning", s.pick(&["none", "normal"]).into()),
+            19 => ("font-kerning", s.pick(&["none", "normal"]).into()),
+            _ => (
+                "font-stretch",
+                s.pick(&["condensed", "62.5%", "ultra-expanded", "0%", "1e9%", "wide"])
+                    .into(),
+            ),
         };
         if !seen.contains(&name) {
             seen.push(name);

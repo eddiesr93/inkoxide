@@ -340,7 +340,7 @@ bound is `OUT_OF_RANGE`. In `@inkoxide/render`, `fontFeatureSettings` and
 A variable font (TrueType with `gvar`, or CFF2) is registered once, with
 the same call as any font. Each [font declaration](SCHEMA.md#fontdecl)
 that draws with it names it in `source` and gives its axis values in
-`variations`; there is no other API. Layout, metrics (`MVAR`) and shaping
+`variations`. Layout, metrics (`MVAR`) and shaping
 read the font at that instance, and the PDF embeds the instance as static
 TrueType, a subset or (with `subset_fonts: false`) every glyph, never the
 variable font. The output stays deterministic: an instance's bytes depend
@@ -355,14 +355,29 @@ only on the font and the clamped axis values.
   ±32767 (`OUT_OF_RANGE`, or `INVALID_VALUE` for a tag that is not four
   printable ASCII characters or that is given twice), and a document at
   most 64 declarations with `variations`.
+- Text draws at the optical size of its font size: a font with an `opsz`
+  axis gets an instance per size a document uses, unless the declaration
+  sets `opsz` in `variations` or `opticalSizing: "none"`.
+- A declaration with `weightRange` (`[100, 900]`) or `stretchRange`
+  (`[75, 100]`, percentages) stands for every weight or width in it, as a
+  CSS `@font-face` range does: SVG text is matched to it, and draws at its
+  own weight and width (`wght` and `wdth`), the nearer end when outside.
+  Matching follows CSS: the family, then the width (`stretch`, 100 when
+  absent), the style, the weight.
+- Each of those instances is embedded as one of the declaration's, at most
+  64 per declaration (the smallest values first); text past them draws at
+  the declaration's own.
+- An instance's `FontBBox` holds its own outlines, which a heavy instance
+  draws outside the default instance's `head` box.
 - `register` refuses (`FONT_ERROR`) a variable font with more than 63
   axes or an `avar` table other than version 1.0, which the two font
   parsers would read differently. An instance that cannot be made fails
   the render with `FONT_ERROR`.
 
 In `@inkoxide/render`, `Font.register` takes a weight range
-(`fontWeight: [100, 900]`) and `fontVariationSettings`, and the builder
-declares one instance per weight and settings a document uses (see
+(`fontWeight: [100, 900]`), a width or a width range (`fontStretch:
+'condensed'`, `[75, 100]`) and `fontVariationSettings`, and the builder
+declares one instance per weight, width and settings a document uses (see
 [`GUIDE.md`](../packages/render/GUIDE.md)).
 
 ## Determinism

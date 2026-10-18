@@ -1362,6 +1362,7 @@ fn vertical_text_shapes_top_to_bottom_with_vertical_forms() {
         placeholder: None,
         link: None,
         hyphenate: Some(false),
+        font_key: None,
         vertical_align: None,
         font_features: None,
         image: None,

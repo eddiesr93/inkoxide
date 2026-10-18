@@ -11,6 +11,7 @@ import * as internal from '../src/internal.ts';
 
 const MAIN_VALUES = [
   'BORDER_STYLES',
+  'FONT_STRETCHES',
   'OBJECT_FITS',
   'RUN_ALIGNS',
   'PT_PER_PX',
@@ -23,6 +24,7 @@ const MAIN_VALUES = [
   'parseColor',
   'parseFlex',
   'parseFontFeatureSettings',
+  'parseFontStretch',
   'parseFontVariantNumeric',
   'parseFontVariationSettings',
   'parseObjectPosition',

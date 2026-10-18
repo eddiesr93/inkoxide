@@ -83,6 +83,30 @@
    "variations": {
     "wght": 900
    }
+  },
+  {
+   "id": "Opsz",
+   "family": "VarOpsz",
+   "source": "VarTest-opsz"
+  },
+  {
+   "id": "Opsz-fixed",
+   "family": "VarOpsz",
+   "source": "VarTest-opsz",
+   "opticalSizing": "none"
+  },
+  {
+   "id": "VarRange",
+   "family": "VarRange",
+   "source": "VarTest-glyf",
+   "weightRange": [
+    100,
+    900
+   ],
+   "stretchRange": [
+    50,
+    100
+   ]
   }
  ],
  "pages": [
@@ -475,11 +499,199 @@
      ]
     },
     {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "alignItems": "center",
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Opsz at 8 pt",
+         "font": "Inter-Regular",
+         "size": 8,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 150
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "HOTEL FILE",
+         "font": "Opsz",
+         "size": 8,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "alignItems": "center",
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Opsz at 16 pt",
+         "font": "Inter-Regular",
+         "size": 8,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 150
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "HOTEL FILE",
+         "font": "Opsz",
+         "size": 16,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "alignItems": "center",
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Opsz at 40 pt",
+         "font": "Inter-Regular",
+         "size": 8,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 150
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "HOTEL FILE",
+         "font": "Opsz",
+         "size": 40,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "alignItems": "center",
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "Opsz-fixed at 40 pt",
+         "font": "Inter-Regular",
+         "size": 8,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 150
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "HOTEL FILE",
+         "font": "Opsz-fixed",
+         "size": 40,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
      "type": "image",
-     "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MDAiIGhlaWdodD0iNjAiPjx0ZXh0IHg9IjAiIHk9IjQwIiBmb250LWZhbWlseT0iVmFyVGVzdCIgZm9udC13ZWlnaHQ9IjY1MCIgZm9udC1zaXplPSIzMCI+SE9URUw8L3RleHQ+PHRleHQgeD0iMjIwIiB5PSI0MCIgZm9udC1mYW1pbHk9IlZhclRlc3QiIGZvbnQtd2VpZ2h0PSI5MDAiIGZvbnQtc2l6ZT0iMzAiPkZPSUw8L3RleHQ+PC9zdmc+",
+     "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MDAiIGhlaWdodD0iMTAwIj48dGV4dCB4PSIwIiB5PSI0MCIgZm9udC1mYW1pbHk9IlZhclRlc3QiIGZvbnQtd2VpZ2h0PSI2NTAiIGZvbnQtc2l6ZT0iMzAiPkhPVEVMPC90ZXh0Pjx0ZXh0IHg9IjIyMCIgeT0iNDAiIGZvbnQtZmFtaWx5PSJWYXJUZXN0IiBmb250LXdlaWdodD0iOTAwIiBmb250LXNpemU9IjMwIj5GT0lMPC90ZXh0Pjx0ZXh0IHg9IjAiIHk9IjkwIiBmb250LWZhbWlseT0iVmFyUmFuZ2UiIGZvbnQtd2VpZ2h0PSIzMDAiIGZvbnQtc2l6ZT0iMzAiPkhPVEVMPC90ZXh0Pjx0ZXh0IHg9IjE0MCIgeT0iOTAiIGZvbnQtZmFtaWx5PSJWYXJSYW5nZSIgZm9udC13ZWlnaHQ9IjgwMCIgZm9udC1zdHJldGNoPSJjb25kZW5zZWQiIGZvbnQtc2l6ZT0iMzAiPkhPVEVMPC90ZXh0Pjx0ZXh0IHg9IjI4MCIgeT0iOTAiIHN0eWxlPSJmb250OiBjb25kZW5zZWQgOTAwIDMwcHggVmFyUmFuZ2UiPkZPSUw8L3RleHQ+PC9zdmc+",
      "style": {
       "width": 400,
-      "height": 60
+      "height": 100
      }
     }
    ]

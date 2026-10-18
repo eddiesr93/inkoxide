@@ -61,6 +61,8 @@ export interface DrawingFont {
   family: readonly string[];
   weight: number;
   style: 'normal' | 'italic';
+  /** Its width, a percentage of the normal one: 100 when absent. */
+  stretch?: number;
 }
 
 /** A family name for an SVG `font-family`, quoted. */
@@ -476,6 +478,7 @@ export class Painter {
     let a = `<text x="${fmt(at)}" y="${fmt(y)}" xml:space="preserve" font-family="${escapeXml(family)}"`;
     a += ` font-weight="${face.weight}"`;
     if (face.style === 'italic') a += ' font-style="italic"';
+    if (face.stretch !== undefined && face.stretch !== 100) a += ` font-stretch="${face.stretch}%"`;
     a += ` font-size="${fmt(s.fontSize)}"`;
     if (anchor !== 'start') a += ` text-anchor="${anchor}"`;
     a += ` dominant-baseline="${BASELINES[opts.baseline ?? 'top']}"`;

@@ -213,6 +213,19 @@ outlines included. Two parsers read the font, so registration refuses
 what they read differently: more than 63 axes (ttf-parser then applies
 none) and `avar` 2 (which ttf-parser does not read).
 
+Text can ask a declaration for an instance besides its own: the optical
+size of its font size (`opsz`, unless the declaration sets it or
+`opticalSizing` is `none`), and, in SVG text, the weight and width it was
+matched by, within the declaration's `weightRange` and `stretchRange`.
+Before shaping, `text::font_asks` collects what the document asks (the
+sizes of its runs, the spans of its SVG text) and `FontSet::add_variants`
+makes those instances, in order of key and coordinates, at most 64 per
+declaration, as fonts of their own: their keys follow the declarations',
+so the shaper loads a face for each, and itemizing swaps a run's font for
+its variant. An instance's `FontBBox` is the union of `head`'s box and its
+glyphs' boxes at its coordinates, of every glyph, so that an encrypted
+file's box does not tell which are used.
+
 SVG text goes through the same shaper. `images/svg_text` reads each
 `<text>` of an SVG once, when the SVG is decoded: the cascade of its text
 properties (simplecss and svgtypes are used only in `images/svg_text`, at

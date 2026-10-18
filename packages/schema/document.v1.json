@@ -193,7 +193,7 @@
           "$ref": "#/$defs/Id"
         },
         "family": {
-          "description": "The family name. Text runs name fonts by `id`; text in SVG images is matched to the declared fonts by its `font-family` against this (ignoring ASCII case), then `weight` and `style`, as CSS matches fonts.",
+          "description": "The family name. Text runs name fonts by `id`; text in SVG images is matched to the declared fonts by its `font-family` against this (ignoring ASCII case), then `stretch`, `style` and `weight`, as CSS matches fonts.",
           "type": "string",
           "minLength": 1
         },
@@ -204,6 +204,17 @@
           "maximum": 1000,
           "default": 400
         },
+        "weightRange": {
+          "description": "A variable font's weights, lowest first, as CSS `@font-face` takes them (`[100, 900]`): SVG text of a weight in it is drawn at that `wght`, and of a weight outside it at the nearer end. It replaces `weight` in matching.",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
         "style": {
           "description": "The style SVG text's `font-style` is matched against.",
           "enum": [
@@ -211,6 +222,24 @@
             "italic"
           ],
           "default": "normal"
+        },
+        "stretch": {
+          "description": "The width SVG text's `font-stretch` is matched against, a percentage of the normal width (`75` is condensed).",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 100
+        },
+        "stretchRange": {
+          "description": "A variable font's widths, as percentages, lowest first: SVG text of a width in it is drawn at that `wdth`, as `weightRange` draws weights. It replaces `stretch` in matching.",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "minItems": 2,
+          "maxItems": 2
         },
         "source": {
           "$ref": "#/$defs/Id",
@@ -228,6 +257,14 @@
             "maximum": 32767
           },
           "description": "A variable font's axis values, by tag, as CSS `font-variation-settings` (`{\"wght\": 650, \"wdth\": 75}`): text in this font is drawn and measured at that instance, and the PDF embeds the instance, never the variable font. A value is clamped to its axis; an axis the font lacks is ignored, with a warning, as every axis of a static font is. Tags are four printable ASCII characters; at most 16 axes, and at most 64 declarations with `variations` in a document."
+        },
+        "opticalSizing": {
+          "description": "Whether text in a font with an `opsz` axis is drawn at the optical size of its font size in points, as CSS `font-optical-sizing`. `variations` with `opsz` set it instead. Each size a document uses is its own embedded instance: at most 64 per declaration (the smallest sizes first), and text of another size draws at the declaration's own.",
+          "enum": [
+            "auto",
+            "none"
+          ],
+          "default": "auto"
         }
       }
     },

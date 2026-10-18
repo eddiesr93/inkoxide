@@ -149,11 +149,15 @@ Type: `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"h6"` \| `"p"` \| `"sec
 | Property | Type | Required | Notes |
 |---|---|---|---|
 | `id` | [`Id`](#id) | yes |  |
-| `family` | `string` | yes | min length 1; The family name. Text runs name fonts by `id`; text in SVG images is matched to the declared fonts by its `font-family` against this (ignoring ASCII case), then `weight` and `style`, as CSS matches fonts. |
+| `family` | `string` | yes | min length 1; The family name. Text runs name fonts by `id`; text in SVG images is matched to the declared fonts by its `font-family` against this (ignoring ASCII case), then `stretch`, `style` and `weight`, as CSS matches fonts. |
 | `weight` | `integer` |  | ≥ 1, ≤ 1000, default `400`; The weight SVG text's `font-weight` is matched against. |
+| `weightRange` | array of `number` (each ≥ 1, ≤ 1000) |  | exactly 2 items; A variable font's weights, lowest first, as CSS `@font-face` takes them (`[100, 900]`): SVG text of a weight in it is drawn at that `wght`, and of a weight outside it at the nearer end. It replaces `weight` in matching. |
 | `style` | `"normal"` \| `"italic"` |  | default `"normal"`; The style SVG text's `font-style` is matched against. |
+| `stretch` | `number` |  | ≥ 1, ≤ 1000, default `100`; The width SVG text's `font-stretch` is matched against, a percentage of the normal width (`75` is condensed). |
+| `stretchRange` | array of `number` (each ≥ 1, ≤ 1000) |  | exactly 2 items; A variable font's widths, as percentages, lowest first: SVG text of a width in it is drawn at that `wdth`, as `weightRange` draws weights. It replaces `stretch` in matching. |
 | `source` | [`Id`](#id) |  | The registered font it draws with; `id` when absent. One variable font can then serve several declarations, each with its own `variations`. |
 | `variations` | `object` |  | max properties 16; A variable font's axis values, by tag, as CSS `font-variation-settings` (`{"wght": 650, "wdth": 75}`): text in this font is drawn and measured at that instance, and the PDF embeds the instance, never the variable font. A value is clamped to its axis; an axis the font lacks is ignored, with a warning, as every axis of a static font is. Tags are four printable ASCII characters; at most 16 axes, and at most 64 declarations with `variations` in a document. |
+| `opticalSizing` | `"auto"` \| `"none"` |  | default `"auto"`; Whether text in a font with an `opsz` axis is drawn at the optical size of its font size in points, as CSS `font-optical-sizing`. `variations` with `opsz` set it instead. Each size a document uses is its own embedded instance: at most 64 per declaration (the smallest sizes first), and text of another size draws at the declaration's own. |
 
 ### NonNegative
 

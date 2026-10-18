@@ -232,6 +232,11 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   yourself and register them.
 - **Weights.** Weights are numbers (1–1000, as in CSS) or names (`'light'`, `'medium'`,
   `'bold'`). Missing weights and styles fall back to the nearest one, as in CSS.
+- **Widths.** `fontStretch` picks a face by width, a percentage of the normal one (`75`,
+  `'75%'`) or a CSS keyword (`'condensed'`, `'expanded'`), in a style, in `Font.register`
+  and on SVG text (`font-stretch-condensed` in Tailwind). A face registered without one is
+  100%. CSS matches the width before the style and the weight: at 100% or less the nearest
+  narrower face first, above it the nearest wider.
 - **Variable fonts.** Register a variable font with the range of weights it covers, as CSS
   `@font-face` does:
 
@@ -246,7 +251,10 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   ```
 
   Each weight in the range draws at that `wght` (`fontWeight: 450` is the 450 instance), and a
-  weight outside it at the nearer end. `fontVariationSettings` sets other axes, as in CSS:
+  weight outside it at the nearer end. A range of widths, `fontStretch: [75, 100]`, draws each
+  width in it at that `wdth` the same way. A font with an `opsz` axis draws text at the optical
+  size of its font size, as CSS `font-optical-sizing: auto` does; an `opsz` in
+  `fontVariationSettings` sets it instead. `fontVariationSettings` sets other axes, as in CSS:
   `"'wdth' 75, 'opsz' 32"` or `{ wdth: 75 }`, inherited like other text styles; its `wght` wins
   over `fontWeight`, and on a face registered with one weight it picks an instance too. A face
   can take `fontVariationSettings` in `Font.register` (`{ ital: 1 }`), so one file can be the
@@ -642,7 +650,8 @@ is `'singlePage'`, `'oneColumn'` (continuous scrolling), `'twoColumnLeft'` or `'
 `['NotoSans-Regular']`. The entries are font ids: the bundled `Inter-Regular`, `Inter-Italic`,
 `Inter-Bold`, `InterDisplay-Bold`, `NotoSans-Regular` and `RobotoMono-Regular`, or a face added
 with `Font.register`, whose id is its family with spaces as hyphens, its weight (or a variable
-face's range, `Inter-Var-100-900`), and `-italic` for an italic face:
+face's range, `Inter-Var-100-900`), its width when not 100% (`-75%`, or a range, `-75-100%`),
+and `-italic` for an italic face:
 
 ```tsx
 Font.register({ family: 'Noto Sans Arabic', src: './fonts/NotoSansArabic-Regular.ttf' });

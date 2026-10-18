@@ -3,8 +3,8 @@
 
 use super::{
     Checker, MAX_DECORATION_THICKNESS, MAX_EMOJI_SEQUENCE, MAX_FEATURE_SETS, MAX_FEATURE_VALUE,
-    MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_PAGE_EDGE, MAX_VARIATIONS,
-    MAX_VARIATION_VALUE,
+    MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_PAGE_EDGE, MAX_STRETCH,
+    MAX_VARIATIONS, MAX_VARIATION_VALUE, MIN_STRETCH,
 };
 use crate::error::ValidationCode as Code;
 use crate::schema::{FontFeature, RunAlign, RunImage, TextRun};
@@ -23,6 +23,45 @@ impl Checker<'_> {
             );
         }
         self.image_ref(sequence, id);
+    }
+
+    /// A font declaration's `weightRange`, `stretch` and `stretchRange`:
+    /// weights from 1 to 1000, widths from [`MIN_STRETCH`] to
+    /// [`MAX_STRETCH`] percent, a range lowest first.
+    pub(super) fn font_ranges(&mut self, f: &crate::schema::FontDecl) {
+        let within = |v: f32, lo: f32, hi: f32| (lo..=hi).contains(&v);
+        if let Some([lo, hi]) = f.weight_range {
+            if !(within(lo, 1.0, 1000.0) && within(hi, 1.0, 1000.0) && lo <= hi) {
+                self.err(
+                    Code::OutOfRange,
+                    Some("weightRange"),
+                    format!("[{lo}, {hi}] is not two weights from 1 to 1000, the lower first"),
+                );
+            }
+        }
+        if let Some(s) = f.stretch {
+            if !within(s, MIN_STRETCH, MAX_STRETCH) {
+                self.err(
+                    Code::OutOfRange,
+                    Some("stretch"),
+                    format!("{s} is not a width from {MIN_STRETCH} to {MAX_STRETCH} percent"),
+                );
+            }
+        }
+        if let Some([lo, hi]) = f.stretch_range {
+            if !(within(lo, MIN_STRETCH, MAX_STRETCH)
+                && within(hi, MIN_STRETCH, MAX_STRETCH)
+                && lo <= hi)
+            {
+                self.err(
+                    Code::OutOfRange,
+                    Some("stretchRange"),
+                    format!(
+                        "[{lo}, {hi}] is not two widths from {MIN_STRETCH} to {MAX_STRETCH} percent, the lower first"
+                    ),
+                );
+            }
+        }
     }
 
     /// A font declaration's `variations`: at most [`MAX_VARIATIONS`] axes,

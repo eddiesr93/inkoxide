@@ -570,7 +570,7 @@ export interface XmpProperty {
 export interface FontDecl {
   id: Id;
   /**
-   * The family name. Text runs name fonts by `id`; text in SVG images is matched to the declared fonts by its `font-family` against this (ignoring ASCII case), then `weight` and `style`, as CSS matches fonts.
+   * The family name. Text runs name fonts by `id`; text in SVG images is matched to the declared fonts by its `font-family` against this (ignoring ASCII case), then `stretch`, `style` and `weight`, as CSS matches fonts.
    */
   family: string;
   /**
@@ -578,9 +578,27 @@ export interface FontDecl {
    */
   weight?: number;
   /**
+   * A variable font's weights, lowest first, as CSS `@font-face` takes them (`[100, 900]`): SVG text of a weight in it is drawn at that `wght`, and of a weight outside it at the nearer end. It replaces `weight` in matching.
+   *
+   * @minItems 2
+   * @maxItems 2
+   */
+  weightRange?: [number, number];
+  /**
    * The style SVG text's `font-style` is matched against.
    */
   style?: 'normal' | 'italic';
+  /**
+   * The width SVG text's `font-stretch` is matched against, a percentage of the normal width (`75` is condensed).
+   */
+  stretch?: number;
+  /**
+   * A variable font's widths, as percentages, lowest first: SVG text of a width in it is drawn at that `wdth`, as `weightRange` draws weights. It replaces `stretch` in matching.
+   *
+   * @minItems 2
+   * @maxItems 2
+   */
+  stretchRange?: [number, number];
   /**
    * The registered font it draws with; `id` when absent. One variable font can then serve several declarations, each with its own `variations`.
    */
@@ -591,6 +609,10 @@ export interface FontDecl {
   variations?: {
     [k: string]: number | undefined;
   };
+  /**
+   * Whether text in a font with an `opsz` axis is drawn at the optical size of its font size in points, as CSS `font-optical-sizing`. `variations` with `opsz` set it instead. Each size a document uses is its own embedded instance: at most 64 per declaration (the smallest sizes first), and text of another size draws at the declaration's own.
+   */
+  opticalSizing?: 'auto' | 'none';
 }
 /**
  * A file the PDF carries. Exactly one of `src` and `data`.

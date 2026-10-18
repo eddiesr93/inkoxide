@@ -1,5 +1,5 @@
 {
- "description": "CSS font matching cases, shared by FontSet::select (crates/core/src/fonts/mod.rs) and FontRegistry.resolve (packages/react/test/font-matching.test.ts). A face without weight is 400, without style normal.",
+ "description": "CSS font matching cases, shared by FontSet::select (crates/core/src/fonts/mod.rs) and FontRegistry.resolve (packages/react/test/font-matching.test.ts). A face without weight is 400, without style normal, without stretch 100 (%); a case without stretch asks for 100.",
  "faces": {
   "inter": [
    {
@@ -107,6 +107,39 @@
    {
     "id": "Ecole",
     "family": "école"
+   }
+  ],
+  "widths": [
+   {
+    "id": "Cond",
+    "family": "F",
+    "stretch": 75
+   },
+   {
+    "id": "Norm",
+    "family": "F"
+   },
+   {
+    "id": "Wide",
+    "family": "F",
+    "stretch": 125
+   },
+   {
+    "id": "Cond-Bold",
+    "family": "F",
+    "stretch": 75,
+    "weight": 700
+   }
+  ],
+  "notnarrow": [
+   {
+    "id": "Norm",
+    "family": "F"
+   },
+   {
+    "id": "Wide",
+    "family": "F",
+    "stretch": 125
    }
   ]
  },
@@ -419,6 +452,90 @@
    "weight": 500,
    "style": "normal",
    "id": "B450",
+   "exact": false
+  },
+  {
+   "name": "exact width",
+   "faces": "widths",
+   "families": [
+    "F"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "stretch": 75,
+   "id": "Cond",
+   "exact": true
+  },
+  {
+   "name": "exact width and weight",
+   "faces": "widths",
+   "families": [
+    "F"
+   ],
+   "weight": 700,
+   "style": "normal",
+   "stretch": 75,
+   "id": "Cond-Bold",
+   "exact": true
+  },
+  {
+   "name": "the width before the weight",
+   "faces": "widths",
+   "families": [
+    "F"
+   ],
+   "weight": 700,
+   "style": "normal",
+   "stretch": 100,
+   "id": "Norm",
+   "exact": false
+  },
+  {
+   "name": "at or below 100%, the narrower width first",
+   "faces": "widths",
+   "families": [
+    "F"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "stretch": 87.5,
+   "id": "Cond",
+   "exact": false
+  },
+  {
+   "name": "above 100%, the wider width first",
+   "faces": "widths",
+   "families": [
+    "F"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "stretch": 112.5,
+   "id": "Wide",
+   "exact": false
+  },
+  {
+   "name": "the wider width when none is narrower",
+   "faces": "notnarrow",
+   "families": [
+    "F"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "stretch": 75,
+   "id": "Norm",
+   "exact": false
+  },
+  {
+   "name": "the narrower width when none is wider",
+   "faces": "widths",
+   "families": [
+    "F"
+   ],
+   "weight": 400,
+   "style": "normal",
+   "stretch": 150,
+   "id": "Wide",
    "exact": false
   }
  ]

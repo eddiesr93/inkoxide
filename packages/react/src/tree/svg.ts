@@ -1,9 +1,10 @@
+import type { FontStretch } from '@inkoxide/style';
 import { parseFontFamily } from '@inkoxide/style/internal';
 
 import { type DrawingFont, escapeXml, quotedFamily } from '../canvas.ts';
 import { HOST, HOST_NAME, type SvgPresentation, type SvgProps } from '../components/index.ts';
 import type { Instance, Node } from '../reconciler/instance.ts';
-import { weightOf } from './style.ts';
+import { stretchOf, weightOf } from './style.ts';
 
 /**
  * SVG element name of each primitive host type. The reconciler lets these, and nothing else, into
@@ -94,7 +95,7 @@ function attrs(props: Record<string, unknown>, skip: ReadonlySet<string>): strin
 
 const CHILD_SKIP = new Set(['children']);
 /** The font props of SVG text, which it writes as the face they resolve to. */
-const TEXT_SKIP = new Set(['children', 'fontFamily', 'fontWeight', 'fontStyle']);
+const TEXT_SKIP = new Set(['children', 'fontFamily', 'fontWeight', 'fontStyle', 'fontStretch']);
 
 /** What the text of a drawing needs from the tree builder. */
 export interface SvgTextFonts {
@@ -102,19 +103,22 @@ export interface SvgTextFonts {
   font: DrawingFont;
   /** Its font size in points. */
   size: number;
-  /** The registered face for `font` (marked as used): its family, weight and style. */
+  /** The registered face for `font` (marked as used): its family, weight, style and width. */
   face(font: DrawingFont, inst: Instance): DrawingFont;
   fail(inst: Instance, message: string): never;
 }
 
 /** `font` with the font props `props` set. */
 function fontOf(font: DrawingFont, props: Record<string, unknown>): DrawingFont {
-  const { fontFamily, fontWeight, fontStyle } = props;
-  return {
+  const { fontFamily, fontWeight, fontStyle, fontStretch } = props;
+  const out: DrawingFont = {
     family: typeof fontFamily === 'string' ? parseFontFamily(fontFamily) : font.family,
     weight: fontWeight === undefined ? font.weight : weightOf(fontWeight as number | string),
     style: fontStyle === 'italic' ? 'italic' : fontStyle === 'normal' ? 'normal' : font.style,
   };
+  const stretch = fontStretch === undefined ? font.stretch : stretchOf(fontStretch as FontStretch);
+  if (stretch !== undefined) out.stretch = stretch;
+  return out;
 }
 
 function element(n: Node, font: DrawingFont, text: SvgTextFonts, inText: boolean): string {
@@ -153,6 +157,7 @@ function element(n: Node, font: DrawingFont, text: SvgTextFonts, inText: boolean
     a = attrs(n.props, TEXT_SKIP);
     a += ` font-family="${escapeXml(quotedFamily(face.family[0] ?? ''))}" font-weight="${face.weight}"`;
     if (face.style === 'italic') a += ' font-style="italic"';
+    if (face.stretch !== undefined && face.stretch !== 100) a += ` font-stretch="${face.stretch}%"`;
   } else {
     a = attrs(n.props, CHILD_SKIP);
   }

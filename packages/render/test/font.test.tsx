@@ -12,7 +12,7 @@ import { fonts, renderTemplate } from '@inkoxide/react';
 import type { ReactNode } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { countPages, Document, Font, Page, RenderError, renderToBuffer, Text } from '../src/index.ts';
+import { countPages, Document, Font, Page, RenderError, renderToBuffer, Svg, Text } from '../src/index.ts';
 import { assetsDir } from '../src/node-host.ts';
 
 const file = (name: string) => join(assetsDir(), 'fonts', name);
@@ -87,6 +87,7 @@ describe('Font.register', () => {
         id: 'Var-Test-100-900@wdth=60,wght=650',
         family: 'Var Test',
         weight: 650,
+        stretch: 60,
         source: 'Var-Test-100-900',
         variations: { wdth: 60, wght: 650 },
       },
@@ -108,6 +109,51 @@ describe('Font.register', () => {
     expect(() => Font.register({ family: 'Var Bad', src: varFont, fontWeight: [900, 100] })).toThrow(
       'the fontWeight range [900, 100] goes from the lower weight',
     );
+  });
+
+  it('draws a variable font at each width of its range, in text and in SVG text', async () => {
+    const varFont = new URL('../../../fixtures/fonts/VarTest-glyf.ttf', import.meta.url);
+    Font.register({ family: 'Var Wide', src: varFont, fontWeight: [100, 900], fontStretch: [50, 100] });
+    const el = (
+      <Document>
+        <Page>
+          <Text style={{ fontFamily: 'Var Wide', fontWeight: 700, fontStretch: 'condensed' }}>HOTEL</Text>
+          <Svg width={200} height={40}>
+            <Text x={0} y={30} fontFamily="Var Wide" fontStretch="62.5%">
+              HOTEL
+            </Text>
+          </Svg>
+        </Page>
+      </Document>
+    );
+    const pdf = await renderToBuffer(el);
+    const text = Buffer.from(pdf).toString('latin1');
+    for (const name of ['VarTest_75wdth_700wght', 'VarTest_62.5wdth']) expect(text).toContain(name);
+    const t = treeFonts(el);
+    expect(t.warnings).toEqual([]);
+    expect(t.fonts?.filter((f) => f.source === 'Var-Wide-100-900-50-100%')).toEqual([
+      {
+        id: 'Var-Wide-100-900-50-100%@wdth=62.5,wght=400',
+        family: 'Var Wide',
+        stretch: 62.5,
+        source: 'Var-Wide-100-900-50-100%',
+        variations: { wdth: 62.5, wght: 400 },
+      },
+      {
+        id: 'Var-Wide-100-900-50-100%@wdth=75,wght=700',
+        family: 'Var Wide',
+        weight: 700,
+        stretch: 75,
+        source: 'Var-Wide-100-900-50-100%',
+        variations: { wdth: 75, wght: 700 },
+      },
+    ]);
+    expect(() => Font.register({ family: 'Var Bad', src: varFont, fontStretch: [100, 50] })).toThrow(
+      'the fontStretch range [100, 50] goes from the narrower width',
+    );
+    expect(() =>
+      Font.register({ family: 'Var Bad', src: varFont, fontStretch: 'squashed' as never }),
+    ).toThrow('is not a width of 1% to 1000% or a CSS keyword');
   });
 
   it('adds a family from a path and resolves its weight by name', async () => {

@@ -141,6 +141,16 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   draw as they say: the blend modes (`multiply`, `screen`, `color-dodge` and the others) and the
   Porter-Duff ones (`src-in`, `dest-out`, `xor` and the others; `plus` as `screen`). They drew
   with the sweep's first colour, and as `src-over`.
+- Variable fonts: optical sizes, widths and ranges. Text in a font with an `opsz` axis draws at
+  the optical size of its font size, each size an instance of its own, unless the declaration
+  sets `opsz` or the new `opticalSizing: "none"`. A font declaration takes `stretch` (its width,
+  a percentage) and `weightRange` and `stretchRange`, as CSS `@font-face` does: SVG text is
+  matched by `font-stretch` too (the family, then the width, the style, the weight, as CSS
+  does) and draws at its own weight and width within the ranges. At most 64 such instances per
+  declaration. `@inkoxide/react` and `@inkoxide/render` have `fontStretch` in styles, on SVG
+  text and in `Font.register` (a width or a range, `[75, 100]`, drawn at its `wdth`), and
+  `@inkoxide/tailwind` reads `font-stretch-*`. An instance's `FontBBox` holds its own outlines;
+  it was the default instance's, which a heavy instance can exceed.
 
 ### Changed
 
@@ -174,6 +184,8 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 - The glyphs a form field shows, and those embedded for editing it, map to their characters in
   the font's `ToUnicode` map: text extraction from field appearances works, and veraPDF's PDF/UA
   check no longer reports them (ISO 14289-1, 7.21.7).
+- With `subsetFonts: false`, a variable font's instance that cannot be made for every glyph embeds
+  the glyphs the document uses, as with subsetting, instead of failing the render.
 
 ### Repository
 

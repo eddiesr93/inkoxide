@@ -37,6 +37,16 @@ impl TextSource {
 
     /// Adds the different lists of OpenType features its text and its
     /// nested SVGs' use to `sets`.
+    /// Calls `f` on each span of its text, its nested SVGs' included.
+    pub fn spans(&self, f: &mut dyn FnMut(&crate::images::svg_text::SvgSpan)) {
+        for s in self.text.texts.iter().flat_map(|t| &t.spans) {
+            f(s);
+        }
+        for n in &self.nested {
+            n.spans(f);
+        }
+    }
+
     pub fn feature_sets(&self, sets: &mut HashSet<Arc<[FontFeature]>>) {
         let spans = self.text.texts.iter().flat_map(|t| &t.spans);
         sets.extend(

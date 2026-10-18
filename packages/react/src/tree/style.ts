@@ -1,6 +1,7 @@
 import type { Color, Style, TransformOp } from '@inkoxide/schema';
 import {
   BORDER_STYLES,
+  type FontStretch,
   type FontVariationSettings,
   type BorderStyle,
   type ColorValue,
@@ -12,6 +13,7 @@ import {
   parseShape,
   parseTransform,
   parseFontFeatureSettings,
+  parseFontStretch,
   parseFontVariationSettings,
   parseFontVariantNumeric,
   round,
@@ -108,6 +110,7 @@ export function inherit(parent: TextCtx, own: FlatStyle, extra?: InheritExtra): 
       own.fontFamily !== undefined ||
       own.fontWeight !== undefined ||
       own.fontStyle !== undefined ||
+      own.fontStretch !== undefined ||
       own.fontVariationSettings !== undefined
     ) {
       c.fontId = undefined;
@@ -769,6 +772,7 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
     shapeOutside,
     shapeMargin,
     fontWeight,
+    fontStretch,
     top,
     right,
     bottom,
@@ -778,6 +782,7 @@ export function fromStyleProp(p: StyleProp, units?: Units, fontUnits = units): F
   } = p;
   const out: Record<string, unknown> = { ...rest };
   if (fontWeight !== undefined) out.fontWeight = weightOf(fontWeight);
+  if (fontStretch !== undefined) out.fontStretch = stretchOf(fontStretch);
   for (const k of ['flexGrow', 'flexShrink'] as const) if (out[k] !== undefined) checkFactor(k, out[k]);
   if (flex !== undefined) {
     const [grow, shrink, basis] = flexShorthand(flex, units);
@@ -961,6 +966,11 @@ export function weightOf(w: number | string): number {
   if (n === undefined)
     throw new Error(`fontWeight "${w}" is not a number or a CSS weight name (bold, light, …)`);
   return n;
+}
+
+/** A width as a percentage of the normal one: a number, a percentage or a CSS keyword. */
+export function stretchOf(s: FontStretch): number {
+  return parseFontStretch('fontStretch', s);
 }
 
 const KNOWN_KEYS: ReadonlySet<string> = new Set([

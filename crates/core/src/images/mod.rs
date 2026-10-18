@@ -356,6 +356,19 @@ impl ImageSet {
         Ok(())
     }
 
+    /// Calls `f` on each span of the text of the SVGs, before it is laid
+    /// out.
+    pub fn svg_spans(&self, f: &mut dyn FnMut(&svg_text::SvgSpan)) {
+        for image in &self.images {
+            if let ImageBody::Svg {
+                text: Some(source), ..
+            } = &image.body
+            {
+                source.spans(f);
+            }
+        }
+    }
+
     /// Converts the SVGs with text again, each text laid out with this
     /// render's fonts through `shaper` (in image order, so glyph mappings
     /// do not depend on threads). Each becomes this render's own copy, of
