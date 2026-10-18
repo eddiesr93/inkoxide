@@ -61,8 +61,9 @@ fn renders_as_the_engine_does() {
         let (d, dl) = alloc(&doc);
         let (o, ol) = alloc(options);
         let (i, il) = alloc(&[]);
+        let (f, fl) = alloc(&[]);
         // SAFETY: buffers from `ink_alloc`, each passed once.
-        unsafe { ink_render(d, dl, o, ol, i, il) }
+        unsafe { ink_render(d, dl, o, ol, i, il, f, fl) }
     });
     assert_eq!(status, 0, "{}", String::from_utf8_lossy(&pdf));
     let core = inkoxide::RenderOptions::default()
@@ -86,8 +87,9 @@ fn errors_are_json() {
         let (d, dl) = alloc(b"{");
         let (o, ol) = alloc(b"");
         let (i, il) = alloc(b"");
+        let (f, fl) = alloc(b"");
         // SAFETY: buffers from `ink_alloc`, each passed once.
-        unsafe { ink_render(d, dl, o, ol, i, il) }
+        unsafe { ink_render(d, dl, o, ol, i, il, f, fl) }
     });
     assert_eq!(status, 1);
     let err: serde_json::Value = serde_json::from_slice(&err).unwrap();
@@ -101,7 +103,7 @@ const EMPTY: &[u8] =
 
 #[test]
 fn options_are_checked_at_their_path() {
-    let path = |json: &str| failed(render(EMPTY, json.as_bytes(), b""));
+    let path = |json: &str| failed(render(EMPTY, json.as_bytes(), b"", b""));
     for (json, at) in [
         ("[]", "options"),
         (r#"{"threads":"4"}"#, "options.threads"),
@@ -139,7 +141,7 @@ fn options_are_checked_at_their_path() {
 
 #[test]
 fn msgpack_is_a_parse_error() {
-    let f = failed(render(&[0x80], br#"{"format":"msgpack"}"#, b""));
+    let f = failed(render(&[0x80], br#"{"format":"msgpack"}"#, b"", b""));
     assert_eq!(f.code, "PARSE_ERROR");
     let errors: serde_json::Value =
         serde_json::from_str(&validate(&[0x80], b"msgpack", None).unwrap()).unwrap();
@@ -185,8 +187,9 @@ fn hyphenation_patterns_come_when_a_render_needs_them() {
             let (d, dl) = alloc(doc);
             let (o, ol) = alloc(b"");
             let (i, il) = alloc(b"");
+            let (f, fl) = alloc(b"");
             // SAFETY: buffers from `ink_alloc`, each passed once.
-            unsafe { ink_render(d, dl, o, ol, i, il) }
+            unsafe { ink_render(d, dl, o, ol, i, il, f, fl) }
         })
     };
     let (status, result) = call_render();

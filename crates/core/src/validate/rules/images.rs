@@ -70,7 +70,7 @@ impl Checker<'_> {
                       declare one in `fonts`",
                 ),
             ),
-            Ok(img) if self.opaque && self.conflict.is_none() => {
+            Ok(img) if !self.profile.transparency() && self.conflict.is_none() => {
                 let what = *self
                     .image_transparency
                     .entry(data.key())

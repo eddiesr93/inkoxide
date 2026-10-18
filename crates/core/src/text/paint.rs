@@ -420,9 +420,9 @@ fn paint_line(
 
     for piece in pieces {
         let run = &runs[piece.run as usize];
-        if let Some(note) = run.note.as_deref() {
+        if let Some(icon) = run.icon() {
             // It takes no room: its icon hangs from the line's top.
-            crate::notes::paint_at(note, (x, cy + line.top), ops);
+            crate::notes::paint_at(icon, (x, cy + line.top), ops);
             continue;
         }
         if let Some(target) = run.link.as_deref() {

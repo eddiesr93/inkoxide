@@ -10,10 +10,10 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::Deserialize;
 
 use super::{
-    BackgroundImage, Bookmark, BorderRadius, BorderStyle, BorderStyles, Break, ColumnSpec,
-    ColumnWidth, Corners, Field, FieldValue, FontFeature, FontVariation, ImageFit, ImageSource,
-    InlineData, Node, NodeKind, Note, ObjectPosition, OptEdges, PageFilter, PagePattern, RunAlign,
-    RunImage, Style, Table, TableRow, TextRun, TransformOp,
+    Attachment, AttachmentDecl, BackgroundImage, Bookmark, BorderRadius, BorderStyle, BorderStyles,
+    Break, ColumnSpec, ColumnWidth, Corners, Field, FieldValue, FontFeature, FontVariation,
+    ImageFit, ImageSource, InlineData, Node, NodeKind, Note, ObjectPosition, OptEdges, PageFilter,
+    PagePattern, Relationship, RunAlign, RunImage, Style, Table, TableRow, TextRun, TransformOp,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -730,6 +730,7 @@ pub(super) enum NodeType {
     Spacer,
     Field,
     Note,
+    Attachment,
 }
 
 /// Properties that most node types take.
@@ -737,7 +738,7 @@ const COMMON: &[&str] = &["style", "break", "link", "bookmark", "pages", "debug"
 
 impl NodeType {
     #[cfg(test)]
-    pub(super) const ALL: [Self; 8] = [
+    pub(super) const ALL: [Self; 9] = [
         Self::Box,
         Self::Text,
         Self::Image,
@@ -746,6 +747,7 @@ impl NodeType {
         Self::Spacer,
         Self::Field,
         Self::Note,
+        Self::Attachment,
     ];
 
     /// The `type` value.
@@ -759,6 +761,7 @@ impl NodeType {
             Self::Spacer => "spacer",
             Self::Field => "field",
             Self::Note => "note",
+            Self::Attachment => "attachment",
         }
     }
 
@@ -773,6 +776,7 @@ impl NodeType {
             Self::Spacer => (COMMON, &[]),
             Self::Field => (&["style", "break", "pages", "debug"], &["field"]),
             Self::Note => (&["style", "break", "pages", "debug"], &["note"]),
+            Self::Attachment => (&["style", "break", "pages", "debug"], &["attachment"]),
         };
         common.iter().chain(own).copied()
     }
@@ -807,6 +811,7 @@ pub struct RawNode {
     rows: Option<Vec<TableRow>>,
     field: Option<Box<Field>>,
     note: Option<Box<Note>>,
+    attachment: Option<Box<Attachment>>,
     background_image: Option<Box<BackgroundImage>>,
 }
 
@@ -851,6 +856,7 @@ impl TryFrom<RawNode> for Node {
             ("rows", r.rows.is_some()),
             ("field", r.field.is_some()),
             ("note", r.note.is_some()),
+            ("attachment", r.attachment.is_some()),
             ("backgroundImage", r.background_image.is_some()),
         ];
         if let Some((field, _)) = present
@@ -889,6 +895,9 @@ impl TryFrom<RawNode> for Node {
             NodeType::Spacer => NodeKind::Spacer,
             NodeType::Field => NodeKind::Field(r.field.ok_or_else(|| missing("field"))?),
             NodeType::Note => NodeKind::Note(r.note.ok_or_else(|| missing("note"))?),
+            NodeType::Attachment => {
+                NodeKind::Attachment(r.attachment.ok_or_else(|| missing("attachment"))?)
+            }
         };
         Ok(Node {
             id: r.id,
@@ -911,9 +920,23 @@ fn image_source(
     data: Option<String>,
     what: &str,
 ) -> Result<ImageSource, String> {
+    src_or_data(src, data, what, ImageSource::Ref, |d| {
+        ImageSource::Inline(InlineData::new(d))
+    })
+}
+
+/// `by_id(src)` or `inline(data)`, exactly one of which `what` (for the
+/// message) must set.
+fn src_or_data<T>(
+    src: Option<String>,
+    data: Option<String>,
+    what: &str,
+    by_id: impl FnOnce(String) -> T,
+    inline: impl FnOnce(String) -> T,
+) -> Result<T, String> {
     match (src, data) {
-        (Some(s), None) => Ok(ImageSource::Ref(s)),
-        (None, Some(d)) => Ok(ImageSource::Inline(InlineData::new(d))),
+        (Some(s), None) => Ok(by_id(s)),
+        (None, Some(d)) => Ok(inline(d)),
         (Some(_), Some(_)) => Err(format!(
             "[INVALID_VALUE@data] {what} takes either `src` or `data`, not both"
         )),
@@ -939,6 +962,40 @@ impl TryFrom<RawBackgroundImage> for BackgroundImage {
             source: image_source(r.src, r.data, "`backgroundImage`")?,
             fit: r.fit.unwrap_or_default(),
             object_position: r.object_position.unwrap_or_default(),
+        })
+    }
+}
+
+/// An [`AttachmentDecl`] as written: `src` or `data`, checked on
+/// conversion.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RawAttachmentDecl {
+    name: String,
+    src: Option<String>,
+    data: Option<String>,
+    mime_type: Option<String>,
+    description: Option<String>,
+    #[serde(default)]
+    relationship: Relationship,
+    modified: Option<String>,
+}
+
+impl TryFrom<RawAttachmentDecl> for AttachmentDecl {
+    type Error = String;
+
+    fn try_from(r: RawAttachmentDecl) -> Result<Self, String> {
+        use crate::attachments::{FileSource, InlineFile};
+        let source = src_or_data(r.src, r.data, "an attachment", FileSource::Ref, |d| {
+            FileSource::Inline(InlineFile::new(d))
+        })?;
+        Ok(Self {
+            name: r.name,
+            source,
+            mime_type: r.mime_type,
+            description: r.description,
+            relationship: r.relationship,
+            modified: r.modified,
         })
     }
 }

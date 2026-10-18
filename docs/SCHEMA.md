@@ -64,11 +64,14 @@
 | `UNKNOWN_IMAGE` | Image `src` not provided in the render options |
 | `INVALID_IMAGE` | Image data cannot be decoded (a JPEG is not decoded: its structure is checked) |
 | `IMAGE_TOO_LARGE` | Raster image (not SVG) over 50 megapixels (width × height). An SVG has its own limit: a width or height over 100,000 px is `INVALID_IMAGE` |
+| `UNKNOWN_ATTACHMENT` | An `attachment` names a file not declared in `attachments` |
+| `ATTACHMENT_NOT_REGISTERED` | An attachment's `src` not provided in the render options. Only a render reports it |
+| `ATTACHMENT_TOO_LARGE` | An attachment over 64 MiB, or attachments over 256 MiB together |
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
 | `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
-| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image, inline image, emoji image or background image with an alpha channel, an SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip path other than one path, or a colour glyph that needs transparency: a bitmap with an alpha channel or a layer with an opacity). Only a render reports it, at the first such use |
+| `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image, inline image, emoji image or background image with an alpha channel, an SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip path other than one path, or a colour glyph that needs transparency: a bitmap with an alpha channel or a layer with an opacity); under PDF/A-1b and 2b, `attachments` (at `attachments[0]`). Only a render reports it, at the first such use |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100
@@ -88,6 +91,7 @@ A fully resolved, declarative document tree rendered to PDF by the Inkoxide engi
 | `fonts` | array of [`FontDecl`](#fontdecl) |  | Fonts the document references. Bytes are registered through the API (registerFont / options); this list lets validation fail early. |
 | `fallbackFonts` | array of [`Id`](#id) |  | max items 256; Font ids tried, in order, for characters missing from a run's font. Every id must be declared in `fonts`; an id listed again is skipped. |
 | `emojiImages` | `object` |  | max properties 4096; Emoji drawn as images: each key is one emoji sequence (`😀`, `👍🏽`, `🇫🇷`, `👩‍💻`; U+FE0F is ignored) of at most 64 bytes in UTF-8, each value the id of an image in the render option `images`. Where text has the sequence with emoji presentation, the image is drawn in its place, 1em high (the run's `size`), its bottom 0.1em below the run's baseline (which its `verticalAlign` raises or lowers), and the sequence is its text for copying and search. A ZWJ sequence without an image tries its parts. |
+| `attachments` | array of [`AttachmentDecl`](#attachmentdecl) |  | max items 1000; Files the PDF carries, each written once: viewers list them in their attachments panel, and `attachment` nodes and runs show icons that open them. At most 1000 files, of at most 64 MiB each and 256 MiB together. Under PDF/A, only PDF/A-3b allows them; PDF/A-1b and PDF/A-2b refuse them (`PDFA_CONFLICT`). |
 | `pages` | array of [`PageSpec`](#pagespec) | yes | min items 1 |
 
 ## Definitions
@@ -129,8 +133,9 @@ Type: `boolean` (default `false`)
 | `producer` | `string` |  | The PDF producer, written to the PDF Info dictionary (and to the XMP metadata of PDF/A). Default `Inkoxide <version>`. |
 | `lang` | `string` |  | BCP-47 language tag of the document, e.g. "en" or "en-GB". |
 | `creationDate` | `string` |  | format `date-time`; RFC 3339 timestamp written to the PDF Info dictionary. Overridden by the creationDate render option. When neither is set, no date is written (output stays deterministic). |
-| `pageMode` | `"useNone"` \| `"useOutlines"` \| `"useThumbs"` \| `"fullScreen"` |  | What the viewer shows when it opens the document: no panel (`useNone`), the bookmarks (`useOutlines`), page thumbnails (`useThumbs`) or the pages full screen (`fullScreen`). Default: `useOutlines` when the document has bookmarks, else `useNone`. |
+| `pageMode` | `"useNone"` \| `"useOutlines"` \| `"useThumbs"` \| `"fullScreen"` \| `"useAttachments"` |  | What the viewer shows when it opens the document: no panel (`useNone`), the bookmarks (`useOutlines`), page thumbnails (`useThumbs`), the pages full screen (`fullScreen`) or the attachments (`useAttachments`). Default: `useOutlines` when the document has bookmarks, else `useNone`. |
 | `pageLayout` | `"singlePage"` \| `"oneColumn"` \| `"twoColumnLeft"` \| `"twoColumnRight"` \| `"twoPageLeft"` \| `"twoPageRight"` |  | How the viewer lays out the pages: one at a time (`singlePage`), one scrolling column (`oneColumn`), two scrolling columns with odd pages on the left or right (`twoColumnLeft`, `twoColumnRight`), or two pages at a time with odd pages on the left or right (`twoPageLeft`, `twoPageRight`). Default: the viewer's own setting. |
+| `xmpExtensions` | array of [`XmpSchema`](#xmpschema) |  | max items 16; XMP schemas the PDF/A metadata declares and fills in, such as Factur-X's (`fx`) for an e-invoice: PDF/A accepts properties outside its own schemas only when they are declared, which these are, as Text. At most 16 schemas of 64 properties. Without PDF/A there is no XMP to put them in, and `render` refuses them. |
 
 ### FontDecl
 
@@ -392,6 +397,7 @@ Type: `{translate}` (`translate`: array of [`LengthPercent`](#lengthpercent) (ex
 | `fontFeatures` | `object` |  | max properties 32; OpenType features by tag, as CSS `font-feature-settings`: 1 turns a feature on, 0 off, and a larger number picks an alternate (`{"tnum": 1, "liga": 0}`). Tags are four printable ASCII characters, and a value is 0 to 65535. A run may have at most 32 features, and a document at most 64 different sets of features. |
 | `image` | [`InlineImage`](#inlineimage) |  |  |
 | `note` | [`Note`](#note) |  | A note in the line, in place of text: it takes no room, and its icon (20 pt square, the same at any zoom) hangs from the top of the line where the run is, on the page where the line starts. The run's `font` and `size` are the line's strut. Line breaking keeps it with the character before it, or after a space, the one after it. |
+| `attachment` | [`Attachment`](#attachment) |  | An attachment's icon in the line, in place of text, as a `note` is: it takes no room, and its icon hangs from the top of the line where the run is. |
 
 ### InlineImage
 
@@ -438,7 +444,7 @@ An image in a line of text, as wide as `width` and as high as `height`, in point
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `type` | `"box"` \| `"text"` \| `"image"` \| `"table"` \| `"pageBreak"` \| `"spacer"` \| `"field"` \| `"note"` | yes |  |
+| `type` | `"box"` \| `"text"` \| `"image"` \| `"table"` \| `"pageBreak"` \| `"spacer"` \| `"field"` \| `"note"` \| `"attachment"` | yes |  |
 
 ### BoxNode
 
@@ -617,6 +623,60 @@ A text annotation: a sticky-note icon that opens its text in the viewer. It take
 | `author` | `string` |  | max length 256; Who wrote it; viewers show it as the note's title. |
 | `color` | [`Color`](#color) |  | The icon's colour, also the colour viewers give the note (its alpha is not used); default yellow, [1, 0.82, 0.2, 1]. |
 | `open` | `boolean` |  | default `false`; Whether viewers show the text when the document opens. |
+
+### AttachmentNode
+
+An icon that opens a file of `attachments` (a file attachment annotation). It takes no space, and sits as a note does: at the top-left corner of its box, inside the page, on the page where the box starts, 20 pt square at any zoom. In a header, a footer or a fixed element it is on every page, each icon opening the one file.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `type` | `"attachment"` | yes |  |
+| `id` | [`Id`](#id) |  |  |
+| `style` | [`Style`](#style) |  |  |
+| `break` | [`Break`](#break) |  |  |
+| `pages` | [`PageFilter`](#pagefilter) |  |  |
+| `debug` | [`Debug`](#debug) |  |  |
+| `attachment` | [`Attachment`](#attachment) | yes |  |
+
+### Attachment
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `file` | `string` | yes | min length 1, max length 255; The `name` of a file in `attachments`. |
+| `icon` | `"pushPin"` \| `"paperclip"` \| `"graph"` \| `"tag"` |  | default `"pushPin"`; The icon: a push pin, a paper clip, a bar chart or a tag. |
+| `color` | [`Color`](#color) |  | The icon's colour (its alpha is not used); default blue, [0.3, 0.55, 0.9, 1]. |
+| `contents` | `string` |  | min length 1, max length 8000; The text viewers show for the icon; default the file's `description`, else its name. |
+
+### AttachmentDecl
+
+A file the PDF carries. Exactly one of `src` and `data`.
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `name` | `string` matching `^[^/\\\u0000-\u001f\u007f]+$` | yes | min length 1, max length 255; The file name viewers show and save it under, unique in the document: no `/`, `\\` or control characters. `attachment` icons name the file by it. |
+| `src` | [`Id`](#id) |  | Key into the render option `attachments`. |
+| `data` | `string` |  | The file's bytes, base64-encoded. |
+| `mimeType` | `string` matching `^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,62}/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,62}$` |  | max length 127, default `"application/octet-stream"`; The file's MIME type (`text/xml`, `application/pdf`). |
+| `description` | `string` |  | max length 8000; What the file is; viewers show it in their attachments panel. |
+| `relationship` | `"source"` \| `"data"` \| `"alternative"` \| `"supplement"` \| `"unspecified"` |  | default `"unspecified"`; How the file relates to the document (`/AFRelationship`, which PDF/A-3 requires): the original it was made from (`source`), the data it shows (`data`, as an e-invoice's XML), another form of the same content (`alternative`), or something that adds to it (`supplement`). |
+| `modified` | `string` |  | When the file was last changed (RFC 3339). Default: the creation date, when there is one; otherwise none is written. |
+
+### XmpSchema
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `schema` | `string` | yes | min length 1, max length 512; What the schema is (`Factur-X PDFA Extension Schema`). |
+| `namespace` | `string` matching `^\S+$` | yes | min length 1, max length 512; The namespace URI of its properties. |
+| `prefix` | `string` matching `^[A-Za-z_][A-Za-z0-9_.-]*$` | yes | The prefix of its properties (`fx`): not one the metadata uses already (`pdfaid`, `dc`, `xmp`, `pdf`, `rdf`, `x`, `xml`, `pdfaExtension`, `pdfaSchema`, `pdfaProperty`, `pdfuaid`). |
+| `properties` | array of [`XmpProperty`](#xmpproperty) | yes | max items 64 |
+
+### XmpProperty
+
+| Property | Type | Required | Notes |
+|---|---|---|---|
+| `name` | `string` matching `^[A-Za-z_][A-Za-z0-9_.-]*$` | yes | max length 512; The property name (`DocumentType`). |
+| `value` | `string` | yes | max length 8000; Its value, a Text. |
+| `description` | `string` | yes | min length 1, max length 512; What the property is. |
 
 ### TrackBreadth
 

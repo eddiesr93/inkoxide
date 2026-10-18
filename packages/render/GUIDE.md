@@ -648,7 +648,7 @@ wins over it:
 | `conformance` | `pdfA` | Writes |
 |---|---|---|
 | `'PDF/A-2b'` or `'PDF/A-2'` | `true` or `'2b'` | PDF/A-2b |
-| `'PDF/A-3b'` or `'PDF/A-3'` | `'3b'` | PDF/A-3b, as 2b; the level allows embedded files, but Inkoxide cannot attach any yet |
+| `'PDF/A-3b'` or `'PDF/A-3'` | `'3b'` | PDF/A-3b, as 2b, with [attachments](#attachments) (an e-invoice's XML) |
 | `'PDF/A-1b'` or `'PDF/A-1'` | `'1b'` | PDF/A-1b, the oldest level, for archives that require it |
 
 PDF/A-1b has no transparency, so a render fails with `ENGINE_REJECTED` (`engineCode`
@@ -1037,6 +1037,60 @@ every viewer, and the output stays PDF/A-2b.
 Inside a `Text`, a note is part of the line: it takes no room, and its icon hangs from the top of
 the line where it is, on the page of that line. Line breaking keeps it with the word before it,
 or after a space, with the word after it. There it takes `backgroundColor` and no other style.
+
+## Attachments
+
+```tsx
+<Document
+  conformance="PDF/A-3b"
+  attachments={[
+    {
+      name: 'factur-x.xml',
+      data: invoiceXml,
+      mimeType: 'text/xml',
+      relationship: facturXRelationship('EN 16931'),
+      description: 'Invoice data',
+    },
+  ]}
+  xmpExtensions={[facturX({ profile: 'EN 16931' })]}
+>
+  <Page>
+    <Attachment file="factur-x.xml" icon="paperclip">The invoice as XML</Attachment>
+    …
+  </Page>
+</Document>
+```
+
+`attachments` are files the PDF carries: viewers list them in their attachments panel
+(`pageMode="useAttachments"` opens it). Each has a `name`, unique in the document, and its
+`data`, a `Uint8Array` or a string (its text, in UTF-8); `mimeType`, `description`,
+`relationship` (`'source'`, `'data'`, `'alternative'`, `'supplement'`) and `modified` (RFC 3339)
+are optional. A file is written once, compressed when that makes it smaller, and encrypted with
+the rest of an encrypted PDF. The bytes go into the document tree as base64 `data`, so a stored
+`result.document` renders alone, its files with it, at 4/3 of their size; a document written as
+JSON names large files by `src` instead, with their bytes in the render option `attachments`.
+At most 1000 files, 64 MiB each and 256 MiB together. Inkoxide
+attaches the bytes it is given, whatever they are: a viewer may open an attached program or web
+page when the reader asks it to, so attach only files you would send on their own.
+
+`<Attachment file>` is an icon that opens one: a push pin, a paper clip (`icon="paperclip"`), a
+bar chart (`graph`) or a tag. It sits like a [`Note`](#notes): it takes no room, its icon is at
+the top-left corner of its box, inside a `Text` it hangs from the line, and in a `Header` or a
+`Footer` it is on every page, each icon opening the one file. Its children are the text viewers
+show for it (default: the file's description, else its name), and `backgroundColor` is its
+colour.
+
+Under PDF/A, only PDF/A-3b allows attachments; PDF/A-1b and 2b refuse them (`PDFA_CONFLICT`).
+**E-invoices** (Factur-X, ZUGFeRD 2) are PDF/A-3b with the invoice's XML attached and the `fx`
+metadata that `facturX({ profile })` makes, as above; `facturXRelationship(profile)` gives the
+relationship the profile asks for (`'data'` for MINIMUM and BASIC WL, `'alternative'` for the
+others). `xmpExtensions` takes other schemas too (`{ schema, namespace, prefix, properties }`,
+Text values), and needs PDF/A: the metadata they go in. Inkoxide does not check the XML: validate
+it, and the PDF, with your e-invoicing tools.
+
+A document written as JSON names its files in `attachments` with `data` (base64) or `src`, an id
+of the render option `attachments`:
+`renderDocument(doc, images, { attachments: { 'invoice-xml': bytes } })`.
 
 ## Debugging layout
 

@@ -42,6 +42,17 @@ pub(crate) fn written_text_len(s: &str) -> usize {
     } else {
         2 + 2 * s.encode_utf16().count()
     };
+    written_len(bytes)
+}
+
+/// [`written_text_len`] of the longest text of `chars` characters: two
+/// UTF-16 code units each.
+pub(crate) const fn most_written_text_len(chars: usize) -> usize {
+    written_len(2 + 4 * chars)
+}
+
+/// Most bytes a string of `bytes` bytes takes in the file.
+const fn written_len(bytes: usize) -> usize {
     2 + 2 * (bytes + 32)
 }
 

@@ -35,6 +35,11 @@ export interface RenderOpts {
    */
   images?: Record<string, Uint8Array>;
   /**
+   * The bytes of the files a document's `attachments` name in `src`, by id: for a document
+   * written as JSON (`renderDocument`). `<Document attachments>` carries its files itself.
+   */
+  attachments?: Record<string, Uint8Array>;
+  /**
    * Remote images `<Image src="https://…">` and `<Image src={{ uri }}>` may use. Defaults to the
    * comma-separated `INKOXIDE_REMOTE_IMAGES` environment variable; without either, remote URLs
    * are rejected.

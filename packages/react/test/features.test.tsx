@@ -1,9 +1,18 @@
-import type { BoxNode, FieldNode, ImageNode, NoteNode, TableNode, TextNode } from '@inkoxide/schema';
+import type {
+  AttachmentNode,
+  BoxNode,
+  FieldNode,
+  ImageNode,
+  NoteNode,
+  TableNode,
+  TextNode,
+} from '@inkoxide/schema';
 import { parseColor } from '@inkoxide/tailwind';
 import type { ReactNode } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  Attachment,
   Canvas,
   type CanvasGradient,
   Cell,
@@ -30,6 +39,8 @@ import {
   Marker,
   type MarkerProps,
   Note,
+  facturX,
+  facturXRelationship,
   PAGE_SIZES,
   Page,
   PageBreak,
@@ -1422,6 +1433,65 @@ describe('form fields', () => {
     );
     expect(one.style).toEqual({ padding: { top: 6, right: 6, bottom: 6, left: 6 } });
     expect(((one.children ?? []) as FieldNode[])[0]?.field.name).toBe('s.a');
+  });
+});
+
+describe('attachments', () => {
+  it('carries the files of the Document inline, and draws icons that open them', () => {
+    const r = renderTemplate(
+      <Document
+        attachments={[
+          { name: 'factur-x.xml', data: '<Invoice/>', mimeType: 'text/xml', relationship: 'data' },
+          { name: 'logo.bin', data: new Uint8Array([0, 1, 255]), modified: '2026-10-17T09:00:00Z' },
+        ]}
+        xmpExtensions={[facturX({ profile: 'EN 16931' })]}
+      >
+        <Page>
+          <Attachment file="factur-x.xml" icon="paperclip" style={{ backgroundColor: 'red' }}>
+            The invoice data
+          </Attachment>
+          <Text>
+            See <Attachment file="logo.bin" />
+          </Text>
+        </Page>
+      </Document>,
+      { fonts },
+    );
+    expect(r.document.attachments).toEqual([
+      { name: 'factur-x.xml', data: 'PEludm9pY2UvPg==', mimeType: 'text/xml', relationship: 'data' },
+      { name: 'logo.bin', data: 'AAH/', modified: '2026-10-17T09:00:00Z' },
+    ]);
+    expect(r.document.meta?.xmpExtensions?.[0]?.properties.map((p) => [p.name, p.value])).toEqual([
+      ['DocumentFileName', 'factur-x.xml'],
+      ['DocumentType', 'INVOICE'],
+      ['Version', '1.0'],
+      ['ConformanceLevel', 'EN 16931'],
+    ]);
+    expect(facturXRelationship('EN 16931')).toBe('alternative');
+    expect(facturXRelationship('MINIMUM')).toBe('data');
+    const [icon, text] = r.document.pages[0].children as [AttachmentNode, TextNode];
+    expect(icon.attachment).toEqual({
+      file: 'factur-x.xml',
+      icon: 'paperclip',
+      contents: 'The invoice data',
+      color: [1, 0, 0, 1],
+    });
+    expect(text.runs[1]).toMatchObject({ attachment: { file: 'logo.bin' } });
+  });
+
+  it('needs a file, and holds only text', () => {
+    expect(thrown(() => tree(<Attachment {...({} as { file: string })} />)).message).toContain(
+      '<Attachment> needs file',
+    );
+    expect(
+      thrown(() =>
+        tree(
+          <Attachment file="a">
+            <View />
+          </Attachment>,
+        ),
+      ).message,
+    ).toContain('<Attachment> contains only text');
   });
 });
 

@@ -1,5 +1,6 @@
 //! Display list → PDF bytes, through `pdf-writer`.
 
+mod attach;
 mod content;
 pub(crate) mod crypt;
 mod document;
@@ -35,8 +36,8 @@ use content::{
 pub(crate) use image::transparency as image_transparency;
 pub(crate) use nav::written_uri_len;
 use nav::{annot_rect, write_link, write_outline};
-pub(crate) use out::written_text_len;
 use out::Out;
+pub(crate) use out::{most_written_text_len, written_text_len};
 pub(crate) use pdfa::{Profile, MIN_PAGE_EDGE as PDF_A_MIN_PAGE_EDGE};
 
 /// A painted page reduced to what the writer needs: its compressed
@@ -71,6 +72,8 @@ pub(crate) struct DocumentOut<'a> {
     pub images: &'a ImageSet,
     pub colors: &'a crate::text::ColorGlyphs,
     pub marks: &'a Marks<'a>,
+    /// The files the document carries.
+    pub files: &'a [crate::attachments::PreparedFile],
 }
 
 pub(crate) struct PdfWriterSink {

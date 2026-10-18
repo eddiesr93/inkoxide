@@ -42,7 +42,97 @@ pub struct Document {
     /// Emoji sequences drawn as images: sequence → image id.
     #[serde(default)]
     pub emoji_images: std::collections::BTreeMap<String, String>,
+    /// Files the PDF carries, each written once.
+    #[serde(default)]
+    pub attachments: Vec<AttachmentDecl>,
     pub pages: Vec<PageSpec>,
+}
+
+/// A file the PDF carries (`attachments`): listed in the viewer's
+/// attachments panel, and opened from the icons of `attachment` nodes and
+/// runs that name it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(try_from = "de::RawAttachmentDecl")]
+pub struct AttachmentDecl {
+    /// The file name, unique in the document.
+    pub name: String,
+    pub source: crate::attachments::FileSource,
+    /// Default `application/octet-stream`.
+    pub mime_type: Option<String>,
+    pub description: Option<String>,
+    pub relationship: Relationship,
+    /// RFC 3339 timestamp; default: the creation date, if any.
+    pub modified: Option<String>,
+}
+
+/// How a file relates to the document (`/AFRelationship`, which PDF/A-3
+/// requires).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Relationship {
+    /// The original the document was made from.
+    Source,
+    /// The data the document shows (an invoice's XML).
+    Data,
+    /// Another form of the same content.
+    Alternative,
+    /// Something that adds to the content.
+    Supplement,
+    #[default]
+    Unspecified,
+}
+
+/// An `attachment` node's or run's icon: it opens file `file`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct Attachment {
+    /// The `name` of a declared attachment.
+    pub file: String,
+    #[serde(default)]
+    pub icon: FileIcon,
+    /// The icon's colour (its alpha is not used); default
+    /// [`ATTACHMENT_BLUE`].
+    pub color: Option<Color>,
+    /// The text shown with the icon; default the file's description or
+    /// name.
+    pub contents: Option<String>,
+}
+
+/// The icon of an attachment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FileIcon {
+    #[default]
+    PushPin,
+    Paperclip,
+    Graph,
+    Tag,
+}
+
+/// The default colour of an attachment icon.
+pub const ATTACHMENT_BLUE: Color = [0.3, 0.55, 0.9, 1.0];
+
+/// An XMP schema the PDF/A metadata declares and fills in
+/// (`meta.xmpExtensions`), such as Factur-X's: PDF/A accepts properties
+/// outside its own schemas only when they are declared.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct XmpSchema {
+    /// What the schema is (`pdfaSchema:schema`).
+    pub schema: String,
+    pub namespace: String,
+    pub prefix: String,
+    pub properties: Vec<XmpProperty>,
+}
+
+/// A Text property of an [`XmpSchema`].
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct XmpProperty {
+    pub name: String,
+    pub value: String,
+    /// What the property is (`pdfaProperty:description`).
+    pub description: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -61,6 +151,8 @@ pub struct Meta {
     pub page_mode: Option<PageMode>,
     /// Default: not written (the viewer's choice).
     pub page_layout: Option<PageLayout>,
+    /// XMP schemas the PDF/A metadata declares and fills in.
+    pub xmp_extensions: Option<Vec<XmpSchema>>,
 }
 
 /// What the viewer shows when it opens the document.
@@ -71,6 +163,8 @@ pub enum PageMode {
     UseOutlines,
     UseThumbs,
     FullScreen,
+    /// The attachments panel.
+    UseAttachments,
 }
 
 /// How the viewer lays out the pages.
@@ -385,6 +479,8 @@ pub enum NodeKind {
     Field(Box<Field>),
     /// A text annotation: an icon that opens a note (boxed: rare).
     Note(Box<Note>),
+    /// An icon that opens an attachment (boxed: rare).
+    Attachment(Box<Attachment>),
 }
 
 /// A text annotation, shown as a sticky-note icon.
@@ -660,6 +756,25 @@ pub struct TextRun {
     /// A note in the line, in place of text (boxed: rare): it takes no
     /// room, and its icon hangs from the line's top where the run is.
     pub note: Option<Box<Note>>,
+    /// An attachment's icon in the line, as a `note` is.
+    pub attachment: Option<Box<Attachment>>,
+}
+
+impl TextRun {
+    /// The icon (a note or an attachment's) it is in place of text, which
+    /// takes no room in its line.
+    pub(crate) fn icon(&self) -> Option<crate::icons::Icon<'_>> {
+        use crate::icons::Icon;
+        self.note
+            .as_deref()
+            .map(Icon::Note)
+            .or_else(|| self.attachment.as_deref().map(Icon::Attachment))
+    }
+
+    /// Whether it is an icon in place of text ([`icon`](Self::icon)).
+    pub fn is_icon(&self) -> bool {
+        self.note.is_some() || self.attachment.is_some()
+    }
 }
 
 /// A run's `image`: drawn in the line like a glyph, `width` × `height`

@@ -82,6 +82,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | SVG | `images/svg/` | Parsing through usvg with limits for untrusted input: what a file's copies, markers and references expand to is checked before usvg converts it (`check.rs`, against `limits.rs`); the root `viewBox` (`view_box.rs`); the text converted again with a render's fonts, cached across renders (`text.rs`) |
 | Forms | `forms` | AcroForm fields: intrinsic sizes, the widget ops painting hands to the PDF writer, and field formats (`forms/format.rs`) |
 | Notes | `notes`, `icons` | Text notes, from `note` nodes and note runs, as icon annotations: shown at a fixed size at a point |
+| Attachments | `attachments`, `pdf/attach.rs` | Files a document carries: `AttachmentStore` holds the caller's bytes by id (or only the size of a file too large to read), `attachments::prepare` decodes and compresses each once per render, after layout; the writer embeds them as file specifications, with icon annotations and, under PDF/A-3b, associated files |
 | Geometry | `geom` | Rectangles and 2×3 matrices, shared by layout, pagination, fonts and paint |
 | Support | `date`, `pool`, `lru` | RFC 3339 parsing for `creationDate`; the thread pools of `threads`; the size-bounded LRU map of the process-wide caches |
 
@@ -97,7 +98,7 @@ pub fn clear_caches();
 
 Besides these, the crate exports only their inputs and outputs (`RenderOptions`,
 `PdfALevel` and its `ParsePdfALevelError`, `Encryption`, `Permissions`,
-`Printing`, `InputFormat`, `FontStore`, `ImageStore`, `HyphenationStore`,
+`Printing`, `InputFormat`, `FontStore`, `ImageStore`, `AttachmentStore`, `HyphenationStore`,
 `InkoxideError` and its `NotLoaded`, `ValidationError`, `ValidationCode`),
 `builtin_hyphenation_file`, and the constants `ENGINE_VERSION` and
 `SCHEMA_VERSION`. `JSON_ONLY`, the message the bindings share for

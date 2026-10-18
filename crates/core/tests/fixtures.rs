@@ -126,8 +126,13 @@ const NOT_PDF_A_1B: &[(&str, &str)] = &[
     ),
 ];
 
+/// The fixtures only PDF/A-3b takes, because they carry files, and the
+/// path of the first file.
+const ONLY_PDF_A_3B: &[(&str, &str)] = &[("attachments", "attachments[0]")];
+
 /// Every fixture also renders at every PDF/A level, deterministically,
-/// except for those PDF/A-1b rejects ([`NOT_PDF_A_1B`]). With `VERAPDF`
+/// except for those PDF/A-1b rejects ([`NOT_PDF_A_1B`]) and those only
+/// PDF/A-3b takes ([`ONLY_PDF_A_3B`]). With `VERAPDF`
 /// set to a veraPDF command, each output must pass the profile of its
 /// level.
 #[test]
@@ -151,8 +156,12 @@ fn pdf_a_fixtures() {
                 .with_pdf_a_level(level)
                 .with_hyphenation(hyphenation_for(fixture));
             let rendered = inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images);
-            let rejected = NOT_PDF_A_1B.iter().find(|(f, _)| *f == fixture);
-            if let (PdfALevel::A1b, Some((_, path))) = (level, rejected) {
+            let rejected = NOT_PDF_A_1B
+                .iter()
+                .filter(|_| level == PdfALevel::A1b)
+                .chain(ONLY_PDF_A_3B.iter().filter(|_| level != PdfALevel::A3b))
+                .find(|(f, _)| *f == fixture);
+            if let Some((_, path)) = rejected {
                 match rendered {
                     Err(InkoxideError::Validation(e)) => {
                         assert_eq!(e.code, ValidationCode::PdfaConflict, "{name}: {e}");

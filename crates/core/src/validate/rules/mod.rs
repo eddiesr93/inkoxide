@@ -1,6 +1,9 @@
 //! Semantic checks on a parsed document: font and image ids, anchors,
 //! value ranges, and where each node type and style property applies.
 
+mod attachments;
+#[cfg(test)]
+pub(crate) use attachments::{MAX_XMP_NAME, MAX_XMP_PROPERTIES, MAX_XMP_SCHEMAS, MAX_XMP_VALUE};
 mod fields;
 mod images;
 mod links;
@@ -21,7 +24,7 @@ use crate::schema::{
     is_area_name, parse_areas, BorderCollapse, Break, BreakMode, Document, FieldKind, FontFeature,
     Length, LengthPercent, Node, NodeKind, PageSpec, Position, Style, TrackBreadth, SCHEMA_VERSION,
 };
-use crate::{FontStore, ImageStore};
+use crate::{AttachmentStore, FontStore, ImageStore};
 
 /// Stop collecting after this many problems; the rest is usually noise.
 const MAX_ERRORS: usize = 100;
@@ -86,7 +89,9 @@ impl From<TrackBreadth> for Len {
 }
 
 /// Checks `doc` for a render with `profile`. Without `images`, image ids
-/// are not looked up (inline `data` is still checked). The fonts of
+/// are not looked up (inline `data` is still checked); without
+/// `attachments` (`validate`), neither are attachment ids, nor what only a
+/// render can tell. The fonts of
 /// `deferred` ([`crate::RenderOptions::deferred_fonts`]) may be missing from
 /// `fonts`. Under PDF/A, a
 /// valid document that the level does not allow gets one error:
@@ -97,9 +102,13 @@ pub(crate) fn check(
     fonts: &FontStore,
     deferred: &[String],
     images: Option<&ImageStore>,
+    attachments: Option<&AttachmentStore>,
     profile: Profile,
 ) -> Vec<ValidationError> {
     let mut c = Checker {
+        attachments,
+        rendering: attachments.is_some(),
+        profile,
         path: String::with_capacity(128),
         errors: Vec::new(),
         declared: BTreeSet::new(),
@@ -110,8 +119,6 @@ pub(crate) fn check(
         anchors: None,
         in_fixed: false,
         fields: HashMap::new(),
-        pdf_a: profile.is_pdf_a(),
-        opaque: !profile.transparency(),
         conflict: None,
         image_transparency: HashMap::new(),
         field_groups: HashSet::new(),
@@ -156,6 +163,14 @@ struct Checker<'a> {
     /// Font ids that may be missing from `fonts`.
     deferred: &'a [String],
     images: Option<&'a ImageStore>,
+    /// The files attachments name, in a render.
+    attachments: Option<&'a AttachmentStore>,
+    /// Checking for a render, which knows its options.
+    rendering: bool,
+    /// The output rendered: plain PDF or a PDF/A level. At any level a
+    /// page that is too small is recorded, and at PDF/A-1b the first use of
+    /// transparency.
+    profile: Profile,
     doc: &'a Document,
     /// Ids that `#id` links can reach, collected on the first such link.
     anchors: Option<HashSet<&'a str>>,
@@ -163,14 +178,10 @@ struct Checker<'a> {
     in_fixed: bool,
     /// Form field names seen so far, with their kind.
     fields: HashMap<String, FieldKind>,
-    /// Rendering PDF/A, at any level: record a page that is too small.
-    pdf_a: bool,
-    /// Rendering PDF/A-1b: record the first use of transparency.
-    opaque: bool,
-    /// The first thing the PDF/A level does not allow, under `pdf_a`.
+    /// The first thing the PDF/A level does not allow.
     conflict: Option<ValidationError>,
     /// What needs transparency in each image checked (by content), under
-    /// `opaque`: an image used many times is scanned once.
+    /// PDF/A-1b: an image used many times is scanned once.
     image_transparency: HashMap<ContentKey<Arc<[u8]>>, Option<&'static str>>,
     /// The groups field names make: every name before one of its dots
     /// (`a` and `a.b` for `a.b.c`).
@@ -317,7 +328,7 @@ impl<'a> Checker<'a> {
     /// Under `opaque`, records `field` (of the current path) as the first
     /// use of transparency, unless there is one already. `what` needs it.
     fn transparent(&mut self, field: Option<&str>, what: &str) {
-        if !self.opaque || self.conflict.is_some() {
+        if self.profile.transparency() || self.conflict.is_some() {
             return;
         }
         let mut path = self.path.clone();
@@ -462,6 +473,12 @@ impl<'a> Checker<'a> {
                 self.at("emojiImages", |c| c.emoji_image(sequence, id));
             }
         }
+        self.attachments(&doc.attachments);
+        if let Some(schemas) = &doc.meta.xmp_extensions {
+            self.at("meta", |c| {
+                c.at("xmpExtensions", |c| c.xmp_extensions(schemas));
+            });
+        }
         if doc.pages.is_empty() {
             self.err(
                 Code::InvalidValue,
@@ -487,7 +504,10 @@ impl<'a> Checker<'a> {
                 });
             }
         }
-        if self.pdf_a && self.conflict.is_none() && s.width.min(s.height) < PDF_A_MIN_PAGE_EDGE {
+        if self.profile.is_pdf_a()
+            && self.conflict.is_none()
+            && s.width.min(s.height) < PDF_A_MIN_PAGE_EDGE
+        {
             self.conflict = Some(ValidationError {
                 code: Code::PdfaConflict,
                 path: format!("{}.size", self.path),
@@ -793,6 +813,7 @@ impl<'a> Checker<'a> {
             NodeKind::Spacer => {}
             NodeKind::Field(f) => self.at("field", |c| c.field(f)),
             NodeKind::Note(n) => self.at("note", |c| c.note(n)),
+            NodeKind::Attachment(a) => self.at("attachment", |c| c.attachment(a)),
         }
     }
 }

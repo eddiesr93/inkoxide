@@ -67,6 +67,16 @@ validation_codes! {
     /// SVG has its own limit, and fails as
     /// [`InvalidImage`](Self::InvalidImage).
     ImageTooLarge = "IMAGE_TOO_LARGE",
+    /// An `attachment` node or run names a file that `attachments` does
+    /// not declare.
+    UnknownAttachment = "UNKNOWN_ATTACHMENT",
+    /// An attachment's `src` is not in the render's attachment store. Only
+    /// [`render`](crate::render) reports it: [`validate`](crate::validate)
+    /// does not see the store.
+    AttachmentNotRegistered = "ATTACHMENT_NOT_REGISTERED",
+    /// An attachment is over 64 MiB, or a document's attachments are over
+    /// 256 MiB together.
+    AttachmentTooLarge = "ATTACHMENT_TOO_LARGE",
     /// A style property was set on a node type it does not apply to.
     StyleNotApplicable = "STYLE_NOT_APPLICABLE",
     /// Table structure is inconsistent (spans, column counts, header rows).

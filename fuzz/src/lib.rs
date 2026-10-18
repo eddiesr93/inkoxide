@@ -6,8 +6,8 @@ use std::sync::LazyLock;
 pub mod svg;
 
 use inkoxide::{
-    Encryption, FontStore, ImageStore, InkoxideError, InputFormat, PdfALevel, Permissions,
-    RenderOptions, ValidationCode,
+    AttachmentStore, Encryption, FontStore, ImageStore, InkoxideError, InputFormat, PdfALevel,
+    Permissions, RenderOptions, ValidationCode,
 };
 use serde_json::{json, Map, Value};
 
@@ -123,6 +123,21 @@ pub static FONTS: LazyLock<FontStore> = LazyLock::new(|| {
     }
     f
 });
+
+/// The files `attachments` name by `src`: an XML invoice and a few binary
+/// bytes.
+pub static ATTACHMENTS: LazyLock<AttachmentStore> = LazyLock::new(|| {
+    let mut s = AttachmentStore::new();
+    s.insert("att-xml", b"<?xml version=\"1.0\"?><Invoice/>".to_vec());
+    s.insert(
+        "att-bin",
+        vec![0u8, 1, 2, 0xFF, 0xFE, b'%', b'%', b'E', b'O', b'F'],
+    );
+    s
+});
+
+/// The names the generator gives its attachments, which icons name.
+const FILE_NAMES: &[&str] = &["factur-x.xml", "data.bin", "Grüße.txt"];
 
 /// The fixture images, by file name as `fixtures/docs` expects; `svgtext`
 /// is `text` under the name the generator has used.
@@ -295,6 +310,7 @@ fn check_encrypted(
     let options = RenderOptions::default()
         .with_compress(false)
         .with_threads(1)
+        .with_attachments(ATTACHMENTS.clone())
         .with_encryption(
             Encryption::new()
                 .with_user_password("fuzz user")
@@ -748,7 +764,8 @@ fn render_with(
     let errors = inkoxide::validate(doc, format, fonts, images);
     let mut options = RenderOptions::default()
         .with_compress(false)
-        .with_threads(1);
+        .with_threads(1)
+        .with_attachments(ATTACHMENTS.clone());
     if let Some(level) = pdf_a {
         options = options.with_pdf_a_level(level);
     }
@@ -771,10 +788,17 @@ fn render_with(
         {
             assert!(
                 pdf_a == Some(PdfALevel::A1b)
-                    || (pdf_a.is_some() && e.message.contains("page side")),
+                    || (pdf_a.is_some() && e.message.contains("page side"))
+                    || (pdf_a == Some(PdfALevel::A2b) && e.path == "attachments[0]"),
                 "PDFA_CONFLICT at {pdf_a:?}: {e:?}"
             );
         }
+        // What only a render knows: the attachment store, and that XMP
+        // extensions have no metadata to go in without PDF/A.
+        Err(InkoxideError::Validation(e))
+            if errors.is_empty()
+                && (e.code == ValidationCode::AttachmentNotRegistered
+                    || (pdf_a.is_none() && e.path == "meta.xmpExtensions")) => {}
         Err(InkoxideError::Validation(e)) => {
             assert!(
                 !errors.is_empty(),
@@ -1545,11 +1569,15 @@ fn run(s: &mut Src) -> Value {
         if s.chaos && s.chance(20) {
             m.insert("text".into(), json!("x"));
         }
-        let mut n = note(s);
-        if s.chance(128) {
-            n["contents"] = json!("In the line");
+        if s.chance(64) {
+            m.insert("attachment".into(), attachment(s));
+        } else {
+            let mut n = note(s);
+            if s.chance(128) {
+                n["contents"] = json!("In the line");
+            }
+            m.insert("note".into(), n);
         }
-        m.insert("note".into(), n);
     }
     // Images in the line are aligned more often: they have the most
     // values.
@@ -1942,6 +1970,92 @@ fn note(s: &mut Src) -> Value {
     Value::Object(m)
 }
 
+/// An attachment icon: a declared file (or, with chaos, another), an
+/// icon, a colour, contents at their limit and past it.
+fn attachment(s: &mut Src) -> Value {
+    let mut m = Map::new();
+    let file = if s.chaos && s.chance(30) {
+        "missing.pdf"
+    } else {
+        s.pick(FILE_NAMES)
+    };
+    m.insert("file".into(), json!(file));
+    if s.chance(128) {
+        let icons = ["pushPin", "paperclip", "graph", "tag"];
+        let icon = if s.chaos && s.chance(20) {
+            "Paperclip"
+        } else {
+            s.pick(&icons)
+        };
+        m.insert("icon".into(), json!(icon));
+    }
+    if s.chance(80) {
+        m.insert("color".into(), color(s));
+    }
+    if s.chance(80) {
+        let contents = match s.below(4) {
+            0 => "c".repeat(8000 + usize::from(s.chaos)),
+            1 if s.chaos => String::new(),
+            _ => text(s),
+        };
+        m.insert("contents".into(), json!(contents));
+    }
+    Value::Object(m)
+}
+
+/// The `attachments` of a document: each of [`FILE_NAMES`] from the store
+/// or inline, with a type, a relationship and a date; with chaos, names
+/// and values that are refused.
+fn attachments(s: &mut Src) -> Value {
+    let mut out = Vec::new();
+    for (i, name) in FILE_NAMES.iter().enumerate() {
+        if !s.chance(200) {
+            continue;
+        }
+        let mut m = Map::new();
+        let name = match s.below(10) {
+            0 if s.chaos => "a/b",
+            1 if s.chaos => FILE_NAMES[(i + 1) % FILE_NAMES.len()],
+            _ => name,
+        };
+        m.insert("name".into(), json!(name));
+        match s.below(4) {
+            0 => m.insert("data".into(), json!("aGVsbG8=")),
+            1 if s.chaos => m.insert("data".into(), json!("!not base64")),
+            2 if s.chaos => m.insert("src".into(), json!("missing")),
+            _ => m.insert(
+                "src".into(),
+                json!(if i == 0 { "att-xml" } else { "att-bin" }),
+            ),
+        };
+        if s.chance(128) {
+            let mime = if s.chaos && s.chance(30) {
+                "text"
+            } else {
+                "text/xml"
+            };
+            m.insert("mimeType".into(), json!(mime));
+        }
+        if s.chance(64) {
+            let rel = s.pick(&["source", "data", "alternative", "supplement", "unspecified"]);
+            m.insert("relationship".into(), json!(rel));
+        }
+        if s.chance(64) {
+            let date = if s.chaos && s.chance(40) {
+                "yesterday"
+            } else {
+                "2026-10-17T09:00:00+02:00"
+            };
+            m.insert("modified".into(), json!(date));
+        }
+        if s.chance(64) {
+            m.insert("description".into(), json!(text(s)));
+        }
+        out.push(Value::Object(m));
+    }
+    Value::Array(out)
+}
+
 /// Pages that show a node: a keyword, or page numbers counted from either
 /// end.
 fn page_filter(s: &mut Src) -> Value {
@@ -2070,7 +2184,16 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
         ])
     } else {
         s.pick(&[
-            "box", "box", "text", "text", "image", "table", "field", "note", "spacer",
+            "box",
+            "box",
+            "text",
+            "text",
+            "image",
+            "table",
+            "field",
+            "note",
+            "spacer",
+            "attachment",
         ])
     };
     let mut m = Map::new();
@@ -2152,6 +2275,9 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
         }
         "note" => {
             m.insert("note".into(), note(s));
+        }
+        "attachment" => {
+            m.insert("attachment".into(), attachment(s));
         }
         "image" => {
             image_props(s, &mut m);
@@ -2329,9 +2455,15 @@ pub fn document(data: &[u8]) -> Vec<u8> {
     // An unknown value takes a high byte: an exhausted source reads zeros,
     // and would otherwise break every chaos document here.
     if s.chance(40) {
-        let modes = ["useNone", "useOutlines", "useThumbs", "fullScreen"];
+        let modes = [
+            "useNone",
+            "useOutlines",
+            "useThumbs",
+            "fullScreen",
+            "useAttachments",
+        ];
         let mode = if s.chaos && !s.chance(196) {
-            "useAttachments"
+            "useFiles"
         } else {
             s.pick(&modes)
         };
@@ -2370,7 +2502,7 @@ pub fn document(data: &[u8]) -> Vec<u8> {
         1 if s.chaos => json!({"a": "logo", "😀😀": "logo", "😀": "missing", "👍🏽": "bad"}),
         _ => json!({}),
     };
-    let doc = json!({
+    let mut doc = json!({
         "version": 1,
         "meta": meta,
         "fonts": fonts,
@@ -2378,6 +2510,18 @@ pub fn document(data: &[u8]) -> Vec<u8> {
         "emojiImages": emoji,
         "pages": pages,
     });
+    if s.chance(60) {
+        doc["attachments"] = attachments(s);
+    }
+    if s.chance(30) {
+        let prefix = if s.chaos && s.chance(40) { "dc" } else { "fx" };
+        doc["meta"]["xmpExtensions"] = json!([{
+            "schema": "Factur-X PDFA Extension Schema",
+            "namespace": "urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#",
+            "prefix": prefix,
+            "properties": [{"name": "DocumentType", "value": "INVOICE", "description": "INVOICE"}]
+        }]);
+    }
     doc.to_string().into_bytes()
 }
 
@@ -2575,6 +2719,10 @@ mod tests {
             // and in CFF2.
             r#""font":"VarTest-max""#,
             r#""font":"VarCFF2-100""#,
+            // Files, their icons and the PDF/A metadata that describes them.
+            r#""type":"attachment""#,
+            r#""attachments":[{"#,
+            r#""xmpExtensions":[{"#,
         ];
         // Boxes nested close to the parser's limit (keys are sorted).
         let deep = r#"{"children":["#.repeat(56);
