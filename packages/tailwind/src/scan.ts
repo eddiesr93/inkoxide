@@ -5,7 +5,7 @@
  * `bg-(--brand)`) stay whole, quotes and commas inside them included.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { extname, join, sep } from 'node:path';
 
 /** The files it reads, by extension. */
 export const SCANNED = new Set([
@@ -97,13 +97,39 @@ function add(token: string, out: Set<string>): void {
 }
 
 /**
- * The files under `roots` (directories or files) that it reads, without `node_modules`, build
- * output and hidden directories, nor `exclude` (absolute paths): in a directory, those of the
- * types in `SCANNED`; a root that is a file, whatever its type.
+ * The files under a directory whose paths match a glob, whatever their type: a theme's
+ * `@source "../src/**\/*.tsx"` (`sources.ts`). `match` is tested on the path relative to `dir`,
+ * with `/` between its parts.
  */
-export function sourceFiles(roots: readonly string[], exclude: ReadonlySet<string> = new Set()): string[] {
-  const files: string[] = [];
-  const walk = (path: string, level: number) => {
+export interface SourceGlob {
+  dir: string;
+  match: RegExp;
+}
+
+/** Whether `path` is under `glob`'s directory and matches it. */
+export function matchesGlob(path: string, glob: SourceGlob): boolean {
+  if (!path.startsWith(glob.dir + sep)) return false;
+  return glob.match.test(
+    path
+      .slice(glob.dir.length + 1)
+      .split(sep)
+      .join('/'),
+  );
+}
+
+/**
+ * The files under `roots` that it reads, without `node_modules`, build output and hidden
+ * directories, nor `exclude` (absolute paths) and the files `excludeGlobs` match: in a directory,
+ * those of the types in `SCANNED`; a root that is a file, whatever its type; under a glob, those
+ * it matches. Each file once, in the order found.
+ */
+export function sourceFiles(
+  roots: readonly (string | SourceGlob)[],
+  exclude: ReadonlySet<string> = new Set(),
+  excludeGlobs: readonly SourceGlob[] = [],
+): string[] {
+  const files = new Set<string>();
+  const walk = (path: string, level: number, glob: SourceGlob | undefined) => {
     if (exclude.has(path)) return;
     let stat;
     try {
@@ -115,13 +141,18 @@ export function sourceFiles(roots: readonly string[], exclude: ReadonlySet<strin
       const name = path.split(/[\\/]/).pop() ?? '';
       if (level > 0 && (SKIPPED.has(name) || name.startsWith('.'))) return;
       if (level === 1 && OUTPUT.has(name)) return;
-      for (const entry of readdirSync(path).sort()) walk(join(path, entry), level + 1);
-    } else if (stat.isFile() && (level === 0 || SCANNED.has(extname(path))) && stat.size <= MAX_FILE) {
-      files.push(path);
+      for (const entry of readdirSync(path).sort()) walk(join(path, entry), level + 1, glob);
+      return;
     }
+    if (!stat.isFile() || stat.size > MAX_FILE) return;
+    const kept = glob === undefined ? level === 0 || SCANNED.has(extname(path)) : matchesGlob(path, glob);
+    if (kept && !excludeGlobs.some((g) => matchesGlob(path, g))) files.add(path);
   };
-  for (const root of roots) walk(root, 0);
-  return files;
+  for (const root of roots) {
+    if (typeof root === 'string') walk(root, 0, undefined);
+    else walk(root.dir, 0, root);
+  }
+  return [...files];
 }
 
 /** The tokens of `files` that may be classes. */

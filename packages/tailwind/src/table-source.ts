@@ -75,6 +75,12 @@ export class TableSource implements ClassSource {
 }
 
 /** `value` as a table, or why it is not one this version reads. */
+/**
+ * Where a module that Next.js's Turbopack bundles in place of `@inkoxide/tailwind` leaves the
+ * table (`withInkoxideTailwind()`): Turbopack has no hook to put it in `table.ts`.
+ */
+export const TABLE_GLOBAL = Symbol.for('@inkoxide/tailwind table');
+
 export function checkTable(value: unknown): Table {
   if (value == null) {
     throw new Error(

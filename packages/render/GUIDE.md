@@ -175,9 +175,12 @@ it.
 - **In a browser**, the Tailwind compiler is about 90 KB to download with brotli. The build
   plugin of `@inkoxide/tailwind` replaces it with a table of the classes your sources use, a
   few KB ([`@inkoxide/tailwind` README](../tailwind/README.md#in-a-browser-bundle)):
-  `plugins: [inkoxideTailwind()]` in a Vite config. Then write each class whole: one put
-  together at run time (`` `bg-${color}-500` ``) is not in the table, unless it is in the
-  plugin's `safelist`.
+  `plugins: [inkoxideTailwind()]` in a Vite config (`inkoxideTailwindEsbuild()` for esbuild,
+  `inkoxideTailwindWebpack()` for webpack and Rspack), or `withInkoxideTailwind(nextConfig)` in
+  `next.config.ts` for Next.js 15.3 or later, with Turbopack or webpack. The theme's `@source`
+  directives add to what it scans. Then write each class whole: one put together at run time
+  (`` `bg-${color}-500` ``) is not in the table, unless it is in the plugin's `safelist`. With
+  Turbopack, `next dev` scans when it starts: restart it for a class that is new since.
 
 ## Fonts
 

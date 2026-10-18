@@ -1,4 +1,4 @@
-import { checkTable, TableSource } from './table-source.ts';
+import { checkTable, TABLE_GLOBAL, TableSource } from './table-source.ts';
 import { TABLE } from './table.ts';
 /**
  * `@inkoxide/tailwind` without Tailwind's compiler: classes come from a table of the classes a
@@ -14,7 +14,7 @@ export * from './exports.ts';
  * the build used (the plugin's `css` or `cssFile`); `base` is not used.
  */
 export async function initTailwind(opts: TailwindOptions = {}): Promise<void> {
-  const table = checkTable(TABLE);
+  const table = checkTable(TABLE ?? (globalThis as { [TABLE_GLOBAL]?: unknown })[TABLE_GLOBAL]);
   if (opts.css !== undefined && opts.css !== table.css) {
     throw new Error(
       "@inkoxide/tailwind: initTailwind({ css }) has another theme than the one the build used: give the same CSS to the Tailwind build plugin's `css` or `cssFile` option.",
