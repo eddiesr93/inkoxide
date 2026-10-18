@@ -85,6 +85,12 @@ struct Nesting<'m> {
     rewrites: Option<&'m Rewrites>,
 }
 
+/// Parses `bytes` as XML, with the limits on nodes and entities of an SVG
+/// image; the message of what failed.
+pub(crate) fn parse_document(bytes: &[u8]) -> Result<Document<'_>, String> {
+    parse_xml(bytes).map_err(Reject::message)
+}
+
 fn parse_xml(bytes: &[u8]) -> Result<Document<'_>, Reject> {
     let text =
         std::str::from_utf8(bytes).map_err(|_| Reject::Invalid("SVG is not valid UTF-8".into()))?;

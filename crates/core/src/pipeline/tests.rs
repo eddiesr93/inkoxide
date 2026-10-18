@@ -1116,7 +1116,7 @@ fn colour_glyphs_take_the_colour_of_their_run() {
         .ops
         .iter()
         .filter_map(|op| match op {
-            Op::Image { key, .. } => Some(key),
+            Op::ColorGlyph(g) => Some((g.font, g.code)),
             _ => None,
         })
         .collect();
@@ -1125,15 +1125,15 @@ fn colour_glyphs_take_the_colour_of_their_run() {
     assert_ne!(keys[0], keys[1]);
     assert_eq!(keys[0], keys[2]);
     assert_eq!(keys[3], keys[4]);
-    // Three images: two stars and a grin.
+    // Three glyphs of the Type 3 font: two stars and a grin.
     let mut distinct = keys.clone();
     distinct.sort_unstable();
     distinct.dedup();
     assert_eq!(distinct.len(), 3);
 }
 
-/// With `debug`, colour glyphs are still images: the outlined paragraph is
-/// painted as any other.
+/// With `debug`, colour glyphs are still drawn in colour: the outlined
+/// paragraph is painted as any other.
 #[test]
 fn outlined_text_draws_its_colour_glyphs_as_images() {
     for fallback in ["EmojiTest-COLR", "EmojiTest-CBDT"] {
@@ -1141,7 +1141,7 @@ fn outlined_text_draws_its_colour_glyphs_as_images() {
         let (outlined, ids) = emoji_ops_in("a \u{1F600} b", fallback, "Inter-Regular", true);
         let images = |ops: &[Op]| {
             ops.iter()
-                .filter(|op| matches!(op, Op::Image { .. }))
+                .filter(|op| matches!(op, Op::ColorGlyph(_)))
                 .count()
         };
         assert_eq!(images(&plain[0]), 1, "{fallback}");
@@ -1165,16 +1165,16 @@ fn outlined_text_draws_its_colour_glyphs_as_images() {
     }
 }
 
-/// The space in a colour glyph's span is one of its run's font, which is
-/// embedded anyway, not the first font of the document; in a run whose
-/// font has no outlines, of the first font without colour.
+/// A colour glyph is text, so its span needs no space. The space in the
+/// span of a glyph that draws nothing, in a run whose font has no
+/// outlines, is of the first font without colour, not the run's.
 #[test]
-fn colour_glyph_spans_carry_a_space_of_the_run_s_font() {
+fn spans_of_glyphs_that_draw_nothing_carry_a_space() {
     for (font, want) in [
-        ("NotoSans-Regular", "NotoSans-Regular"),
-        ("EmojiTest-CBDT", "Inter-Regular"),
+        ("NotoSans-Regular", &[][..]),
+        ("EmojiTest-CBDT", &["Inter-Regular"][..]),
     ] {
-        let (pages, ids) = emoji_ops_in("\u{1F600}", "EmojiTest-COLR", font, false);
+        let (pages, ids) = emoji_ops_in("\u{1F600} a", "EmojiTest-COLR", font, false);
         let spaces: Vec<&str> = pages[0]
             .iter()
             .filter_map(|op| match op {
@@ -1182,18 +1182,17 @@ fn colour_glyph_spans_carry_a_space_of_the_run_s_font() {
                 _ => None,
             })
             .collect();
-        assert_eq!(spaces, [want], "{font}");
+        assert_eq!(spaces, want, "{font}");
     }
 }
 
 #[test]
-fn colour_glyphs_are_images_in_spans_with_their_text() {
+fn colour_glyphs_are_type3_glyphs_in_spans_with_their_text() {
     for fallback in ["EmojiTest-COLR", "EmojiTest-CBDT"] {
         let (pages, ids) = emoji_ops("a \u{1F600}\u{1F1EB}\u{1F1F7} b", fallback);
         let ops = &pages[0];
-        // Each colour glyph: a span with its text, the image, and an
-        // invisible space of Inter as wide as the glyph's advance (22 pt:
-        // 1100 units of a 1000-unit em at 20 pt).
+        // Each colour glyph: a span with its text and the glyph of its
+        // Type 3 font, on the baseline.
         let spans: Vec<&str> = ops
             .iter()
             .filter_map(|op| match op {
@@ -1213,39 +1212,34 @@ fn colour_glyphs_are_images_in_spans_with_their_text() {
             [&["\u{1F600}", "\u{1F1EB}\u{1F1F7}"][..], space].concat(),
             "{fallback}"
         );
-        let images = ops
-            .iter()
-            .filter(|op| matches!(op, Op::Image { .. }))
-            .count();
-        assert_eq!(images, 2, "{fallback}");
-        let spaces: Vec<_> = ops
+        let glyphs: Vec<_> = ops
             .iter()
             .filter_map(|op| match op {
-                Op::InvisibleText(g) => Some(g),
+                Op::ColorGlyph(g) => Some(g),
                 _ => None,
             })
             .collect();
-        assert_eq!(spaces.len(), 2 + space.len());
-        for g in &spaces[..2] {
-            assert_eq!(ids[g.font as usize], "Inter-Regular");
-            assert!(close(g.width, 22.0), "{}", g.width);
-        }
+        assert_eq!(glyphs.len(), 2, "{fallback}");
+        assert_ne!(glyphs[0].code, glyphs[1].code);
+        assert!(close(glyphs[0].size, 20.0) && close(glyphs[1].x - glyphs[0].x, 22.0));
+        assert!(!ops.iter().any(|op| matches!(op, Op::Image { .. })));
+        // Only the space of the font without outlines has an invisible
+        // space, of Inter.
+        let spaces: Vec<_> = ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::InvisibleText(g) => Some(ids[g.font as usize].as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(spaces, vec!["Inter-Regular"; space.len()]);
         let at = |want: fn(&Op) -> bool| ops.iter().position(want).unwrap();
-        let (span, image) = (
+        let (span, glyph, end) = (
             at(|op| matches!(op, Op::Span { .. })),
-            at(|op| matches!(op, Op::Image { .. })),
-        );
-        let (space, end) = (
-            at(|op| matches!(op, Op::InvisibleText(_))),
+            at(|op| matches!(op, Op::ColorGlyph(_))),
             at(|op| matches!(op, Op::EndSpan)),
         );
-        assert!(span < image && image < space && space < end, "{ops:#?}");
-        // The image fills the glyph's box: 1000 units from x 50 (COLR) or
-        // 46.875 (CBDT), at 20 pt.
-        let Op::Image { matrix, .. } = &ops[image] else {
-            unreachable!()
-        };
-        assert!(close(matrix[0], 20.0), "{fallback}: {matrix:?}");
+        assert!(span < glyph && glyph < end, "{ops:#?}");
         // The letters stay text in Inter; the colour font draws no text
         // but the spaces next to the emoji.
         for op in ops {
@@ -1264,7 +1258,7 @@ fn text_without_colour_fonts_paints_no_spans() {
     let (pages, _) = emoji_ops("plain text", "EmojiTest-COLR");
     assert!(!pages[0].iter().any(|op| matches!(
         op,
-        Op::Span { .. } | Op::Image { .. } | Op::InvisibleText(_)
+        Op::Span { .. } | Op::Image { .. } | Op::InvisibleText(_) | Op::ColorGlyph(_)
     )));
 }
 

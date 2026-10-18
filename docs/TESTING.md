@@ -163,10 +163,10 @@ only on demand, from the Actions tab, with the ID of that release run.
 - `fixtures/fonts/limits/glyph-doubling.ttf`: a font made with fontTools
   for the shaping limit in `limits.rs`. Its GSUB substitutes `A` with
   `AA` in 14 lookups, so `A` shapes to 16 384 glyphs.
-- `fixtures/fonts/EmojiTest-COLR.ttf`, `EmojiTest-CBDT.ttf` and
+- `fixtures/fonts/EmojiTest-COLR.ttf`, `EmojiTest-SVG.ttf`, `EmojiTest-CBDT.ttf` and
   `EmojiTest-sbix.ttf`: small colour emoji fonts written from scratch by
   `scripts/fixtures/emoji_fonts.py` (outlines with `COLR` v0 and v1
-  glyphs, and PNG bitmaps without outlines, the sbix ones in two strikes
+  glyphs, outlines with an `SVG` table, and PNG bitmaps without outlines, the sbix ones in two strikes
   so that the largest is the one drawn), with ligatures for a ZWJ
   sequence, a flag, a keycap and a skin tone. The script also writes
   `fixtures/fonts/limits/colr-fanout.ttf`, a `COLR` glyph whose layers

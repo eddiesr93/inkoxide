@@ -95,8 +95,8 @@ const FIXTURE_FONTS: &[(&str, &str, u16, &str, &[u8])] = &[
         "normal",
         include_bytes!("../../fixtures/fonts/VertTest.ttf"),
     ),
-    // Colour fonts: COLR layers with outlines, PNG bitmaps without (CBDT
-    // and sbix).
+    // Colour fonts: COLR layers and SVG documents with outlines, PNG
+    // bitmaps without (CBDT and sbix).
     (
         "EmojiTest-COLR",
         "Emoji Test",
@@ -118,11 +118,18 @@ const FIXTURE_FONTS: &[(&str, &str, u16, &str, &[u8])] = &[
         "normal",
         include_bytes!("../../fixtures/fonts/EmojiTest-sbix.ttf"),
     ),
+    (
+        "EmojiTest-SVG",
+        "Emoji Test SVG",
+        400,
+        "normal",
+        include_bytes!("../../fixtures/fonts/EmojiTest-SVG.ttf"),
+    ),
 ];
 
 /// The colour fonts among [`FIXTURE_FONTS`]: the last ones.
 #[cfg(test)]
-const COLOUR_FONTS: usize = 3;
+const COLOUR_FONTS: usize = 4;
 
 pub static FONTS: LazyLock<FontStore> = LazyLock::new(|| {
     let mut f = FontStore::new();
@@ -2668,6 +2675,7 @@ pub fn document(data: &[u8]) -> Vec<u8> {
         0 => &[],
         1 => &["NotoSans-Regular", "EmojiTest-COLR"],
         2 => &["EmojiTest-CBDT", "EmojiTest-COLR"],
+        4 => &["EmojiTest-SVG", "EmojiTest-COLR"],
         3 => &[
             "NotoSansArabic-Regular",
             "NotoSansHebrew-Regular",
@@ -2899,6 +2907,7 @@ mod tests {
             r#""pageMode":"#,
             r#""pageLayout":"twoPage"#,
             r#""EmojiTest-sbix"]"#,
+            r#""EmojiTest-SVG","#,
             // Alt on an image node (keys are sorted) and on an image in text.
             r#"[{"alt":"#,
             r#""image":{"alt":"#,

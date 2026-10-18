@@ -1,0 +1,113 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Colour emoji (SVG)"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "EmojiTest-SVG",
+   "family": "Emoji Test SVG"
+  }
+ ],
+ "fallbackFonts": [
+  "EmojiTest-SVG"
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 420,
+    "height": 220
+   },
+   "margin": {
+    "top": 20,
+    "right": 20,
+    "bottom": 20,
+    "left": 20
+   },
+   "children": [
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "Colour emoji from an SVG table: gzipped, shared and nested documents",
+       "font": "Inter-Regular",
+       "size": 11
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "lineHeight": 1.5,
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "SVG, as a fallback: smile 😀 heart ❤️ star ⭐ thumbs 👍 flag 🏁 end",
+       "font": "Inter-Regular",
+       "size": 12
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "style": {
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "runs": [
+      {
+       "text": "😀❤️⭐👍🏁",
+       "font": "EmojiTest-SVG",
+       "size": 40
+      }
+     ]
+    },
+    {
+     "type": "text",
+     "runs": [
+      {
+       "text": "The star takes the text's colour (context-fill): ",
+       "font": "Inter-Regular",
+       "size": 12
+      },
+      {
+       "text": "⭐",
+       "font": "EmojiTest-SVG",
+       "size": 24,
+       "color": [
+        0.08,
+        0.4,
+        0.75,
+        1
+       ]
+      },
+      {
+       "text": " ⭐",
+       "font": "EmojiTest-SVG",
+       "size": 24,
+       "color": [
+        0.18,
+        0.49,
+        0.2,
+        1
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

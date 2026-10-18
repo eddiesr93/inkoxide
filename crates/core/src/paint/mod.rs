@@ -109,6 +109,9 @@ pub(crate) enum Op {
     /// One glyph drawn invisibly, stretched to a width: text that can be
     /// selected and extracted where nothing shows it (see [`span`]).
     InvisibleText(InvisibleGlyph),
+    /// A colour glyph, drawn as a glyph of a Type 3 font
+    /// (`ColorGlyphs::push`).
+    ColorGlyph(ColorGlyphOp),
     /// In tagged output, starts the content of a structure element: what
     /// is drawn until [`Op::EndTag`] belongs to it. Tags do not nest; the
     /// writer ends their marked content at each save level and starts it
@@ -139,6 +142,18 @@ pub(crate) enum Op {
 pub(crate) enum PageBand {
     Header,
     Footer,
+}
+
+/// Code `code` of Type 3 font `font` (an index into
+/// `ColorGlyphs::type3`) at `size`, its origin at (`x`, `y`) on the
+/// baseline.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ColorGlyphOp {
+    pub font: u16,
+    pub code: u8,
+    pub size: f32,
+    pub x: f32,
+    pub y: f32,
 }
 
 /// A glyph of `font` at `size`, drawn invisibly (text rendering mode 3)

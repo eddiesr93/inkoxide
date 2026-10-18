@@ -156,13 +156,15 @@ sequences), which take one font each so the font's ligature can form; a
 sequence with emoji presentation tries the colour fallback fonts first.
 After shaping, the glyphs text uses from colour fonts become images once
 per render (`text/color.rs`): `fonts/color.rs` writes `COLR` v0 and v1
-glyphs as SVG, under a work budget, and takes PNG bitmaps from `CBDT` and
-`sbix`; they decode through `images` like document images. A `COLR`
-glyph with layers in the foreground colour becomes one image per run
-colour it is drawn in. The painter
-then replaces each colour glyph with its image, in a `/Span` whose
-`/ActualText` is the glyph's text, with an invisible space for text
-extraction. A font with colour bitmaps and no outlines is never embedded.
+glyphs as SVG, under a work budget, takes the glyphs of the `SVG` table
+alone in font units, and takes PNG bitmaps from `CBDT` and `sbix`; they
+decode through `images` like document images. A colour glyph in the run's
+colour becomes one image per run colour it is drawn in. Each image is a
+glyph of a Type 3 font (`pdf/type3.rs`), up to 255 per font: the painter
+shows the glyph in a `/Span` whose `/ActualText` is its text, and the
+font's `ToUnicode` map gives the text it was first drawn with. In the text
+of an SVG image, a colour glyph is its image instead. A font with colour
+bitmaps and no outlines is never embedded.
 
 Two third-party crates stay behind one module each, so replacing them
 touches only that module: ttf-parser (font parsing) is used only in
@@ -233,7 +235,7 @@ its place as PDF text (`pdf/svg.rs`). See
 for min-content / max-content / definite widths and gets the paragraph's
 size. Glyph → Unicode mappings are collected while shaping and become the
 ToUnicode CMaps, so text is selectable and searchable; colour glyphs carry
-theirs as `ActualText`. Form fields are drawn without shaping: the glyphs
+theirs as `ActualText` too. Form fields are drawn without shaping: the glyphs
 their appearances show, and those embedded for editing, are added to the
 same maps when the PDF is written (`FontPrograms::field_text`).
 

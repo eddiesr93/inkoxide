@@ -4,13 +4,17 @@ tools, no third-party artwork), so they are small and free of licences:
 
 - fixtures/fonts/EmojiTest-COLR.ttf: TrueType outlines plus COLR v0 and v1
   colour glyphs (solid fills, linear, radial and sweep gradients,
-  transforms, a composite, a glyph reused through PaintColrGlyph, clip
+  transforms, composites in several modes, a glyph reused through PaintColrGlyph, clip
   boxes, a layer in the foreground colour), and GSUB ligatures for a ZWJ
   sequence, a flag, a keycap and a skin tone;
 - fixtures/fonts/EmojiTest-CBDT.ttf: no outlines, PNG bitmaps in CBDT, and
   the same ligatures for the flag;
 - fixtures/fonts/EmojiTest-sbix.ttf: no outlines, PNG bitmaps in sbix, in
   two strikes (32 and 64 ppem);
+- fixtures/fonts/EmojiTest-SVG.ttf: TrueType outlines plus an SVG table:
+  a compressed document of one glyph with a root viewBox, a document of
+  two glyphs with shared definitions (one in the text colour), and one
+  whose glyphs are nested in a group;
 - fixtures/fonts/limits/colr-fanout.ttf: one COLR v1 glyph whose layers
   each paint the next level's glyph, 255 times per level, eight levels
   deep (about 10^19 paints): the painter's work budget must stop it;
@@ -23,6 +27,7 @@ fails when it differs, so edit this script, not the fonts.
 
   scripts/fixtures/emoji_fonts.py
 """
+import gzip
 import math
 import pathlib
 import struct
@@ -511,6 +516,8 @@ def colr_font():
     star = add("star", [diamond(550, 350, 450, 450)])
     l_star = add("l_star", [diamond(550, 350, 450, 450)])
     l_dot = add("l_dot", [circle(550, 350, 120)])
+    # Composites in other modes: a blend, a source-in and a destination-out.
+    art = add("art", [rect(50, -150, 1050, 850)])
 
     palette = [
         (255, 200, 40, 255),   # 0 yellow
@@ -561,6 +568,11 @@ def colr_font():
             ("composite", ("glyph", l_shine, solid(7, 0.6)), 3, ("glyph", l_screen, solid(8))),
             ("rotate", 0.02, ("glyph", l_base, solid(2))),
         ),
+        art: colr_layers(
+            ("composite", ("glyph", l_dot, solid(3)), 23, ("glyph", l_face, solid(0))),
+            ("composite", ("glyph", l_eye_l, solid(6)), 5, ("glyph", l_heart_l, solid(11))),
+            ("composite", ("glyph", l_eye_r, solid(7)), 8, ("glyph", l_tip, solid(1))),
+        ),
         woman_laptop: colr_layers(
             ("transform", (0.6, 0, 0, 0.6, 0, 300), ("colrglyph", woman)),
             ("translate", 420, 0, ("transform", (0.55, 0, 0.1, 0.55, 0, 0), ("colrglyph", laptop))),
@@ -570,7 +582,7 @@ def colr_font():
     mapping = {
         0x20: space, 0x31: one, 0x200D: zwj, 0x20E3: keycap_mark, 0xFE0F: vs16,
         0x2764: heart_g, 0x1F1EB: ri_f, 0x1F1F7: ri_r, 0x1F3FD: tone, 0x1F44D: thumbs,
-        0x1F469: woman, 0x1F4BB: laptop, 0x1F600: grin, 0x2B50: star,
+        0x1F469: woman, 0x1F4BB: laptop, 0x1F600: grin, 0x2B50: star, 0x1F3A8: art,
     }
     ligatures = [
         ([ri_f, ri_r], flag_fr),
@@ -652,6 +664,69 @@ def sbix_font():
     return bitmap_font("Emoji Test sbix", glyphs, mapping, {"sbix": sbix, "GSUB": gsub_table})
 
 
+def svg_table(docs):
+    """An SVG table of `docs`, (first glyph, last glyph, document bytes)."""
+    records = struct.pack(">H", len(docs))
+    body = b""
+    first = 2 + 12 * len(docs)
+    for start, end, data in docs:
+        records += struct.pack(">HHII", start, end, first + len(body), len(data))
+        body += data
+    return struct.pack(">HII", 0, 10, 0) + records + body
+
+
+def svg_font():
+    names = [".notdef", "space", "grin", "heart", "star", "thumbs", "flag"]
+    shapes = {
+        ".notdef": [rect(50, 0, 550, 700)],
+        "grin": [circle(550, 350, 450)],
+        "heart": [circle(380, 470, 190), circle(720, 470, 190), diamond(550, 300, 340, 300)],
+        "star": [diamond(550, 350, 450, 450)],
+        "thumbs": [rect(250, -100, 650, 500)],
+        "flag": [rect(50, 0, 1050, 700)],
+    }
+    advances = {".notdef": 600, "space": 300}
+    glyphs = [Glyph(n, shapes.get(n, ()), advances.get(n, EMOJI_ADVANCE)) for n in names]
+    gid = {n: i for i, n in enumerate(names)}
+    ns = 'xmlns="http://www.w3.org/2000/svg"'
+    # Drawn at half size in a viewBox half the em, so it fills x 100..1000
+    # and y -800..100 (y down from the baseline); no glyph id, as the only
+    # glyph of its document; compressed.
+    grin = (
+        f'<?xml version="1.0"?><svg {ns} viewBox="0 0 500 500">'
+        '<defs><radialGradient id="face" cx="275" cy="-175" r="225" gradientUnits="userSpaceOnUse">'
+        '<stop offset="0" stop-color="#ffc828"/><stop offset="1" stop-color="#f07814"/></radialGradient></defs>'
+        '<circle cx="275" cy="-175" r="225" fill="url(#face)"/>'
+        '<circle cx="200" cy="-240" r="30" fill="#3c281e"/><circle cx="350" cy="-240" r="30" fill="#3c281e"/>'
+        "</svg>"
+    )
+    # Two glyphs and the gradient they share; the star in the text colour.
+    pair = (
+        f'<svg {ns}><defs><linearGradient id="red" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#dc1e3c"/><stop offset="1" stop-color="#a01428"/></linearGradient></defs>'
+        f'<g id="glyph{gid["heart"]}"><path fill="url(#red)" d="M210 -470A170 170 0 0 1 550 -470'
+        'A170 170 0 0 1 890 -470L550 0Z"/></g>'
+        f'<g id="glyph{gid["star"]}"><path fill="context-fill" d="M550 -800L1000 -350L550 100L100 -350Z"/>'
+        '<circle cx="550" cy="-350" r="120" fill="#ffc828"/></g>'
+        "</svg>"
+    )
+    # Glyphs in a group: drawn by reference.
+    nested = (
+        f'<svg {ns}><g>'
+        f'<g id="glyph{gid["thumbs"]}"><rect x="250" y="-500" width="400" height="600" fill="#fabe46"/></g>'
+        f'<g id="glyph{gid["flag"]}"><rect x="50" y="-700" width="1000" height="700" fill="#0032a0"/></g>'
+        "</g></svg>"
+    )
+    docs = [
+        (gid["grin"], gid["grin"], gzip.compress(grin.encode(), mtime=0)),
+        (gid["heart"], gid["star"], pair.encode()),
+        (gid["thumbs"], gid["flag"], nested.encode()),
+    ]
+    mapping = {0x20: gid["space"], 0x1F600: gid["grin"], 0x2764: gid["heart"], 0x2B50: gid["star"],
+               0x1F44D: gid["thumbs"], 0x1F3C1: gid["flag"]}
+    return outline_font("Emoji Test SVG", glyphs, mapping, {"SVG ": svg_table(docs)})
+
+
 def fanout_font(empty=False):
     levels = 8
     width = 255
@@ -684,6 +759,7 @@ def main():
         FONTS / "EmojiTest-COLR.ttf": colr_font(),
         FONTS / "EmojiTest-CBDT.ttf": cbdt_font(),
         FONTS / "EmojiTest-sbix.ttf": sbix_font(),
+        FONTS / "EmojiTest-SVG.ttf": svg_font(),
         FONTS / "limits" / "colr-fanout.ttf": fanout_font(),
         FONTS / "limits" / "colr-fanout-empty.ttf": fanout_font(empty=True),
     }

@@ -135,8 +135,19 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 - An `icon` for notes: `note` (the default), `comment`, `key`, `help`, `newParagraph`,
   `paragraph` or `insert`, written as the annotation's `/Name` and drawn into its appearance; a
   prop of `<Note>`.
+- Colour emoji from SVG-in-OpenType fonts (the `SVG ` table, its documents plain or gzipped, one
+  glyph each or many in one), with `currentColor` and `context-fill` taking the run's colour.
+  `COLR` v1 sweep gradients draw around their centre, with every stop, and its composite modes
+  draw as they say: the blend modes (`multiply`, `screen`, `color-dodge` and the others) and the
+  Porter-Duff ones (`src-in`, `dest-out`, `xor` and the others; `plus` as `screen`). They drew
+  with the sweep's first colour, and as `src-over`.
 
 ### Changed
+
+- Colour glyphs in text are the glyphs of Type 3 fonts, one per colour font for each 255 of its
+  glyphs, instead of an image and an invisible space each: a glyph's image is in the PDF once,
+  and the text copies and searches through the font's `ToUnicode` map. Colour glyphs in the
+  text of an SVG image are still images.
 
 - `@inkoxide/react`: a negative `flexGrow` or `flexShrink` is refused with the same message as
   its Tailwind class, from `@inkoxide/style` (`flexGrow: -1 (cannot be negative)`); a `flexGrow`

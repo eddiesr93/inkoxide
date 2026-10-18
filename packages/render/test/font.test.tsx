@@ -195,13 +195,14 @@ describe('Font.register', () => {
       { compress: false },
     );
     const text = Buffer.from(pdf).toString('latin1');
-    // Each emoji is an image (and its alpha mask), in a span with its text;
-    // the font is not embedded. The space after the thumbs is the colour
-    // font's, which cannot draw it: it keeps its text in a span too.
+    // Each emoji is an image (and its alpha mask), drawn by a glyph of a
+    // Type 3 font; the font file is not embedded, only Inter's. The space
+    // after the thumbs is the colour font's, which cannot draw it: it keeps
+    // its text in a span.
     expect(text.match(/\/Subtype \/Image/g)).toHaveLength(4);
-    expect(text.match(/\/ActualText/g)).toHaveLength(3);
+    expect(text).toContain('/Name /EmojiTestCBDT-Regular-Color0');
+    expect(text.match(/\/FontFile/g)).toHaveLength(1);
     expect(text).toContain('/ActualText ( )');
-    expect(text).not.toContain('EmojiTestCBDT');
   });
 
   it('fails the render with the family and source when a font cannot be loaded, once', async () => {

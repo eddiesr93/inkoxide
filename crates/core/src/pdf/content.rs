@@ -39,6 +39,10 @@ pub(super) fn encode_page(
     let mut fields = Vec::new();
     let mut icons = Vec::new();
     let mut figures = Vec::new();
+    let mut type3 = BTreeSet::new();
+    let mut type3_text = BTreeMap::new();
+    // The text of the span open, which a colour glyph in it has.
+    let mut span: Option<&str> = None;
     // The element whose content is drawn.
     let mut owner: Option<StructId> = None;
     // Links and widgets are areas on the page: they cover where the
@@ -72,6 +76,16 @@ pub(super) fn encode_page(
             }
             Op::InvisibleText(g) => {
                 glyphs.entry(g.font).or_default().insert(g.glyph);
+            }
+            Op::Span { actual_text } => span = Some(actual_text),
+            Op::EndSpan => span = None,
+            Op::ColorGlyph(g) => {
+                type3.insert(g.font);
+                if let Some(text) = span {
+                    type3_text
+                        .entry((g.font, g.code))
+                        .or_insert_with(|| text.to_owned());
+                }
             }
             Op::Link {
                 rect,
@@ -128,6 +142,8 @@ pub(super) fn encode_page(
         icons,
         mcids: plan.map(|_| mcids),
         figures,
+        type3,
+        type3_text,
     })
 }
 
@@ -281,6 +297,11 @@ pub(super) fn image_name(key: ImageKey) -> String {
 
 pub(super) fn font_name(key: FontKey) -> String {
     format!("F{key}")
+}
+
+/// The resource name of Type 3 font `index` (of colour glyphs).
+pub(super) fn type3_name(index: u16) -> String {
+    format!("C{index}")
 }
 
 /// Text ops: one `TJ` per stretch of glyphs on the baseline, with kerning
@@ -477,7 +498,8 @@ pub(crate) fn marked_content_stream(
                 | Op::StrokePath { .. }
                 | Op::Text(_)
                 | Op::Image { .. }
-                | Op::InvisibleText(_) => m.draw(&mut c),
+                | Op::InvisibleText(_)
+                | Op::ColorGlyph(_) => m.draw(&mut c),
                 // Nothing drawn: state, clips and annotations.
                 Op::Transform(_)
                 | Op::ClipRect(_)
@@ -576,6 +598,13 @@ pub(crate) fn marked_content_stream(
             }
             Op::InvisibleText(g) => {
                 invisible_glyph(&mut c, g, font_name(g.font).as_bytes(), fonts, profile);
+            }
+            Op::ColorGlyph(g) => {
+                c.begin_text();
+                c.set_font(Name(type3_name(g.font).as_bytes()), round_pt(g.size));
+                c.set_text_matrix([1.0, 0.0, 0.0, -1.0, round_pt(g.x), round_pt(g.y)]);
+                c.show(Str(&[g.code]));
+                c.end_text();
             }
         }
     }

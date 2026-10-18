@@ -27,7 +27,7 @@ use crate::InkoxideError;
 
 /// The character collection of every font here (`Adobe-Identity-0`),
 /// inside the `CMap` stream.
-const IDENTITY: SystemInfo<'static> = SystemInfo {
+pub(super) const IDENTITY: SystemInfo<'static> = SystemInfo {
     registry: Str(b"Adobe"),
     ordering: Str(b"Identity"),
     supplement: 0,
@@ -35,7 +35,7 @@ const IDENTITY: SystemInfo<'static> = SystemInfo {
 
 /// [`IDENTITY`]'s registry and ordering strings, as `out` writes them in a
 /// dictionary.
-fn identity(out: &mut Out) -> [Vec<u8>; 2] {
+pub(super) fn identity(out: &mut Out) -> [Vec<u8>; 2] {
     [
         out.bytes(IDENTITY.registry.0),
         out.bytes(IDENTITY.ordering.0),
@@ -44,7 +44,7 @@ fn identity(out: &mut Out) -> [Vec<u8>; 2] {
 
 /// Writes a `CIDSystemInfo` dictionary of [`identity`]'s strings into `obj`,
 /// as pdf-writer's `system_info` does.
-fn system_info(obj: pdf_writer::Obj<'_>, [registry, ordering]: &[Vec<u8>; 2]) {
+pub(super) fn system_info(obj: pdf_writer::Obj<'_>, [registry, ordering]: &[Vec<u8>; 2]) {
     obj.dict()
         .pair(Name(b"Registry"), Str(registry))
         .pair(Name(b"Ordering"), Str(ordering))

@@ -13,6 +13,7 @@ mod out;
 mod pdfa;
 mod svg;
 mod tag;
+mod type3;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -32,7 +33,7 @@ pub(crate) use font::SUBSETS;
 
 use content::{
     alpha_key, bounds, clip, fill, font_name, gs_name, image_name, invisible_glyph, key_alpha,
-    path, set_fill, show_kerned, show_text,
+    path, set_fill, show_kerned, show_text, type3_name,
 };
 pub(crate) use image::transparency as image_transparency;
 pub(crate) use nav::written_uri_len;
@@ -67,6 +68,11 @@ pub(crate) struct EncodedPage {
     /// In tagged output, where each figure is (page coordinates, top-left
     /// origin): its bounding box is what it covers on its first page.
     pub figures: Vec<(crate::tag::StructId, Rect)>,
+    /// The Type 3 fonts of colour glyphs used, by index.
+    pub type3: BTreeSet<u16>,
+    /// The text of each colour glyph drawn, by Type 3 font and code: that
+    /// of its first span.
+    pub type3_text: BTreeMap<(u16, u8), String>,
 }
 
 /// A link of a page.
