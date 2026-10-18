@@ -405,7 +405,10 @@ fn a_document_without_what_pdf_ua_requires_is_refused() {
     let marked = doc(meta, &stamp(r#","bookmark":{"title":"Stamp"}"#));
     assert_eq!(
         refused(linked.clone(), &ua2),
-        ("UA_CONFLICT".into(), "pages[0].children[0].runs[0].link".into())
+        (
+            "UA_CONFLICT".into(),
+            "pages[0].children[0].runs[0].link".into()
+        )
     );
     assert_eq!(
         refused(marked.clone(), &ua2),
@@ -941,4 +944,73 @@ fn named_parts_of_an_svg_are_figures_of_their_own() {
         .filter(|k| k.get("/Stm").is_some())
         .count();
     assert!(stm >= 6, "{stm}");
+}
+
+/// An SVG drawn only with its parts tagged draws its text as it does
+/// untagged: a font only its text uses is embedded, and so are the images
+/// of its colour glyphs.
+#[test]
+fn the_text_of_an_svg_with_tagged_parts_is_embedded() {
+    let (fonts, mut images) = stores();
+    images.insert(
+        "chart".to_string(),
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40">
+  <rect aria-label="A bar" x="2" y="2" width="10" height="20"/>
+  <text x="20" y="30" font-family="Inter" font-weight="bold" font-size="10">Quarterly</text>
+  <text x="20" y="15" font-family="Emoji" font-size="10">😀</text>
+</svg>"#
+            .as_bytes()
+            .to_vec(),
+    );
+    let doc = r#"{"version":1,"meta":{"title":"T","lang":"en"},
+      "fonts":[{"id":"Inter-Regular","family":"Inter"},
+        {"id":"Inter-Bold","family":"Inter","weight":700},
+        {"id":"EmojiTest-CBDT","family":"Emoji"}],
+      "pages":[{"size":{"width":200,"height":200},"children":[
+        {"type":"text","runs":[{"text":"Page","font":"Inter-Regular","size":10}]},
+        {"type":"image","alt":"Chart","src":"chart","style":{"width":80,"height":40}}]}]}"#;
+    let run = |options: RenderOptions| {
+        let options = options.with_compress(false);
+        let pdf =
+            inkoxide::render(doc.as_bytes(), InputFormat::Json, &options, &fonts, &images).unwrap();
+        String::from_utf8_lossy(&pdf).into_owned()
+    };
+    let plain = run(RenderOptions::default());
+    let tagged = run(RenderOptions::default().with_tagged(true));
+    for needle in ["+Inter-Bold", "/Subtype /Image"] {
+        let count = plain.matches(needle).count();
+        assert!(count > 0, "{needle}");
+        assert_eq!(tagged.matches(needle).count(), count, "{needle}");
+    }
+}
+
+/// A part drawn in a layer of its own is a figure when it is all the layer
+/// draws: a shape with `opacity` (which usvg draws in a group around it),
+/// or a shape alone in a group with `opacity`. One beside others in such
+/// a group is read with the figure around it.
+#[test]
+fn parts_drawn_in_layers_are_figures_when_they_are_all_the_layer_draws() {
+    let (fonts, mut images) = stores();
+    images.insert(
+        "chart".to_string(),
+        br#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">
+  <rect aria-label="Own opacity" width="5" height="5" opacity="0.5"/>
+  <g opacity="0.5"><rect aria-label="Alone in a group" x="10" width="5" height="5"/></g>
+  <g opacity="0.5"><rect aria-label="Beside another" x="20" width="5" height="5"/><rect x="30" width="5" height="5"/></g>
+</svg>"#
+            .to_vec(),
+    );
+    let doc = r#"{"version":1,"meta":{"title":"T","lang":"en"},
+      "pages":[{"size":{"width":200,"height":200},"children":[
+        {"type":"image","alt":"Chart","src":"chart","style":{"width":80,"height":40}}]}]}"#;
+    let options = RenderOptions::default()
+        .with_pdf_ua(true)
+        .with_compress(false);
+    let pdf =
+        inkoxide::render(doc.as_bytes(), InputFormat::Json, &options, &fonts, &images).unwrap();
+    let text = String::from_utf8_lossy(&pdf);
+    for alt in ["Chart", "Own opacity", "Alone in a group"] {
+        assert!(text.contains(&format!("/Alt ({alt})")), "{alt}");
+    }
+    assert!(!text.contains("/Alt (Beside another)"));
 }

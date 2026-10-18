@@ -116,7 +116,7 @@
         "listBody",
         "artifact"
       ],
-      "description": "What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first."
+      "description": "What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first. Under PDF/UA-2 (`pdfUA: '2'`), the roles inside a box with a `link` make no elements: its link holds what is inside it."
     },
     "Meta": {
       "type": "object",
@@ -1149,7 +1149,7 @@
           "type": "number",
           "minimum": 0,
           "maximum": 1,
-          "description": "Multiplies the alpha of what the node paints and of everything inside it, element by element: unlike CSS, it does not fade the node and its children as one group, so overlapping children show through each other. `0` draws nothing for the node's children and leaves out the links, form fields and notes inside them."
+          "description": "Multiplies the alpha of what the node paints and of everything inside it, element by element: unlike CSS, it does not fade the node and its children as one group, so overlapping children show through each other. `0` draws nothing for the node's children and leaves out the links, form fields and notes inside them. Form fields, notes and attachment icons, which viewers draw over the page, are not faded by an opacity above 0: only a field's background and border are."
         },
         "borderWidth": {
           "$ref": "#/$defs/EdgesNumber"
@@ -2289,11 +2289,13 @@
         },
         "readOnly": {
           "type": "boolean",
-          "default": false
+          "default": false,
+          "description": "A radio group is read-only when any of its buttons is."
         },
         "required": {
           "type": "boolean",
-          "default": false
+          "default": false,
+          "description": "A radio group is required (a button must be selected) when any of its buttons is."
         },
         "font": {
           "$ref": "#/$defs/Id",
@@ -2308,7 +2310,7 @@
         },
         "color": {
           "$ref": "#/$defs/Color",
-          "description": "text and mark colour; default black"
+          "description": "text and mark colour (its alpha is not used); default black"
         },
         "format": {
           "$ref": "#/$defs/FieldFormat"
@@ -2317,7 +2319,7 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 1024,
-          "description": "What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it."
+          "description": "What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it. A radio group's tooltip is the label of its first button that has one; a button with another label says it in its widget (`/Contents`)."
         },
         "align": {
           "enum": [

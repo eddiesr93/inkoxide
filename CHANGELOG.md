@@ -124,8 +124,10 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   its own with that text as its alternative text, inside the image's figure (and inside the
   figure of a part that contains it); an element with `aria-hidden="true"` is decoration.
   Only the outermost SVG counts, and only elements that are drawn: not those inside `defs`,
-  `symbol`, `clipPath`, `mask`, `marker`, a pattern, a gradient or a filter. Each placement of
-  such an image is a form XObject of its own. An image that is no figure of its own (inside a
+  `symbol`, `clipPath`, `mask`, `marker`, a pattern, a gradient or a filter. Inside a group
+  drawn in a layer of its own (with `opacity`, a mask, a blend mode, `isolation` or a clip path
+  other than one path), a part is a figure only when it is all the group draws, as a shape with
+  `opacity` is. Each placement of such an image is a form XObject of its own. An image that is no figure of its own (inside a
   paragraph's box, say) keeps its alternative text as before and its parts are not tagged.
   An element with an empty `id`, or from an entity, is no part. Untagged output draws the
   same. veraPDF checks PDF/UA-1, PDF/UA-2 and PDF/A-2a.
@@ -283,6 +285,15 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   check no longer reports them (ISO 14289-1, 7.21.7).
 - With `subsetFonts: false`, a variable font's instance that cannot be made for every glyph embeds
   the glyphs the document uses, as with subsetting, instead of failing the render.
+- An SVG image that draws more than 5,000,000 path segments, counting every copy and its fill
+  and stroke apart, is `INVALID_IMAGE` at its path, in validation too. It passed validation
+  and then failed the render with `IMAGE_ERROR`.
+- A radio group is read-only, or required, when any of its buttons is, and every button's
+  `label` is in the file: the group's tooltip (`/TU`) is the first, and a button with another
+  says it in its widget (`/Contents`). The first button decided for the whole group, and the
+  other labels were lost.
+- A text field with a `time` format refuses a date without a time (`INVALID_VALUE`), as the
+  schema says. It showed and stored the date as `00:00`.
 
 ### Repository
 

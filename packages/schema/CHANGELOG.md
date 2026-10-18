@@ -43,6 +43,10 @@ version 2.
   does, so that its text wraps beside the float line by line; it was narrowed to the room beside
   the float over its whole height, or moved below it. Other boxes are narrowed or moved below
   as before; `overflow: "hidden"` keeps a box so.
+- **Radio groups:** a group is read-only, or required, when any of its buttons is; it took
+  both from its first button only. Each button's `label` is kept (`/Contents` of its widget).
+- **Time formats:** a `time` format refuses a date without a time (`INVALID_VALUE`), as
+  documented; it took one as midnight.
 
 ## 2.5.1 - 2026-10-16
 

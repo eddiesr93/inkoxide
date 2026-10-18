@@ -832,9 +832,19 @@ mod tests {
             let Some(at) = obj.find(" 0 obj") else {
                 continue;
             };
-            let id = obj[..at].split_whitespace().last().unwrap().parse().unwrap();
+            let id = obj[..at]
+                .split_whitespace()
+                .last()
+                .unwrap()
+                .parse()
+                .unwrap();
             let words: Vec<&str> = obj[at..].split_whitespace().collect();
-            let after = |key: &str| words.iter().position(|w| *w == key).map(|i| &words[i + 1..]);
+            let after = |key: &str| {
+                words
+                    .iter()
+                    .position(|w| *w == key)
+                    .map(|i| &words[i + 1..])
+            };
             let kids = after("/Kids").unwrap();
             let end = kids.iter().position(|w| w.ends_with(']')).unwrap();
             let kids = kids[..=end]
@@ -856,7 +866,11 @@ mod tests {
     fn walk(nodes: &Nodes, id: i32, parent: Option<i32>, pages: &mut Vec<(i32, i32)>) -> usize {
         let (kids, count, up) = &nodes[&id];
         assert_eq!(*up, parent, "the parent of {id}");
-        assert!(kids.len() <= PAGE_TREE_FANOUT, "{id} has {} kids", kids.len());
+        assert!(
+            kids.len() <= PAGE_TREE_FANOUT,
+            "{id} has {} kids",
+            kids.len()
+        );
         let mut under = 0;
         for &k in kids {
             if nodes.contains_key(&k) {

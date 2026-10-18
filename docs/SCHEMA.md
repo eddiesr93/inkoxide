@@ -124,7 +124,7 @@ Type: `boolean` (default `false`)
 
 ### Role
 
-What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first.
+What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first. Under PDF/UA-2 (`pdfUA: '2'`), the roles inside a box with a `link` make no elements: its link holds what is inside it.
 
 Type: `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"h6"` \| `"p"` \| `"section"` \| `"blockQuote"` \| `"caption"` \| `"figure"` \| `"list"` \| `"listItem"` \| `"label"` \| `"listBody"` \| `"artifact"`
 
@@ -402,7 +402,7 @@ CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not
 | `shapeOutside` | [`ShapeOutside`](#shapeoutside) |  | Floats only. The shape lines beside the float wrap around, instead of its margin box, as CSS `shape-outside` with a basic shape: a line takes the room of the shape's widest part beside it, so lines come closer where the shape narrows. Only lines: the float is placed, and boxes beside it are narrowed, by its margin box. The shape is followed in strips at least 2 points high, at most 128 a float; past 4096 strips in one box, a float's lines wrap beside its margin box. |
 | `shapeMargin` | [`NonNegative`](#nonnegative) |  | default `0`; Floats with a `shapeOutside` only. Points the lines beside the float keep from its shape, within its margin box. |
 | `backgroundColor` | [`Color`](#color) |  |  |
-| `opacity` | `number` |  | ≥ 0, ≤ 1; Multiplies the alpha of what the node paints and of everything inside it, element by element: unlike CSS, it does not fade the node and its children as one group, so overlapping children show through each other. `0` draws nothing for the node's children and leaves out the links, form fields and notes inside them. |
+| `opacity` | `number` |  | ≥ 0, ≤ 1; Multiplies the alpha of what the node paints and of everything inside it, element by element: unlike CSS, it does not fade the node and its children as one group, so overlapping children show through each other. `0` draws nothing for the node's children and leaves out the links, form fields and notes inside them. Form fields, notes and attachment icons, which viewers draw over the page, are not faded by an opacity above 0: only a field's background and border are. |
 | `borderWidth` | [`EdgesNumber`](#edgesnumber) |  |  |
 | `borderColor` | [`EdgesColor`](#edgescolor) |  |  |
 | `borderRadius` | [`BorderRadius`](#borderradius) |  |  |
@@ -639,13 +639,13 @@ Fields with the same `name` are one field with several widgets (for example a fi
 | `password` | `boolean` |  | default `false`; text only; the value is neither shown nor stored |
 | `noSpell` | `boolean` |  | default `false`; text, and select with `edit`: viewers do not check the spelling of what is typed. |
 | `maxLength` | `integer` |  | ≥ 1, ≤ 4294967295; text only; maximum number of characters |
-| `readOnly` | `boolean` |  | default `false` |
-| `required` | `boolean` |  | default `false` |
+| `readOnly` | `boolean` |  | default `false`; A radio group is read-only when any of its buttons is. |
+| `required` | `boolean` |  | default `false`; A radio group is required (a button must be selected) when any of its buttons is. |
 | `font` | [`Id`](#id) |  | text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display. The value and the options are drawn with this font only, a glyph per character: no fallback fonts, no shaping and no right-to-left ordering, as viewers redraw them. A character the font has no glyph for is `INVALID_VALUE` at the value or the option. |
 | `size` | `number` |  | > 0, ≤ 1000, default `10`; font size; also the mark size of checkboxes and radio buttons |
-| `color` | [`Color`](#color) |  | text and mark colour; default black |
+| `color` | [`Color`](#color) |  | text and mark colour (its alpha is not used); default black |
 | `format` | [`FieldFormat`](#fieldformat) |  |  |
-| `label` | `string` |  | min length 1, max length 1024; What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it. |
+| `label` | `string` |  | min length 1, max length 1024; What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it. A radio group's tooltip is the label of its first button that has one; a button with another label says it in its widget (`/Contents`). |
 | `align` | `"left"` \| `"center"` \| `"right"` |  | default `"left"`; text, select and list only: where the text sits across the field, as written and as viewers lay out what is typed (`/Q`). |
 
 ### FieldFormat

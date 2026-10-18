@@ -12,6 +12,10 @@
 //! for most copies, so the resolver also counts what it actually decodes,
 //! in one [`Meter`] for the whole SVG.
 //!
+//! Once converted, the path segments the tree draws are counted as the PDF
+//! writer draws them (`limits::drawn_segments`), so that an SVG the
+//! writer would refuse fails here, where validation sees it.
+//!
 //! Where mirroring `usvg` would be fragile, the input is refused instead:
 //! entities that expand to more than a little text, `href` chains that
 //! loop, and radii so large that an arc becomes millions of curves.
@@ -32,6 +36,7 @@ mod view_box;
 
 use check::check;
 pub(crate) use check::iri;
+pub(crate) use limits::MAX_SEGMENTS;
 use limits::{
     too_complex, Meter, Reject, MAX_ENTITY_TEXT, MAX_NESTING, MAX_SIDE, MAX_XML_DEPTH,
     MAX_XML_NODES, MIN_SIDE,
@@ -304,6 +309,16 @@ fn parse_with_parts(
                 "SVG viewBox is {vw}×{vh}; at least {MIN_SIDE} per side"
             )));
         }
+    }
+    // As decoded: a nested SVG counts where it is drawn, and a copy with
+    // its text converted for a render is held to it as it is written.
+    if at.level == 0
+        && at.rewrites.is_none()
+        && limits::drawn_segments(tree.root(), false) > MAX_SEGMENTS
+    {
+        return Err(too_complex(&format!(
+            "more than {MAX_SEGMENTS} path segments once references are expanded"
+        )));
     }
     let text = TextSource::new(Arc::new(bytes.to_vec()), checked);
     Ok((tree, view_box, text, parts))

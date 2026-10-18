@@ -227,7 +227,11 @@ older than PDF 2.0, so part 2 with `pdfA` is refused. In the CLI,
   image's figure; `aria-hidden="true"` makes an element decoration. Only
   the outermost SVG counts, and only elements that are drawn (not those
   in `defs`, `symbol`, `clipPath`, `mask`, `marker`, patterns, gradients
-  or filters). Each placement of the image is a form XObject of its own,
+  or filters). Inside a group drawn in a layer of its own (with
+  `opacity`, a mask, a blend mode, `isolation` or a clip path other than
+  one path), a part is a figure only when it is all the group draws; the
+  others are read with the figure around the group. Each placement of the
+  image is a form XObject of its own,
   with its parts marked inside it. An image with parts and `alt` is not
   one `/ActualText` span, which would hide them.
 - **`UA_CONFLICT`.** With `pdfUA` (either part), a document without a `meta.title`, a
@@ -498,8 +502,10 @@ limit or the limit on content repeated on every page (`LAYOUT_ERROR`), on
 a font that cannot be shaped or embedded (`FONT_ERROR`), on
 something its PDF/A level or PDF/UA does not allow (`PDFA_CONFLICT`, `UA_CONFLICT`), on an
 attachment's `src` that is not among the render's `attachments` or is too large
-(`ATTACHMENT_NOT_REGISTERED`, `ATTACHMENT_TOO_LARGE`),
-or on a failure in writing the PDF (`PDF_ERROR`). Given the render's
+(`ATTACHMENT_NOT_REGISTERED`, `ATTACHMENT_TOO_LARGE`), on an SVG image
+whose text, with its paths, draws more than 5,000,000 path segments and
+glyphs (`IMAGE_ERROR`; its paths alone are checked by validation), or on
+a failure in writing the PDF (`PDF_ERROR`). Given the render's
 options (Rust `validate_with_options`; in Node and WebAssembly the
 fourth argument, the object `render` takes, whose `format` and `images`
 the arguments override), `validate` reports the conflicts and the

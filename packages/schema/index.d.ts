@@ -295,7 +295,7 @@ export type Link = string;
 export type PageFilter =
   ('first' | 'last' | 'notFirst' | 'notLast' | 'odd' | 'even') | [number, ...number[]];
 /**
- * What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first.
+ * What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first. Under PDF/UA-2 (`pdfUA: '2'`), the roles inside a box with a `link` make no elements: its link holds what is inside it.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Role".
@@ -826,7 +826,7 @@ export interface Style {
   shapeMargin?: NonNegative;
   backgroundColor?: Color;
   /**
-   * Multiplies the alpha of what the node paints and of everything inside it, element by element: unlike CSS, it does not fade the node and its children as one group, so overlapping children show through each other. `0` draws nothing for the node's children and leaves out the links, form fields and notes inside them.
+   * Multiplies the alpha of what the node paints and of everything inside it, element by element: unlike CSS, it does not fade the node and its children as one group, so overlapping children show through each other. `0` draws nothing for the node's children and leaves out the links, form fields and notes inside them. Form fields, notes and attachment icons, which viewers draw over the page, are not faded by an opacity above 0: only a field's background and border are.
    */
   opacity?: number;
   borderWidth?: EdgesNumber;
@@ -1421,7 +1421,13 @@ export interface Field {
    * text only; maximum number of characters
    */
   maxLength?: number;
+  /**
+   * A radio group is read-only when any of its buttons is.
+   */
   readOnly?: boolean;
+  /**
+   * A radio group is required (a button must be selected) when any of its buttons is.
+   */
   required?: boolean;
   /**
    * text, select and list (required there): a declared font for the value, with outlines (a font with colour bitmaps only is `INVALID_VALUE`). Its glyphs for the common Latin range are embedded so edits display. The value and the options are drawn with this font only, a glyph per character: no fallback fonts, no shaping and no right-to-left ordering, as viewers redraw them. A character the font has no glyph for is `INVALID_VALUE` at the value or the option.
@@ -1432,12 +1438,12 @@ export interface Field {
    */
   size?: number;
   /**
-   * text and mark colour; default black
+   * text and mark colour (its alpha is not used); default black
    */
   color?: Color;
   format?: FieldFormat;
   /**
-   * What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it.
+   * What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it. A radio group's tooltip is the label of its first button that has one; a button with another label says it in its widget (`/Contents`).
    */
   label?: string;
   /**

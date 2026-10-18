@@ -514,8 +514,6 @@ fn cid_set_bits(used: &BTreeSet<u16>, mapped: bool) -> Vec<u8> {
 mod tests {
     use super::*;
 
-    /// Two different fonts get their own subsets, even when their hashes
-    /// are equal.
     #[test]
     fn width_runs_keep_to_the_array_limit() {
         let used = BTreeSet::from([1, 2, 3, 7, 9, 10]);
@@ -595,6 +593,9 @@ mod tests {
             cid_set_bits(&BTreeSet::from([3, 8, 17]), true),
             [0xFF, 0xFF, 0xC0]
         );
-        assert_eq!(cid_set_bits(&BTreeSet::from([u16::MAX]), true), [0xFF; 8192]);
+        assert_eq!(
+            cid_set_bits(&BTreeSet::from([u16::MAX]), true),
+            [0xFF; 8192]
+        );
     }
 }

@@ -62,7 +62,11 @@ pub(crate) fn display(f: &FieldFormat, value: &str) -> Option<Shown> {
         FormatKind::Number | FormatKind::Percent => number(f, value),
         FormatKind::Date => plain(dated(f.pattern.as_deref()?, parse_local(value)?)),
         FormatKind::Time => {
-            let t = parse_local_time(value).or_else(|| parse_local(value))?;
+            // A time, or a date with a time: not a date alone.
+            let t = match value.split_once('T') {
+                Some(_) => parse_local(value),
+                None => parse_local_time(value),
+            }?;
             plain(dated(f.pattern.as_deref()?, t))
         }
         FormatKind::Zip => plain(exact_digits(value, 5)?.to_string()),
@@ -589,6 +593,7 @@ mod tests {
             (r#"{"type":"date","pattern":"dd"}"#, "2026-02-30"),
             (r#"{"type":"date","pattern":"dd"}"#, "18:30"),
             (r#"{"type":"time","pattern":"HH"}"#, "25:00"),
+            (r#"{"type":"time","pattern":"HH"}"#, "2026-01-01"),
             (r#"{"type":"zip"}"#, "1234"),
             (r#"{"type":"zipPlus4"}"#, "02134-1234"),
             (r#"{"type":"phone"}"#, "(555) 123-4567"),

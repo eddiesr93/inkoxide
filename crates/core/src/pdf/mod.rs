@@ -371,10 +371,20 @@ impl PdfWriterSink {
     }
 }
 
-/// What the text of each SVG painted in `doc` draws besides itself
+/// What the text of each SVG painted in `doc`, as itself or with its parts
+/// tagged (`EncodedPage::placements`), draws besides itself
 /// ([`svg::text_uses`]).
 fn svg_text_uses<'a>(doc: &'a DocumentOut<'a>) -> impl Iterator<Item = svg::TextUses> + 'a {
-    let painted: BTreeSet<ImageKey> = doc.pages.iter().flat_map(|p| &p.images).copied().collect();
+    let painted: BTreeSet<ImageKey> = doc
+        .pages
+        .iter()
+        .flat_map(|p| {
+            p.images
+                .iter()
+                .copied()
+                .chain(p.placements.iter().map(|pl| pl.key))
+        })
+        .collect();
     painted.into_iter().filter_map(move |key| {
         let crate::images::ImageBody::Svg {
             probed: Some(probed),

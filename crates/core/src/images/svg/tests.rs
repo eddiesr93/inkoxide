@@ -731,3 +731,33 @@ fn deep_xml_is_refused_before_it_is_parsed() {
     ));
     on_stack(2, flat).unwrap();
 }
+
+/// The path segments an SVG draws, counted as the PDF writer counts them:
+/// once for a path's fill and once for its stroke, and again each time a
+/// copy, a clip path or a pattern draws it.
+#[test]
+fn counts_the_path_segments_drawn() {
+    let drawn = |body: &str| {
+        let t = parse(svg(body).as_bytes()).unwrap().0;
+        super::limits::drawn_segments(t.root(), false)
+    };
+    // A move, two lines and a close.
+    let shape = r#"d="M0 0H5V5Z""#;
+    assert_eq!(drawn(&format!(r#"<path {shape}/>"#)), 4);
+    assert_eq!(drawn(&format!(r#"<path {shape} stroke="red"/>"#)), 8);
+    assert_eq!(drawn(&format!(r#"<path {shape} fill="none"/>"#)), 0);
+    // Two copies, one clipped by the shape, which a clip path only fills.
+    assert_eq!(
+        drawn(&format!(
+            r##"<defs><path id="p" {shape}/><clipPath id="c"><path {shape} stroke="red"/></clipPath></defs><use href="#p"/><use href="#p" clip-path="url(#c)"/>"##
+        )),
+        12
+    );
+    // Filled with a pattern that draws the shape.
+    assert_eq!(
+        drawn(&format!(
+            r##"<defs><pattern id="t" width="5" height="5" patternUnits="userSpaceOnUse"><path {shape}/></pattern></defs><path {shape} fill="url(#t)"/>"##
+        )),
+        8
+    );
+}
