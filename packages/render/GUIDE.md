@@ -726,7 +726,7 @@ reader without it may do:
   `hyphens-auto`); it follows the `lang` of the text or the document. With neither, nothing is
   hyphenated, and the `warnings` of `generate` say so. US English patterns ship
   with the package and serve every English `lang`; other languages use the engine's built-in
-  patterns. A paragraph is hyphenated in one language, so a `Text` inside a `Text` with another
+  patterns, and Romanian (`ro`) its syllable rules. A paragraph is hyphenated in one language, so a `Text` inside a `Text` with another
   `lang` is not hyphenated by patterns: make it a paragraph of its own, or give it a
   `hyphenationCallback`. A soft hyphen
   (`\u00AD`) in the text is always a possible break.

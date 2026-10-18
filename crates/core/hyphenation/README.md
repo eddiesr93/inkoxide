@@ -13,3 +13,6 @@ hypher builds the automata from the TeX patterns of
 permissive licences: the LPPL, MPL, MIT and BSD-3-Clause. Each language's licence is in its
 pattern file in hypher's repository (`patterns/`). hypher's code is under the MIT or
 Apache-2.0 licence.
+
+hyph-utf8's Romanian patterns have no licence, so they are not here: the engine hyphenates
+Romanian by the syllable rules of DOOM2 (`src/text/romanian.rs`), in every build.
