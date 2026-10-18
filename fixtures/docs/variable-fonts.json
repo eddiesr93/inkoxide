@@ -1,0 +1,488 @@
+{
+ "version": 1,
+ "meta": {
+  "title": "Variable fonts",
+  "lang": "en"
+ },
+ "fonts": [
+  {
+   "id": "Inter-Regular",
+   "family": "Inter"
+  },
+  {
+   "id": "Inter-Bold",
+   "family": "Inter",
+   "weight": 700
+  },
+  {
+   "id": "VarTest-100",
+   "family": "VarTest",
+   "weight": 100,
+   "source": "VarTest-glyf",
+   "variations": {
+    "wght": 100
+   }
+  },
+  {
+   "id": "VarTest-400",
+   "family": "VarTest",
+   "weight": 400,
+   "source": "VarTest-glyf"
+  },
+  {
+   "id": "VarTest-650",
+   "family": "VarTest",
+   "weight": 650,
+   "source": "VarTest-glyf",
+   "variations": {
+    "wght": 650
+   }
+  },
+  {
+   "id": "VarTest-900",
+   "family": "VarTest",
+   "weight": 900,
+   "source": "VarTest-glyf",
+   "variations": {
+    "wght": 900
+   }
+  },
+  {
+   "id": "VarTest-700-75",
+   "family": "VarTest",
+   "weight": 700,
+   "source": "VarTest-glyf",
+   "variations": {
+    "wght": 700,
+    "wdth": 75
+   }
+  },
+  {
+   "id": "VarTest-cond",
+   "family": "VarTest",
+   "weight": 400,
+   "source": "VarTest-glyf",
+   "variations": {
+    "wdth": 50
+   }
+  },
+  {
+   "id": "VarCFF2-100",
+   "family": "VarCFF2",
+   "weight": 100,
+   "source": "VarTest-CFF2",
+   "variations": {
+    "wght": 100
+   }
+  },
+  {
+   "id": "VarCFF2-900",
+   "family": "VarCFF2",
+   "weight": 900,
+   "source": "VarTest-CFF2",
+   "variations": {
+    "wght": 900
+   }
+  }
+ ],
+ "pages": [
+  {
+   "size": {
+    "width": 595.28,
+    "height": 841.89
+   },
+   "margin": {
+    "top": 40,
+    "right": 40,
+    "bottom": 40,
+    "left": 40
+   },
+   "children": [
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "alignItems": "center",
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "VarTest-100 (wght 100)",
+         "font": "Inter-Regular",
+         "size": 8,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 150
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "HELLO HOTEL FILE TOE",
+         "font": "VarTest-100",
+         "size": 24,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "alignItems": "center",
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "VarTest-400 (default)",
+         "font": "Inter-Regular",
+         "size": 8,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 150
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "HELLO HOTEL FILE TOE",
+         "font": "VarTest-400",
+         "size": 24,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "alignItems": "center",
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "VarTest-650 (wght 650)",
+         "font": "Inter-Regular",
+         "size": 8,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 150
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "HELLO HOTEL FILE TOE",
+         "font": "VarTest-650",
+         "size": 24,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "alignItems": "center",
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "VarTest-900 (wght 900)",
+         "font": "Inter-Regular",
+         "size": 8,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 150
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "HELLO HOTEL FILE TOE",
+         "font": "VarTest-900",
+         "size": 24,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "alignItems": "center",
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "VarTest-700-75 (wght 700, wdth 75)",
+         "font": "Inter-Regular",
+         "size": 8,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 150
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "HELLO HOTEL FILE TOE",
+         "font": "VarTest-700-75",
+         "size": 24,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "alignItems": "center",
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "VarTest-cond (wdth 50)",
+         "font": "Inter-Regular",
+         "size": 8,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 150
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "HELLO HOTEL FILE TOE",
+         "font": "VarTest-cond",
+         "size": 24,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "alignItems": "center",
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "VarCFF2-100 (wght 100)",
+         "font": "Inter-Regular",
+         "size": 8,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 150
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "HELLO HOTEL FILE TOE",
+         "font": "VarCFF2-100",
+         "size": 24,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "box",
+     "style": {
+      "flexDirection": "row",
+      "alignItems": "center",
+      "margin": {
+       "bottom": 8
+      }
+     },
+     "children": [
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "VarCFF2-900 (wght 900)",
+         "font": "Inter-Regular",
+         "size": 8,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ],
+       "style": {
+        "width": 150
+       }
+      },
+      {
+       "type": "text",
+       "runs": [
+        {
+         "text": "HELLO HOTEL FILE TOE",
+         "font": "VarCFF2-900",
+         "size": 24,
+         "color": [
+          0.1,
+          0.11,
+          0.14,
+          1
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "image",
+     "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MDAiIGhlaWdodD0iNjAiPjx0ZXh0IHg9IjAiIHk9IjQwIiBmb250LWZhbWlseT0iVmFyVGVzdCIgZm9udC13ZWlnaHQ9IjY1MCIgZm9udC1zaXplPSIzMCI+SE9URUw8L3RleHQ+PHRleHQgeD0iMjIwIiB5PSI0MCIgZm9udC1mYW1pbHk9IlZhclRlc3QiIGZvbnQtd2VpZ2h0PSI5MDAiIGZvbnQtc2l6ZT0iMzAiPkZPSUw8L3RleHQ+PC9zdmc+",
+     "style": {
+      "width": 400,
+      "height": 60
+     }
+    }
+   ]
+  }
+ ]
+}

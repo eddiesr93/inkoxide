@@ -203,8 +203,7 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
 - **Sources.** `src` is a file path, a `file:`, `https:` or `http:` URL, or the bytes
   (`Uint8Array` or `ArrayBuffer`). Prefer `https:`: a font fetched over `http:` can be changed on
   the way. Formats are TrueType (`.ttf`), OpenType (`.otf`), WOFF (`.woff`) and WOFF2
-  (`.woff2`). Variable fonts are not supported: register the static instances. Font collections
-  (`.ttc`) are not supported either: register each font as its own file.
+  (`.woff2`). Font collections (`.ttc`) are not supported: register each font as its own file.
 - **Loading.** `register` is synchronous. The file is read or fetched just before the next
   render, and a font that cannot be loaded fails that render with `INVALID_FONT`. The fonts
   registered with it still load, and later renders can use them. The face that failed is then
@@ -218,6 +217,28 @@ Then use it with `style={{ fontFamily: 'Lora' }}`, or with `className="font-[Lor
   yourself and register them.
 - **Weights.** Weights are numbers (1–1000, as in CSS) or names (`'light'`, `'medium'`,
   `'bold'`). Missing weights and styles fall back to the nearest one, as in CSS.
+- **Variable fonts.** Register a variable font with the range of weights it covers, as CSS
+  `@font-face` does:
+
+  ```tsx
+  Font.register({ family: 'Inter Var', src: './fonts/InterVariable.ttf', fontWeight: [100, 900] });
+  Font.register({
+    family: 'Inter Var',
+    src: './fonts/InterVariable-Italic.ttf',
+    fontWeight: [100, 900],
+    fontStyle: 'italic',
+  });
+  ```
+
+  Each weight in the range draws at that `wght` (`fontWeight: 450` is the 450 instance), and a
+  weight outside it at the nearer end. `fontVariationSettings` sets other axes, as in CSS:
+  `"'wdth' 75, 'opsz' 32"` or `{ wdth: 75 }`, inherited like other text styles; its `wght` wins
+  over `fontWeight`, and on a face registered with one weight it picks an instance too. A face
+  can take `fontVariationSettings` in `Font.register` (`{ ital: 1 }`), so one file can be the
+  italic as well. Each combination a document uses is a static instance, embedded as TrueType
+  (CFF2 outlines too), so viewers show exactly what was laid out. TrueType (`gvar`) and CFF2
+  variable fonts work; one with more than 63 axes or an `avar` table of version 2 is refused
+  when it loads. Text in an `<Svg>` takes the nearest instance the document declares.
 - **Colour emoji.** Register a colour emoji font, such as Noto Color Emoji, and list it in
   [`fallbackFonts`](#links-bookmarks-and-metadata):
 
@@ -604,8 +625,8 @@ is `'singlePage'`, `'oneColumn'` (continuous scrolling), `'twoColumnLeft'` or `'
 `fallbackFonts` lists the fonts tried, in order, for characters a run's font lacks. The default is
 `['NotoSans-Regular']`. The entries are font ids: the bundled `Inter-Regular`, `Inter-Italic`,
 `Inter-Bold`, `InterDisplay-Bold`, `NotoSans-Regular` and `RobotoMono-Regular`, or a face added
-with `Font.register`, whose id is its family with spaces as hyphens, its weight, and `-italic` for
-an italic face:
+with `Font.register`, whose id is its family with spaces as hyphens, its weight (or a variable
+face's range, `Inter-Var-100-900`), and `-italic` for an italic face:
 
 ```tsx
 Font.register({ family: 'Noto Sans Arabic', src: './fonts/NotoSansArabic-Regular.ttf' });
@@ -1177,7 +1198,8 @@ or the stack. Two more codes come from [templates](#serving-templates): `INVALID
 
 `Font.register`, `Font.registerHyphenationCallback` and `Font.registerEmojiSource` check their
 arguments when you call them and throw a plain `Error` straight away: a missing family name or
-`src`, a `src` that is not a path, a URL or bytes, an unknown weight, a face already registered
+`src`, a `src` that is not a path, a URL or bytes, an unknown weight, a weight range that is not
+two weights from the lower one, a malformed `fontVariationSettings`, a face already registered
 from another source, a face the bundled fonts have, a family whose font id another family has, a
 callback that is not a function, or an emoji source with neither a `url` string nor a `builder`
 function.

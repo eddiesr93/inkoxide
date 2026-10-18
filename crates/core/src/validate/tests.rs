@@ -203,6 +203,46 @@ fn fonts_must_be_declared_and_registered() {
 }
 
 #[test]
+fn font_sources_and_variations_are_checked() {
+    let fonts = |decls: &str| {
+        format!(
+            r#"{{"version":1,"fonts":[{decls}],"pages":[{{"size":{{"width":10,"height":10}}}}]}}"#
+        )
+    };
+    let codes =
+        |d: &str| -> Vec<(C, String)> { run(d).into_iter().map(|e| (e.code, e.path)).collect() };
+    // A declaration draws with its source; the id need not be registered.
+    let ok = fonts(
+        r#"{"id":"Heavy","family":"Inter","source":"Inter-Regular","variations":{"wght":900}}"#,
+    );
+    assert_eq!(codes(&ok), []);
+    let ghost = fonts(r#"{"id":"Inter-Regular","family":"Inter","source":"Ghost"}"#);
+    assert_eq!(
+        codes(&ghost),
+        [(C::FontNotRegistered, "fonts[0].source".to_string())]
+    );
+    for (variations, code) in [
+        (r#"{"wgh":1}"#, C::InvalidValue),
+        (r#"{"wght":1,"wght":2}"#, C::InvalidValue),
+        (r#"{"wght":40000}"#, C::OutOfRange),
+    ] {
+        let d = fonts(&format!(
+            r#"{{"id":"Inter-Regular","family":"Inter","variations":{variations}}}"#
+        ));
+        assert_eq!(
+            codes(&d),
+            [(code, "fonts[0].variations".to_string())],
+            "{variations}"
+        );
+    }
+    let many = (0..65)
+        .map(|i| format!(r#"{{"id":"f{i}","family":"F","source":"Inter-Regular","variations":{{"wght":{i}}}}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    assert_eq!(codes(&fonts(&many)), [(C::OutOfRange, "fonts".to_string())]);
+}
+
+#[test]
 fn runs_need_text_xor_placeholder() {
     let (code, _) = one(&doc(
         r#"{"type":"text","runs":[{"font":"Inter-Regular","size":10}]}"#,

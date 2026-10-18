@@ -306,7 +306,7 @@ pub(crate) fn baseline_shift(run: &TextRun, fonts: &FontSet<'_>) -> f32 {
     let Some(key) = fonts.key(&run.font) else {
         return 0.0;
     };
-    let m = &fonts.get(key).data.metrics;
+    let m = fonts.get(key).metrics();
     match run.vertical_align.unwrap_or_default() {
         RunAlign::Super => m.superscript_shift() * run.size,
         RunAlign::Sub => -m.subscript_shift() * run.size,

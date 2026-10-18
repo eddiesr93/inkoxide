@@ -1,5 +1,5 @@
 import type { Break, Color, Meta, PageFilter, TransformOp } from '@inkoxide/schema';
-import type { BorderStyle, FlatStyle, FontFeatureSettings } from '@inkoxide/style';
+import type { BorderStyle, FlatStyle, FontFeatureSettings, FontVariationSettings } from '@inkoxide/style';
 import { createElement, type FC, type ReactNode } from 'react';
 
 import type { PdfALevel } from '../tree/output.ts';
@@ -121,6 +121,7 @@ export interface StyleProp extends Omit<
   | 'transformOrigin'
   | 'objectPosition'
   | 'fontFeatureSettings'
+  | 'fontVariationSettings'
   | 'fontVariantNumeric'
   | 'textWrap'
   | 'verticalAlign'
@@ -221,6 +222,12 @@ export interface StyleProp extends Omit<
   fontFeatureSettings?: FontFeatureSettings;
   /** CSS `font-variant-numeric` (`'tabular-nums slashed-zero'`): turns on the features it names. */
   fontVariantNumeric?: string;
+  /**
+   * A variable font's axis values: a CSS string (`"'wght' 650, 'wdth' 75"`) or tags with values
+   * (`{ wdth: 75 }`). The text draws with an instance of its font at those values; `wght` wins
+   * over `fontWeight`. Inherited, and an element that sets its own replaces them.
+   */
+  fontVariationSettings?: FontVariationSettings;
   /**
    * How lines break: `'wrap'` (the default) fills each line in turn; `'pretty'` chooses the
    * breaks over the whole paragraph for even lines. Inherited. `'balance'` is not supported yet.

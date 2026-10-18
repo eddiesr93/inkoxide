@@ -331,6 +331,16 @@ export interface FontDecl {
    * The style SVG text's `font-style` is matched against.
    */
   style?: 'normal' | 'italic';
+  /**
+   * The registered font it draws with; `id` when absent. One variable font can then serve several declarations, each with its own `variations`.
+   */
+  source?: Id;
+  /**
+   * A variable font's axis values, by tag, as CSS `font-variation-settings` (`{"wght": 650, "wdth": 75}`): text in this font is drawn and measured at that instance, and the PDF embeds the instance, never the variable font. A value is clamped to its axis; an axis the font lacks is ignored, with a warning, as every axis of a static font is. Tags are four printable ASCII characters; at most 16 axes, and at most 64 declarations with `variations` in a document.
+   */
+  variations?: {
+    [k: string]: number | undefined;
+  };
 }
 /**
  * A page template. Its content flows across as many physical pages as needed.

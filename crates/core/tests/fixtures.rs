@@ -501,6 +501,64 @@ fn mapped_text(input: &[u8]) -> String {
     mapped
 }
 
+/// Without subsetting, a variable font is embedded as its instances, each
+/// whole and static, never as the variable font, and the bytes still do
+/// not depend on the thread count.
+#[test]
+fn variable_fonts_embed_whole_instances_without_subsetting() {
+    let (fonts, images) = stores();
+    let input = fs::read(root().join("fixtures/docs/variable-fonts.json")).unwrap();
+    let render = |threads| {
+        let opts = RenderOptions::default()
+            .with_subset_fonts(false)
+            .with_threads(threads);
+        inkoxide::render(&input, InputFormat::Json, &opts, &fonts, &images).unwrap()
+    };
+    let pdf = render(1);
+    assert!(pdf == render(4), "4 threads differ from 1");
+    let glyphs = |file: &str| {
+        let bytes = fs::read(root().join("fixtures/fonts").join(file)).unwrap();
+        ttf_parser::Face::parse(&bytes, 0)
+            .unwrap()
+            .number_of_glyphs()
+    };
+    let (glyf, cff2) = (glyphs("VarTest-glyf.ttf"), glyphs("VarTest-CFF2.otf"));
+    let programs = font_programs(&pdf);
+    let mut instances = 0;
+    for program in &programs {
+        let face = ttf_parser::Face::parse(program, 0).unwrap();
+        assert!(!face.is_variable(), "a variable font is embedded");
+        if [glyf, cff2].contains(&face.number_of_glyphs()) {
+            assert!(face.tables().glyf.is_some());
+            instances += 1;
+        }
+    }
+    // The six instances of the glyf font and the two of the CFF2 font.
+    assert_eq!(instances, 8, "{} font programs", programs.len());
+}
+
+/// The font programs embedded in `pdf`: the streams that inflate to a font.
+fn font_programs(pdf: &[u8]) -> Vec<Vec<u8>> {
+    use std::io::Read;
+    let find = |hay: &[u8], needle: &[u8]| hay.windows(needle.len()).position(|w| w == needle);
+    let mut programs = Vec::new();
+    let mut rest = pdf;
+    while let Some(start) = find(rest, b"stream\n") {
+        let body = &rest[start + 7..];
+        let end = find(body, b"\nendstream").unwrap_or(body.len());
+        let mut program = Vec::new();
+        if flate2::read::ZlibDecoder::new(&body[..end])
+            .read_to_end(&mut program)
+            .is_ok()
+            && ttf_parser::Face::parse(&program, 0).is_ok()
+        {
+            programs.push(program);
+        }
+        rest = body.get(end + 10..).unwrap_or_default();
+    }
+    programs
+}
+
 /// SVG text draws a colour font's glyphs as images, in spans with their
 /// text, as page text does; a font without outlines is never embedded.
 #[test]

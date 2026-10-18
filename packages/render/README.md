@@ -48,8 +48,8 @@ written in Rust does the typesetting: text shaping, line breaking, pagination an
   footers, page numbers, keep-together blocks and page breaks.
 - **Content.** JPEG, PNG, GIF, WebP and SVG images, vector drawing, links, bookmarks and
   fillable form fields.
-- **Output.** Subset fonts, PDF/A (1b, 2b and 3b), encryption with passwords and permissions,
-  and byte-identical output for identical input.
+- **Output.** Subset fonts, variable fonts, PDF/A (1b, 2b and 3b), encryption with passwords
+  and permissions, and byte-identical output for identical input.
 - **Diagnostics.** A component in the wrong place or an unknown style key fails with the
   component stack that produced it, and so does an unknown Tailwind class, except in
   production, where it is logged once and ignored.

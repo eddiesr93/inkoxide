@@ -146,7 +146,7 @@ impl InlineObject {
         let h = self.height;
         let font = fonts.key(&run.font).map(|k| fonts.get(k));
         let metric = |f: fn(&crate::fonts::FontMetrics) -> f32, default: f32| {
-            font.map_or(default, |font| f(&font.data.metrics) * font.scale(run.size))
+            font.map_or(default, |font| f(font.metrics()) * font.scale(run.size))
         };
         let bottom = match self.align {
             RunAlign::Top | RunAlign::Bottom => return None,

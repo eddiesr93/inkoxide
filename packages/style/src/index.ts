@@ -7,8 +7,11 @@ import * as internal from './internal.ts';
 export {
   type FontFeatures,
   type FontFeatureSettings,
+  type FontVariations,
+  type FontVariationSettings,
   parseFontFeatureSettings,
   parseFontVariantNumeric,
+  parseFontVariationSettings,
 } from './features.ts';
 export { parseObjectPosition, parseOrigin, parseTransform, UnsupportedValueError } from './reader.ts';
 export * from './types.ts';
