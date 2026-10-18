@@ -530,8 +530,39 @@ fn variable_fonts_embed_whole_instances_without_subsetting() {
             instances += 1;
         }
     }
-    // The six instances of the glyf font and the two of the CFF2 font.
-    assert_eq!(instances, 8, "{} font programs", programs.len());
+    // The glyf font's six declared instances and the three that SVG text
+    // draws from its weight and width ranges, the CFF2 font's two, and
+    // the `opsz` font's (built as the glyf font) at three sizes and fixed.
+    assert_eq!(instances, 15, "{} font programs", programs.len());
+}
+
+/// An instance's `FontBBox` holds its own outlines, which a heavy one
+/// draws outside the default instance's `head` box.
+#[test]
+fn instances_have_their_own_font_bbox() {
+    let (fonts, images) = stores();
+    let doc = br#"{"version":1,"fonts":[{"id":"VarTest-glyf","family":"V"},
+        {"id":"heavy","family":"V","source":"VarTest-glyf","variations":{"wght":900}}],
+        "pages":[{"size":{"width":200,"height":100},"children":[{"type":"text","runs":[
+        {"text":"HOTEL ","font":"VarTest-glyf","size":12},{"text":"HOTEL","font":"heavy","size":12}]}]}]}"#;
+    let opts = RenderOptions::default().with_compress(false);
+    let pdf = inkoxide::render(doc, InputFormat::Json, &opts, &fonts, &images).unwrap();
+    let text = String::from_utf8_lossy(&pdf);
+    let bbox = |name: &str| -> Vec<f32> {
+        let at = text
+            .find(&format!("+{name}\n"))
+            .unwrap_or_else(|| panic!("{name}"));
+        let rest = &text[at..];
+        let start = rest.find("/FontBBox [").unwrap() + 11;
+        let end = start + rest[start..].find(']').unwrap();
+        rest[start..end]
+            .split_whitespace()
+            .map(|n| n.parse().unwrap())
+            .collect()
+    };
+    let (default, heavy) = (bbox("VarTest-Regular"), bbox("VarTest_900wght"));
+    assert_eq!(default, [40.0, 0.0, 680.0, 700.0]);
+    assert!(heavy[2] > default[2], "{heavy:?}");
 }
 
 /// The font programs embedded in `pdf`: the streams that inflate to a font.

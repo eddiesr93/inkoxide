@@ -1,4 +1,11 @@
-import { MAX_FEATURE_VALUE, MAX_FEATURES, MAX_VARIATION_VALUE, MAX_VARIATIONS } from './bounds.ts';
+import {
+  MAX_FEATURE_VALUE,
+  MAX_FEATURES,
+  MAX_STRETCH,
+  MAX_VARIATION_VALUE,
+  MAX_VARIATIONS,
+  MIN_STRETCH,
+} from './bounds.ts';
 // OpenType features: CSS `font-feature-settings` and `font-variant-numeric`, read into the
 // engine's `fontFeatures` (tag → value); and CSS `font-variation-settings`, into a font
 // declaration's `variations`.
@@ -127,6 +134,43 @@ export function parseFontVariationSettings(prop: string, value: FontVariationSet
   }
   if (Object.keys(out).length > MAX_VARIATIONS) fail(`at most ${MAX_VARIATIONS} axes`);
   return out;
+}
+
+/** The CSS `font-stretch` keywords, as percentages of the normal width. */
+export const FONT_STRETCHES = {
+  'ultra-condensed': 50,
+  'extra-condensed': 62.5,
+  condensed: 75,
+  'semi-condensed': 87.5,
+  normal: 100,
+  'semi-expanded': 112.5,
+  expanded: 125,
+  'extra-expanded': 150,
+  'ultra-expanded': 200,
+} as const;
+
+/** A CSS `font-stretch` keyword (`'condensed'`). */
+export type FontStretchName = keyof typeof FONT_STRETCHES;
+
+/**
+ * `fontStretch` as a style takes it: a percentage of the normal width, as a number (`75`) or CSS
+ * text (`'75%'`), or a CSS keyword (`'condensed'`).
+ */
+export type FontStretch = number | `${number}%` | FontStretchName;
+
+/** Reads `fontStretch` (CSS `font-stretch`) into a percentage of the normal width, 1 to 1000. */
+export function parseFontStretch(prop: string, value: FontStretch): number {
+  const fail: Fail = failing(prop, String(value));
+  let n: number;
+  if (typeof value === 'number') n = value;
+  else if (typeof value !== 'string') fail('a percentage or a CSS keyword such as condensed');
+  else if (Object.hasOwn(FONT_STRETCHES, value)) n = FONT_STRETCHES[value as FontStretchName];
+  else if (/^[-+]?(?:\d+\.?\d*|\.\d+)%$/.test(value.trim())) n = Number.parseFloat(value);
+  else fail('a percentage or a CSS keyword such as condensed');
+  if (!Number.isFinite(n) || n < MIN_STRETCH || n > MAX_STRETCH) {
+    fail(`a width of ${MIN_STRETCH}% to ${MAX_STRETCH}%`);
+  }
+  return n;
 }
 
 /** Splits a feature list at the commas outside quotes; an empty item between commas stays, to fail. */

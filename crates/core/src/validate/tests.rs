@@ -243,6 +243,36 @@ fn font_sources_and_variations_are_checked() {
 }
 
 #[test]
+fn font_weight_and_width_ranges_are_checked() {
+    let codes = |decl: &str| -> Vec<(C, String)> {
+        let d = format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter",{decl}}}],"pages":[{{"size":{{"width":10,"height":10}}}}]}}"#
+        );
+        run(&d).into_iter().map(|e| (e.code, e.path)).collect()
+    };
+    let ok =
+        r#""weightRange":[100,900],"stretch":75,"stretchRange":[50,100],"opticalSizing":"none""#;
+    assert_eq!(codes(ok), []);
+    for (decl, path) in [
+        (r#""weightRange":[900,100]"#, "weightRange"),
+        (r#""weightRange":[0,900]"#, "weightRange"),
+        (r#""weightRange":[100,1001]"#, "weightRange"),
+        (r#""stretch":0.5"#, "stretch"),
+        (r#""stretch":1001"#, "stretch"),
+        (r#""stretchRange":[100,50]"#, "stretchRange"),
+        (r#""stretchRange":[50,2000]"#, "stretchRange"),
+    ] {
+        assert_eq!(
+            codes(decl),
+            [(C::OutOfRange, format!("fonts[0].{path}"))],
+            "{decl}"
+        );
+    }
+    let bad = codes(r#""opticalSizing":"auto-ish""#);
+    assert_eq!(bad.len(), 1, "{bad:?}");
+}
+
+#[test]
 fn runs_need_text_xor_placeholder() {
     let (code, _) = one(&doc(
         r#"{"type":"text","runs":[{"font":"Inter-Regular","size":10}]}"#,

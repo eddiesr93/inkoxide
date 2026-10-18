@@ -14,6 +14,7 @@ interface Case {
   families: string[];
   weight: number;
   style: 'normal' | 'italic';
+  stretch?: number;
   id: string;
   exact: boolean;
 }
@@ -30,7 +31,7 @@ describe('font matching', () => {
   it.each(table.cases.map((c) => [c.name, c] as const))('%s', (_, c) => {
     const registry = new FontRegistry();
     for (const face of table.faces[c.faces] ?? []) registry.register(face);
-    const r = registry.resolve(c.families, c.weight, c.style);
+    const r = registry.resolve(c.families, c.weight, c.style, undefined, c.stretch);
     expect({ id: r.id, exact: r.exact }).toEqual({ id: c.id, exact: c.exact });
   });
 });
@@ -112,6 +113,35 @@ describe('variable faces', () => {
       exact: false,
       wanted: 'F 450',
     });
+  });
+
+  it('draw a width in their range at that wdth, and declare it', () => {
+    const r = new FontRegistry()
+      .register({ id: 'Sans', family: 'Sans', weightRange: [100, 900], stretchRange: [75, 100] })
+      .register({ id: 'Sans-Wide', family: 'Sans', stretch: 150 });
+    expect(r.resolve(['Sans'], 700, 'normal', undefined, 87.5)).toEqual({
+      id: 'Sans@wdth=87.5,wght=700',
+      exact: true,
+    });
+    expect(r.decl('Sans@wdth=87.5,wght=700')).toEqual({
+      id: 'Sans@wdth=87.5,wght=700',
+      family: 'Sans',
+      weight: 700,
+      stretch: 87.5,
+      source: 'Sans',
+      variations: { wdth: 87.5, wght: 700 },
+    });
+    // Narrower than the range: its narrow end, the nearest narrower or wider width.
+    expect(r.resolve(['Sans'], 400, 'normal', undefined, 50)).toEqual({
+      id: 'Sans@wdth=75,wght=400',
+      exact: false,
+      wanted: 'Sans 400 50%',
+    });
+    // Above 100%, wider first: the static face.
+    expect(r.resolve(['Sans'], 400, 'normal', undefined, 125).id).toBe('Sans-Wide');
+    expect(r.decl('Sans-Wide')).toEqual({ id: 'Sans-Wide', family: 'Sans', stretch: 150 });
+    // The default width is 100%, in the range.
+    expect(r.resolve(['Sans'], 400, 'normal').id).toBe('Sans@wdth=100,wght=400');
   });
 
   it('refuse a face id with an @, which instances use', () => {

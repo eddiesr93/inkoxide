@@ -256,6 +256,8 @@ pub(crate) struct SvgSpan {
     pub families: Arc<[String]>,
     pub weight: u16,
     pub italic: bool,
+    /// `font-stretch`, a percentage.
+    pub stretch: f32,
     /// Font size in user units; a span whose size is not finite and
     /// positive is not drawn.
     pub size: f32,

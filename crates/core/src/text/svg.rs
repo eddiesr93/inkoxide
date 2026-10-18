@@ -24,7 +24,7 @@ use std::collections::HashMap;
 use super::objects::InlineObject;
 use super::vertical;
 use super::{ParaStyle, TextShaper};
-use crate::fonts::{FontKey, FontSet, LoadedFont};
+use crate::fonts::{Ask, FontKey, FontSet, LoadedFont};
 use crate::geom::{self, Rect};
 use crate::images::svg_text::{
     Anchor, Baseline, Shift, SvgSpan, SvgText, TextOrientation, TextPathSpec, Writing,
@@ -356,7 +356,17 @@ fn font_of(span: &SvgSpan, fonts: &FontSet<'_>) -> Option<FontKey> {
     } else {
         FontStyle::Normal
     };
-    fonts.select(&families, span.weight, style)
+    let key = fonts.select(&families, f32::from(span.weight), style, span.stretch)?;
+    Some(fonts.variant(key, ask(span)))
+}
+
+/// What `span` asks of its font: its size, weight and width.
+pub(crate) fn ask(span: &SvgSpan) -> Ask {
+    Ask {
+        size: span.size,
+        weight: Some(f32::from(span.weight)),
+        stretch: Some(span.stretch),
+    }
 }
 
 fn valid_size(size: f32) -> bool {
@@ -388,6 +398,7 @@ fn shape<S: TextShaper>(
             runs.push(TextRun {
                 text: Some(String::new()),
                 font: shaper.fonts().get(key).id.to_string(),
+                font_key: Some(key),
                 size: s.size,
                 color: None,
                 letter_spacing: (s.letter_spacing != 0.0).then_some(s.letter_spacing),

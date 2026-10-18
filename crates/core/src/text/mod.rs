@@ -35,12 +35,67 @@ pub(crate) use paint::{PageNumbers, TextPainter, WAVES_PER_GLYPH};
 pub(crate) use svg::SvgGlyph;
 pub(crate) use svg::{lay_out as lay_out_svg_text, LaidText};
 
-use crate::fonts::{FontKey, FontSet};
+use crate::fonts::{Ask, FontKey, FontSet};
 use crate::layout::{AvailableSpace, LeafMeasure, LineBox, LineBoxes, Size, Wrapped};
 use crate::schema::{
     Direction, Node, NodeKind, RunAlign, Style, TextAlign, TextRun, TextWrap, WhiteSpace,
 };
 use crate::InkoxideError;
+
+/// What the text of `doc` and of the SVGs in `images` asks of the variable
+/// fonts declared in `fonts` (see [`FontSet::add_variants`]): any of them
+/// may be a run's font, or a fallback, at each size of a run; SVG text
+/// asks its weight and width too.
+pub(crate) fn font_asks(
+    doc: &crate::schema::Document,
+    fonts: &FontSet<'_>,
+    images: &crate::images::ImageSet,
+) -> Vec<(FontKey, Ask)> {
+    fn sizes(node: &Node, out: &mut std::collections::BTreeSet<u32>) {
+        match &node.kind {
+            NodeKind::Text { runs } => out.extend(runs.iter().map(|r| r.size.to_bits())),
+            NodeKind::Box { children, .. } => children.iter().for_each(|c| sizes(c, out)),
+            NodeKind::Table(t) => t
+                .rows
+                .iter()
+                .flat_map(|r| &r.cells)
+                .flat_map(|c| &c.children)
+                .for_each(|c| sizes(c, out)),
+            _ => {}
+        }
+    }
+    let variable: Vec<FontKey> = fonts.variable().collect();
+    if variable.is_empty() {
+        return Vec::new();
+    }
+    let mut runs = std::collections::BTreeSet::new();
+    for page in &doc.pages {
+        let fixed = [&page.header, &page.footer];
+        for n in fixed
+            .into_iter()
+            .flatten()
+            .map(|n| &**n)
+            .chain(&page.children)
+        {
+            sizes(n, &mut runs);
+        }
+    }
+    let mut asks: Vec<(FontKey, Ask)> = runs
+        .into_iter()
+        .flat_map(|size| {
+            variable
+                .iter()
+                .map(move |&k| (k, Ask::sized(f32::from_bits(size))))
+        })
+        .collect();
+    // A span's own font is asked all, a fallback its size.
+    images.svg_spans(&mut |span| {
+        let ask = svg::ask(span);
+        asks.extend(variable.iter().map(|&k| (k, ask)));
+        asks.extend(variable.iter().map(|&k| (k, Ask::sized(span.size))));
+    });
+    asks
+}
 
 const GLYPH_SPACE: u8 = 1;
 const GLYPH_INVISIBLE: u8 = 2;

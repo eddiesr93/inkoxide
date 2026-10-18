@@ -54,6 +54,7 @@ generated=(
   fixtures/fonts/VarTest-CFF2.otf
   fixtures/fonts/VarTest-layout.ttf
   fixtures/fonts/VarTest-COLRv1.ttf
+  fixtures/fonts/VarTest-opsz.ttf
   fixtures/fonts/limits/var-avar2.ttf
   fixtures/fonts/limits/var-64-axes.ttf
   fixtures/fonts/limits/var-no-gvar.ttf

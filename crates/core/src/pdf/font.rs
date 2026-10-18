@@ -77,7 +77,8 @@ type SubsetKey = ([u8; 32], Vec<u16>);
 pub(crate) static SUBSETS: SharedLru<SubsetKey, Program> = SharedLru::new(SUBSET_BUDGET);
 
 /// Prepares the font program: a subset of `used` when `subset` is set and
-/// the subsetter accepts the font, otherwise the whole (cached) font.
+/// the subsetter accepts the font, otherwise the whole (cached) font; a
+/// variable font's instance whose glyphs do not all vary is a subset.
 pub(crate) fn program(
     font: &LoadedFont<'_>,
     used: &BTreeSet<u16>,
@@ -98,7 +99,23 @@ pub(crate) fn program(
             "subsetting failed; embedding the whole font"
         );
     }
-    let (data, length) = font.compressed_program(|p| deflate(p, flate::LEVEL))?;
+    let (data, length) = match font.compressed_program(|p| deflate(p, flate::LEVEL)) {
+        Ok(whole) => whole,
+        // A variable font's instance over every glyph fails where one of
+        // them does not vary; the glyphs the document uses may still.
+        Err(e) if !subset && font.data.outlines == crate::fonts::Outlines::Variable => {
+            let glyphs: Vec<u16> = used.iter().copied().collect();
+            let Some(p) = make_subset(font, &glyphs)? else {
+                return Err(e);
+            };
+            tracing::warn!(
+                font = font.metrics().post_script_name,
+                "the whole instance cannot be made; embedding the glyphs used"
+            );
+            return Ok(p);
+        }
+        Err(e) => return Err(e),
+    };
     Ok(Program {
         data,
         length,
@@ -255,15 +272,27 @@ pub(crate) fn write_font(
         flags |= FontFlags::SERIF;
     }
     let s = |v: f32| (v * to_1000).round();
+    // A variable font's `head` box is its default instance's, which an
+    // instance's outlines can exceed: theirs too, of every glyph, so that
+    // an encrypted file's box does not tell which glyphs are used.
+    let bbox = if font.instance.is_some() {
+        (0..font.glyph_count())
+            .filter_map(|g| font.glyph_bbox(g))
+            .fold(m.bbox, |b, g| {
+                [
+                    b[0].min(g[0]),
+                    b[1].min(g[1]),
+                    b[2].max(g[2]),
+                    b[3].max(g[3]),
+                ]
+            })
+    } else {
+        m.bbox
+    };
     let mut d = pdf.font_descriptor(descriptor);
     d.name(Name(name))
         .flags(flags)
-        .bbox(Rect::new(
-            s(m.bbox[0]),
-            s(m.bbox[1]),
-            s(m.bbox[2]),
-            s(m.bbox[3]),
-        ))
+        .bbox(Rect::new(s(bbox[0]), s(bbox[1]), s(bbox[2]), s(bbox[3])))
         .italic_angle(m.italic_angle)
         .ascent(s(m.ascender))
         .descent(s(m.descender))

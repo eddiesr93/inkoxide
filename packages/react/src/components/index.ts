@@ -7,7 +7,13 @@ import type {
   ShapeOutside,
   TransformOp,
 } from '@inkoxide/schema';
-import type { BorderStyle, FlatStyle, FontFeatureSettings, FontVariationSettings } from '@inkoxide/style';
+import type {
+  BorderStyle,
+  FlatStyle,
+  FontFeatureSettings,
+  FontStretch,
+  FontVariationSettings,
+} from '@inkoxide/style';
 import { createElement, type FC, type ReactNode } from 'react';
 
 import type { PdfALevel } from '../tree/output.ts';
@@ -100,6 +106,7 @@ type TextDecorationLine =
 export interface StyleProp extends Omit<
   FlatStyle,
   | 'fontWeight'
+  | 'fontStretch'
   | 'color'
   | 'backgroundColor'
   | 'lineHeight'
@@ -141,6 +148,11 @@ export interface StyleProp extends Omit<
   fontFamily?: string | string[];
   /** 1–1000, or a CSS name (`'bold'`, `'light'`, `'semibold'`). */
   fontWeight?: number | FontWeightName;
+  /**
+   * A width, as a percentage of the normal one (`75`, `'75%'`) or a CSS keyword
+   * (`'condensed'`): the face registered for it, or a variable font's `wdth`.
+   */
+  fontStretch?: FontStretch;
   fontSize?: Length;
   color?: string | Color;
   backgroundColor?: string | Color;
@@ -292,6 +304,8 @@ export const StyleSheet = {
     return styles;
   },
 };
+
+export type { FontStretch } from '@inkoxide/style';
 
 /** A CSS font weight name, for `fontWeight` in place of its number (`'bold'` is 700). */
 export type FontWeightName =
@@ -873,6 +887,8 @@ export interface SvgPresentation {
   fontSize?: number | string;
   fontWeight?: number | FontWeightName;
   fontStyle?: 'normal' | 'italic';
+  /** Text inside: its width, as `fontStretch` on a `Text`. */
+  fontStretch?: FontStretch;
   /** Text inside: where its position is on the text (`start`, `middle`, `end`). */
   textAnchor?: 'start' | 'middle' | 'end';
   /** Text inside: which line of the text sits at its `y`. */

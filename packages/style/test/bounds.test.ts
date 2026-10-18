@@ -7,8 +7,10 @@ import {
   MAX_FEATURES,
   MAX_GRID_LINE,
   MAX_GRID_SPAN,
+  MAX_STRETCH,
   MAX_VARIATION_VALUE,
   MAX_VARIATIONS,
+  MIN_STRETCH,
 } from '../src/bounds.ts';
 
 describe('schema bounds', () => {
@@ -27,5 +29,8 @@ describe('schema bounds', () => {
     const features = TextRun.properties.fontFeatures;
     expect(features.maxProperties).toBe(MAX_FEATURES);
     expect(features.additionalProperties.maximum).toBe(MAX_FEATURE_VALUE);
+    for (const stretch of [FontDecl.properties.stretch, FontDecl.properties.stretchRange.items]) {
+      expect([stretch.minimum, stretch.maximum]).toEqual([MIN_STRETCH, MAX_STRETCH]);
+    }
   });
 });

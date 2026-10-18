@@ -157,6 +157,7 @@ const faceOf = (d: FontDecl): DrawingFont => ({
   family: [d.family],
   weight: d.weight ?? 400,
   style: d.style ?? 'normal',
+  stretch: d.stretch ?? 100,
 });
 
 class Builder {
@@ -293,6 +294,7 @@ class Builder {
       ctx.fontWeight,
       ctx.fontStyle,
       ctx.fontVariationSettings,
+      ctx.fontStretch,
     );
     ctx.fontId = r.id;
     if (!r.exact && r.wanted && !this.warned.has(r.wanted)) {
@@ -1336,10 +1338,21 @@ class Builder {
    */
   private svgText(ctx: TextCtx): SvgTextFonts {
     return {
-      font: { family: ctx.fontFamily, weight: ctx.fontWeight, style: ctx.fontStyle },
+      font: {
+        family: ctx.fontFamily,
+        weight: ctx.fontWeight,
+        style: ctx.fontStyle,
+        stretch: ctx.fontStretch ?? 100,
+      },
       size: ctx.fontSize,
       face: (font, inst) => {
-        const own = { ...ctx, fontFamily: font.family, fontWeight: font.weight, fontStyle: font.style };
+        const own = {
+          ...ctx,
+          fontFamily: font.family,
+          fontWeight: font.weight,
+          fontStyle: font.style,
+          fontStretch: font.stretch ?? 100,
+        };
         return faceOf(this.opts.fonts.decl(this.font({ ...own, fontId: undefined }, inst)));
       },
       fail: (inst, message) => this.fail(inst, message, { kind: 'props' }),

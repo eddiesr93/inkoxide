@@ -276,6 +276,9 @@ pub(crate) const MAX_VARIATIONS: usize = 16;
 pub(crate) const MAX_VARIATION_VALUE: f32 = 32_767.0;
 /// Most font declarations with `variations`: each embeds a program.
 pub(crate) const MAX_FONT_INSTANCES: usize = 64;
+/// Bounds of a font declaration's `stretch` and `stretchRange`, percent.
+pub(crate) const MIN_STRETCH: f32 = 1.0;
+pub(crate) const MAX_STRETCH: f32 = 1000.0;
 /// Largest value of a font feature.
 pub(crate) const MAX_FEATURE_VALUE: u32 = 65_535;
 
@@ -468,6 +471,7 @@ impl<'a> Checker<'a> {
                     if let Some(v) = &f.variations {
                         c.variations(v);
                     }
+                    c.font_ranges(f);
                 });
             });
             self.declared.insert(&f.id);

@@ -87,6 +87,14 @@ const FIXTURE_FONTS: &[(&str, &str, u16, &str, &[u8])] = &[
         "normal",
         include_bytes!("../../fixtures/fonts/VarTest-CFF2.otf"),
     ),
+    // An `opsz` axis, which text takes from its size.
+    (
+        "VarTest-opsz",
+        "VarTest Opsz",
+        400,
+        "normal",
+        include_bytes!("../../fixtures/fonts/VarTest-opsz.ttf"),
+    ),
     // Vertical metrics (vhea, vmtx, VORG) and vertical forms (`vert`).
     (
         "VertTest",
@@ -305,8 +313,9 @@ const INSTANCES: &[(&str, &str, u16, &str)] = &[
     ),
 ];
 
-/// The `fonts` of a document that declares every fixture font, and the
-/// [`INSTANCES`].
+/// The `fonts` of a document that declares every fixture font, the
+/// [`INSTANCES`], and a variable font's weights and widths, which SVG text
+/// draws at its own and runs at their size's optical size.
 fn fixture_fonts() -> Vec<Value> {
     let fonts = FIXTURE_FONTS
         .iter()
@@ -317,7 +326,9 @@ fn fixture_fonts() -> Vec<Value> {
         let variations: Value = serde_json::from_str(variations).unwrap();
         json!({"id": id, "family": "VarTest", "weight": weight, "source": source, "variations": variations})
     });
-    fonts.chain(instances).collect()
+    let ranged = json!({"id": "VarTest-range", "family": "VarRange", "source": "VarTest-glyf",
+        "weightRange": [100, 900], "stretchRange": [50, 100]});
+    fonts.chain(instances).chain([ranged]).collect()
 }
 
 /// Renders `doc` encrypted: it must render exactly when `plain`, its
@@ -418,10 +429,12 @@ pub fn check_font(bytes: &[u8]) -> usize {
     // A variable font is also drawn at an instance: past its axes, and at
     // an axis it may lack.
     let doc = r#"{"version":1,"meta":{"title":"Fuzz-Font"},"fonts":[{"id":"fz","family":"Fz"},{"id":"Inter-Regular","family":"Inter"},
-        {"id":"fzv","family":"Fz","weight":900,"source":"fz","variations":{"wght":900,"wdth":50,"opsz":72,"slnt":-90}}],
+        {"id":"fzv","family":"Fz","weight":900,"source":"fz","variations":{"wght":900,"wdth":50,"opsz":72,"slnt":-90}},
+        {"id":"fzr","family":"Fzr","source":"fz","weightRange":[1,1000],"stretchRange":[1,1000]}],
         "fallbackFonts":["fz"],"pages":[{"size":{"width":300,"height":200},"children":[
         {"type":"text","runs":[{"text":"Hello, world! 0123 Äß של fi\u00ad😀","font":"fz","size":12}]},
         {"type":"text","runs":[{"text":"Variable 0123 Äß","font":"fzv","size":12}]},
+        {"type":"text","runs":[{"text":"Optical 0123","font":"fzr","size":7},{"text":"Optical","font":"fzr","size":48}]},
         {"type":"text","runs":[{"text":"😀 👩‍💻 🇫🇷 1️⃣ #⃣ 👍🏽 ❤️ ☺︎ 🏴󠁧󠁢󠁥󠁮󠁧󠁿","font":"Inter-Regular","size":12}]}]}]}"#;
     let pdf_a = pdf_a_level(bytes.len());
     let mut registered = 0;
@@ -1512,11 +1525,13 @@ fn link(s: &mut Src) -> Value {
 
 /// A fixture font, or one the document does not declare.
 fn font(s: &mut Src) -> Value {
-    let i = s.below(FIXTURE_FONTS.len() + INSTANCES.len() + 1);
+    let declared = FIXTURE_FONTS.len() + INSTANCES.len();
+    let i = s.below(declared + 2);
     let font = FIXTURE_FONTS
         .get(i)
         .map(|f| f.0)
         .or_else(|| INSTANCES.get(i - FIXTURE_FONTS.len()).map(|f| f.0))
+        .or_else(|| (i == declared).then_some("VarTest-range"))
         .unwrap_or("Missing");
     json!(font)
 }

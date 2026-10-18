@@ -1,7 +1,9 @@
 import {
   type FlatStyle,
+  type FontStretch,
   parseFlex,
   parseFontFeatureSettings,
+  parseFontStretch,
   parseFontVariantNumeric,
   parseFontVariationSettings,
   parseObjectPosition,
@@ -445,6 +447,9 @@ function applyDecl(s: FlatStyle, prop: string, value: string, units: Units, line
       return;
     case 'font-variation-settings':
       s.fontVariationSettings = parseFontVariationSettings(prop, v);
+      return;
+    case 'font-stretch':
+      s.fontStretch = parseFontStretch(prop, v as FontStretch);
       return;
     case 'background-image':
       throw r.error('gradients and background images are not supported (use bg-<colour>)');

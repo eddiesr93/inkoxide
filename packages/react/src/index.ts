@@ -30,7 +30,11 @@ export {
 } from './tree/images.ts';
 export { parsePath } from './tree/locate.ts';
 export { PAGE_SIZES } from './tree/page-sizes.ts';
-export { variationsOf as fontVariationsValue, weightOf as fontWeightValue } from './tree/style.ts';
+export {
+  stretchOf as fontStretchValue,
+  variationsOf as fontVariationsValue,
+  weightOf as fontWeightValue,
+} from './tree/style.ts';
 export { familyKey } from './fonts/registry.ts';
 export type { EncryptionOptions, OutputOptions, PdfALevel } from './tree/build.ts';
 export { type SchemaProblem, validateTree } from './tree/validate.ts';

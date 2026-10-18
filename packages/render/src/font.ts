@@ -10,6 +10,8 @@ import {
   fontVariationsValue,
   type FontWeightName,
   fonts,
+  type FontStretch,
+  fontStretchValue,
   fontWeightValue,
   type HyphenationCallback,
 } from '@inkoxide/react';
@@ -40,6 +42,12 @@ export interface FontSource {
   fontWeight?: FontWeight | readonly [FontWeight, FontWeight];
   fontStyle?: 'normal' | 'italic';
   /**
+   * The width, a percentage of the normal one (`75`, `'75%'`) or a CSS keyword (`'condensed'`);
+   * default 100. A variable font takes a range, `[75, 100]`: each width in it draws an instance of
+   * the font at that `wdth`.
+   */
+  fontStretch?: FontStretch | readonly [FontStretch, FontStretch];
+  /**
    * A variable font's axis values for every use of this face, as CSS `@font-face` takes them:
    * `{ ital: 1 }` or `"'slnt' -10"`, so one file can serve as the italic too.
    */
@@ -58,25 +66,38 @@ interface Face {
   /** A variable font's weights. */
   weightRange?: readonly [number, number];
   style: 'normal' | 'italic';
+  /** Its width, a percentage. */
+  stretch: number;
+  /** A variable font's widths. */
+  stretchRange?: readonly [number, number];
   variations?: Readonly<Record<string, number>>;
   /** The engine's font id, made from the family, weight and style. */
   id: string;
   src: FontSrc;
 }
 
-/** What names a face: its family, weight and style, and a variable face's weight range. */
-type FaceName = Pick<Face, 'family' | 'weight' | 'style'> & { weightRange?: readonly [number, number] };
+/** What names a face: its family, weight, width and style, and a variable face's ranges. */
+type FaceName = Pick<Face, 'family' | 'weight' | 'style' | 'stretch'> & {
+  weightRange?: readonly [number, number];
+  stretchRange?: readonly [number, number];
+};
 
 /**
- * What tells faces apart, as CSS matches them: family (ignoring ASCII case), weight (a variable
- * face's range) and style.
+ * What tells faces apart, as CSS matches them: family (ignoring ASCII case), weight and width (a
+ * variable face's ranges) and style.
  */
 const faceKey = (f: FaceName): string =>
-  JSON.stringify([familyKey(f.family), f.weightRange ?? f.weight, f.style]);
+  JSON.stringify([familyKey(f.family), f.weightRange ?? f.weight, f.style, f.stretchRange ?? f.stretch]);
 
-/** `"Brand" 700 italic`, as messages name a face. */
-const faceLabel = (f: FaceName): string =>
-  `"${f.family}" ${f.weightRange ? f.weightRange.join('–') : f.weight}${f.style === 'italic' ? ' italic' : ''}`;
+/** The width of a face, as its label and font id name it: `75%`, `75-100%`, or nothing at 100%. */
+const widthLabel = (f: FaceName): string =>
+  f.stretchRange ? `${f.stretchRange.join('-')}%` : f.stretch === 100 ? '' : `${f.stretch}%`;
+
+/** `"Brand" 700 75% italic`, as messages name a face. */
+const faceLabel = (f: FaceName): string => {
+  const width = widthLabel(f);
+  return `"${f.family}" ${f.weightRange ? f.weightRange.join('–') : f.weight}${width ? ` ${width}` : ''}${f.style === 'italic' ? ' italic' : ''}`;
+};
 
 const pending: Face[] = [];
 /** Faces registered through `Font.register`, by `faceKey`. */
@@ -97,6 +118,26 @@ function weightOf(w: FontWeight | undefined, family: string): number {
     throw new Error(`Font "${family}": fontWeight ${JSON.stringify(w)} is not 1–1000 or a CSS weight name.`);
   }
   return n;
+}
+
+function stretchOf(s: FontStretch | undefined, family: string): number {
+  if (s === undefined) return 100;
+  try {
+    return fontStretchValue(s);
+  } catch {
+    throw new Error(
+      `Font "${family}": fontStretch ${JSON.stringify(s)} is not a width of 1% to 1000% or a CSS keyword.`,
+    );
+  }
+}
+
+/** A variable font's widths, `[75, 100]`, in order. */
+function widthsOf(range: readonly unknown[], family: string): readonly [number, number] {
+  if (range.length !== 2) throw new Error(`Font "${family}": a fontStretch range is two widths, [75, 100].`);
+  const [a, b] = range.map((s) => stretchOf(s as FontStretch, family)) as [number, number];
+  if (a > b)
+    throw new Error(`Font "${family}": the fontStretch range [${a}, ${b}] goes from the narrower width.`);
+  return [a, b];
 }
 
 /** A variable font's weights, `[100, 900]`, in order. */
@@ -184,10 +225,19 @@ export const Font = {
         ? Math.min(Math.max(400, weightRange[0]), weightRange[1])
         : weightOf(fw as FontWeight | undefined, family);
       const style = face.fontStyle ?? 'normal';
+      const fs = face.fontStretch;
+      const stretchRange = Array.isArray(fs) ? widthsOf(fs, family) : undefined;
+      const stretch = stretchRange
+        ? Math.min(Math.max(100, stretchRange[0]), stretchRange[1])
+        : stretchOf(fs as FontStretch | undefined, family);
       const weights = weightRange ? weightRange.join('-') : String(weight);
-      const id = `${family.trim().replace(/\s+/g, '-')}-${weights}${style === 'italic' ? '-italic' : ''}`;
-      const f: Face = { family, weight, style, id, src };
+      const named: FaceName = { family, weight, style, stretch };
+      if (stretchRange) named.stretchRange = stretchRange;
+      const width = widthLabel(named);
+      const id = `${family.trim().replace(/\s+/g, '-')}-${weights}${width ? `-${width}` : ''}${style === 'italic' ? '-italic' : ''}`;
+      const f: Face = { family, weight, style, stretch, id, src };
       if (weightRange) f.weightRange = weightRange;
+      if (stretchRange) f.stretchRange = stretchRange;
       if (face.fontVariationSettings !== undefined) {
         try {
           f.variations = fontVariationsValue(face.fontVariationSettings);
@@ -197,7 +247,10 @@ export const Font = {
       }
       const bundled = DEFAULT_FACES.find(
         (d) =>
-          familyKey(d.family) === familyKey(family) && d.weight === weight && (d.style ?? 'normal') === style,
+          familyKey(d.family) === familyKey(family) &&
+          d.weight === weight &&
+          (d.style ?? 'normal') === style &&
+          stretch === 100,
       );
       if (bundled) {
         throw new Error(
@@ -294,7 +347,9 @@ export function loadRegisteredFonts(): Promise<void> {
             family: f.family,
             weight: f.weight,
             style: f.style,
+            ...(f.stretch !== 100 ? { stretch: f.stretch } : {}),
             ...(f.weightRange ? { weightRange: f.weightRange } : {}),
+            ...(f.stretchRange ? { stretchRange: f.stretchRange } : {}),
             ...(f.variations ? { variations: f.variations } : {}),
           },
           bytes,

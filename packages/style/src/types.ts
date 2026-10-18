@@ -157,6 +157,8 @@ export interface FlatStyle {
   fontFamily?: string[];
   fontWeight?: number;
   fontStyle?: 'normal' | 'italic';
+  /** A percentage of the normal width (`font-stretch`): a variable font draws it on `wdth`. */
+  fontStretch?: number;
   fontSize?: number;
   color?: Color;
   lineHeight?: LineHeight;
@@ -209,6 +211,7 @@ export const TEXT_INHERITED = [
   'fontFamily',
   'fontWeight',
   'fontStyle',
+  'fontStretch',
   'fontSize',
   'color',
   'lineHeight',

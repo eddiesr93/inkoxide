@@ -634,6 +634,19 @@ export const SUPPORTED: readonly SupportedFamily[] = [
   },
   {
     group: 'Text',
+    utilities: '`font-stretch-condensed` … `font-stretch-ultra-expanded`, `font-stretch-75%`',
+    maps: '`fontStretch`',
+    notes:
+      "A width, as a percentage of the normal one: the face registered for it, or a variable font's `wdth`. A missing width falls back to the nearest registered one.",
+    examples: {
+      'font-stretch-condensed': { fontStretch: 75 },
+      'font-stretch-normal': { fontStretch: 100 },
+      'font-stretch-expanded': { fontStretch: 125 },
+      'font-stretch-75%': { fontStretch: 75 },
+    },
+  },
+  {
+    group: 'Text',
     utilities: '`italic`, `not-italic`',
     maps: 'run `font` (style)',
     examples: { italic: { fontStyle: 'italic' }, 'not-italic': { fontStyle: 'normal' } },

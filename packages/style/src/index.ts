@@ -5,11 +5,15 @@
 import * as internal from './internal.ts';
 
 export {
+  FONT_STRETCHES,
   type FontFeatures,
   type FontFeatureSettings,
+  type FontStretch,
+  type FontStretchName,
   type FontVariations,
   type FontVariationSettings,
   parseFontFeatureSettings,
+  parseFontStretch,
   parseFontVariantNumeric,
   parseFontVariationSettings,
 } from './features.ts';

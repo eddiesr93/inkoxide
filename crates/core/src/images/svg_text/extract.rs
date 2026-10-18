@@ -79,6 +79,7 @@ const TEXT: &[&str] = &[
     "font-size",
     "font-weight",
     "font-style",
+    "font-stretch",
     "letter-spacing",
     "word-spacing",
     "text-anchor",
@@ -582,12 +583,35 @@ fn declare(d: &mut Decls, decl: &Declaration<'_>) {
         if let Ok(f) = FontShorthand::from_str(decl.value) {
             put("font-style", f.font_style.unwrap_or("normal"));
             put("font-weight", f.font_weight.unwrap_or("normal"));
+            put("font-stretch", f.font_stretch.unwrap_or("normal"));
             put("font-size", f.font_size);
             put("font-family", f.font_family);
         }
     } else if let Some(k) = known(decl.name) {
         put(k, decl.value);
     }
+}
+
+/// A `font-stretch` value as a percentage (CSS Fonts 4, 2.4): a keyword or
+/// a percentage that is not negative; `None` for anything else.
+fn font_stretch(v: &str) -> Option<f32> {
+    Some(match v.trim() {
+        "ultra-condensed" => 50.0,
+        "extra-condensed" => 62.5,
+        "condensed" => 75.0,
+        "semi-condensed" => 87.5,
+        "normal" => 100.0,
+        "semi-expanded" => 112.5,
+        "expanded" => 125.0,
+        "extra-expanded" => 150.0,
+        "ultra-expanded" => 200.0,
+        p => p
+            .strip_suffix('%')?
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .filter(|p| p.is_finite() && *p >= 0.0)?,
+    })
 }
 
 /// The features a `font-variant` keyword turns on or off (CSS Fonts 3,
@@ -1162,6 +1186,10 @@ fn span_props<'a, 'i>(
         cascade.inherited(n, "font-style").as_deref(),
         Some("italic" | "oblique")
     );
+    let stretch = cascade
+        .inherited(n, "font-stretch")
+        .and_then(|v| font_stretch(&v))
+        .unwrap_or(100.0);
     let mut spacing = |prop: &str| {
         cascade
             .inherited(n, prop)
@@ -1238,6 +1266,7 @@ fn span_props<'a, 'i>(
         families,
         weight,
         italic,
+        stretch,
         size,
         letter_spacing,
         word_spacing,

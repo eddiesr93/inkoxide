@@ -16,7 +16,7 @@ use super::{
     BreakKind, BreakPoint, Glyph, PageNumbers, Para, Prepared, Segment, GLYPH_INVISIBLE,
     GLYPH_OBJECT, GLYPH_SPACE, GLYPH_TAB,
 };
-use crate::fonts::{FontKey, FontSet, LoadedFont};
+use crate::fonts::{Ask, FontKey, FontSet, LoadedFont};
 use crate::schema::{Direction, FontFeature, TextRun, WhiteSpace};
 use crate::InkoxideError;
 
@@ -190,7 +190,7 @@ fn itemize(
     let mut segs: Vec<Segment> = Vec::new();
     let mut objs = Vec::new();
     for (ri, (&(start, end), run)) in run_ranges.iter().zip(runs).enumerate() {
-        let Some(primary) = fonts.key(&run.font) else {
+        let Some(primary) = run.font_key.or_else(|| fonts.key(&run.font)) else {
             continue;
         };
         if run.is_icon() {
@@ -269,6 +269,10 @@ fn itemize(
         if let Some((f, s)) = current {
             segs.push(Segment::new(ri, f, level, s..end));
         }
+    }
+    // Each font at the instance the run's size asks for.
+    for seg in &mut segs {
+        seg.font = fonts.variant(seg.font, Ask::sized(runs[usize::from(seg.run)].size));
     }
     (segs, objs)
 }
@@ -979,6 +983,7 @@ mod tests {
             placeholder: None,
             link: None,
             hyphenate: None,
+            font_key: None,
             vertical_align: None,
             font_features: None,
         }

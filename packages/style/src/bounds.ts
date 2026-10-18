@@ -13,3 +13,6 @@ export const MAX_FEATURE_VALUE = 65_535;
 export const MAX_VARIATIONS = 16;
 /** Largest axis value, either way. */
 export const MAX_VARIATION_VALUE = 32_767;
+/** Narrowest and widest width a font declaration takes (`FontDecl.stretch`), percentages. */
+export const MIN_STRETCH = 1;
+export const MAX_STRETCH = 1000;

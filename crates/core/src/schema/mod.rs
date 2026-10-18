@@ -205,12 +205,37 @@ pub struct FontDecl {
     /// the static instance it draws with.
     #[serde(default, deserialize_with = "de::font_variations")]
     pub variations: Option<Box<[FontVariation]>>,
+    /// A variable font's weights, lowest first, as CSS `@font-face` takes
+    /// them: SVG text of a weight in it draws at that `wght`.
+    pub weight_range: Option<[f32; 2]>,
+    /// The width SVG text's `font-stretch` is matched against, a
+    /// percentage (100 when absent).
+    pub stretch: Option<f32>,
+    /// A variable font's widths, as `weight_range`: SVG text of a width
+    /// in it draws at that `wdth`.
+    pub stretch_range: Option<[f32; 2]>,
+    /// Whether text takes the `opsz` axis from its size (`auto`, the
+    /// default), as CSS `font-optical-sizing`.
+    pub optical_sizing: Option<OpticalSizing>,
 }
 
 impl FontDecl {
     /// The id of the registered font it draws with.
     pub fn source(&self) -> &str {
         self.source.as_deref().unwrap_or(&self.id)
+    }
+
+    /// The weights it draws: `weight` alone, or `weight_range`.
+    pub fn weights(&self) -> [f32; 2] {
+        self.weight_range
+            .unwrap_or([f32::from(self.weight), f32::from(self.weight)])
+    }
+
+    /// The widths it draws, percentages: `stretch` alone, or
+    /// `stretch_range`.
+    pub fn stretches(&self) -> [f32; 2] {
+        let s = self.stretch.unwrap_or(100.0);
+        self.stretch_range.unwrap_or([s, s])
     }
 }
 
@@ -831,6 +856,10 @@ pub enum Placeholder {
 pub struct TextRun {
     pub text: Option<String>,
     pub font: String,
+    /// The font it draws with when not `font`'s own instance: a variant
+    /// (`FontSet::variant`) that SVG text asks for.
+    #[serde(skip)]
+    pub(crate) font_key: Option<u16>,
     pub size: f32,
     pub color: Option<Color>,
     pub letter_spacing: Option<f32>,
@@ -1092,6 +1121,7 @@ kebab_enum!(WhiteSpace {
     PreLine = "pre-line",
 });
 kebab_enum!(TextWrap { Wrap = "wrap", Pretty = "pretty", Balance = "balance" });
+kebab_enum!(OpticalSizing { Auto = "auto", None = "none" });
 kebab_enum!(BorderCollapse { Collapse = "collapse", Separate = "separate" });
 kebab_enum!(VerticalAlign { Top = "top", Middle = "middle", Bottom = "bottom" });
 
