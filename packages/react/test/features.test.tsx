@@ -1508,6 +1508,19 @@ describe('tagged output', () => {
     expect(table.rows[0]?.cells[0]?.header).toBe(true);
     expect(field.field.label).toBe('Your email');
   });
+
+  it('takes a PDF/UA part, and refuses another value', () => {
+    const output = (pdfUA: unknown) =>
+      renderTemplate(
+        <Document title="T" lang="en" pdfUA={pdfUA as '2'}>
+          <Page />
+        </Document>,
+        { fonts },
+      ).output;
+    expect(output('2')).toEqual({ pdfUA: '2' });
+    expect(output(false)).toEqual({});
+    expect(() => output('3')).toThrow(`<Document pdfUA="3"> must be true, false, '1' or '2'.`);
+  });
 });
 
 describe('attachments', () => {

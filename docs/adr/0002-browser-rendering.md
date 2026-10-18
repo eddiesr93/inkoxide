@@ -44,7 +44,7 @@ Worker.
   features `msgpack` (it takes JSON only) and `embedded-hyphenation`. The engine matches words
   against hypher's patterns itself (`text/builtin.rs`), and `@inkoxide/wasm` fetches a
   language's patterns when a document first hyphenates text in it. CI fails over a budget of
-  1.50 MB with brotli (`scripts/wasm-size.mjs`).
+  1.53 MB with brotli (`scripts/wasm-size.mjs`).
 - **Fonts on demand.** `RenderOptions::deferred_fonts` names declared fonts that may be missing:
   a render that does not draw with one, nor try it for a character, gives the bytes it would give
   with the font; one that does fails with `NOT_LOADED`, naming it. The browser entry defers Noto

@@ -65,6 +65,11 @@ pub(super) const MAX_RASTER_PIXELS: u64 = 4 * crate::images::MAX_PIXELS;
 /// around nested SVG images (they are converted on the same stack).
 pub(super) const MAX_DEPTH: usize = 100;
 
+/// Deepest tag nesting the XML parser is given, which recurses per
+/// element: far past [`MAX_DEPTH`], for elements `check` does not visit,
+/// and within a small thread stack.
+pub(super) const MAX_XML_DEPTH: usize = 256;
+
 /// Deepest SVG-in-SVG nesting. Real files embed an icon or a chart one
 /// level deep; each level adds a parse and a conversion to the stack on
 /// top of what [`MAX_DEPTH`] allows.

@@ -24,7 +24,7 @@
 //! in, so the transform from the current form's space is tracked (`ts`)
 //! and reset for every new form.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use pdf_writer::types::{
@@ -38,11 +38,12 @@ use usvg::{Group, Node, Paint, Transform};
 use super::{alpha_key, font, key_alpha, number, Profile, Writer};
 use crate::fonts::{FontKey, FontSet, LoadedFont};
 use crate::geom::sin_cos_degrees;
-use crate::images::svg::ProbedText;
+use crate::images::svg::{Part, ProbedText, SvgParts};
 use crate::images::svg_text::Probes;
 use crate::images::{ContentKey, ImageBody, ImageKey, ImageSet};
 use crate::paint::FillRule;
 use crate::paint::{alt_span, InvisibleGlyph, Op, SpaceAt, TextGlyph, TextOp, NO_RADII};
+use crate::tag::Kind;
 use crate::text::{ColorGlyphs, LaidText, SvgGlyph};
 use crate::{flate, InkoxideError};
 
@@ -281,6 +282,7 @@ pub(crate) fn write_svg(
         segments: 0,
         profile,
         text,
+        tagging: None,
     };
     let mut cv = Canvas::new();
     s.group(&mut cv, tree.root(), Scope::form(0, false))?;
@@ -293,6 +295,109 @@ pub(crate) fn write_svg(
         false,
     )?;
     Ok(id)
+}
+
+/// Whose content a sequence of a tagged SVG form is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Owner {
+    /// The element the SVG is placed in.
+    Outer,
+    /// A part, by its place in [`FormTags::parts`].
+    Part(usize),
+}
+
+/// The structure of an SVG form whose parts are tagged.
+#[derive(Debug, Default)]
+pub(crate) struct FormTags {
+    /// The owner of each MCID.
+    pub mcids: Vec<Owner>,
+    /// Each part: its alternative text and the part it is in.
+    pub parts: Vec<(String, Option<usize>)>,
+}
+
+/// [`write_svg`] with `parts` tagged: the content of the element it is
+/// placed in in sequences tagged `outer`, a named part's in figures of its
+/// own, and a hidden part's in artifacts. Writes one form for each
+/// `/StructParents` key of `keys`, each placed once: a form's MCIDs map to
+/// the elements of one placement.
+pub(crate) fn write_tagged_svg(
+    writer: &mut Writer,
+    (tree, size): (&usvg::Tree, usvg::Size),
+    profile: Profile,
+    text: Option<(&ProbedText, TextResources<'_, '_>)>,
+    (parts, outer, keys): (&SvgParts, &'static [u8], &[i32]),
+) -> Result<(Vec<Ref>, FormTags), InkoxideError> {
+    let (w, h) = (size.width(), size.height());
+    let mut holding = HashSet::new();
+    hold(tree.root(), parts, &mut holding);
+    let mut s = Svg {
+        w: writer,
+        alphas: HashMap::new(),
+        images: HashMap::new(),
+        segments: 0,
+        profile,
+        text,
+        tagging: Some(Tagging {
+            parts,
+            outer,
+            holding,
+            owner: Owner::Outer,
+            tags: FormTags::default(),
+        }),
+    };
+    let mut cv = Canvas::new();
+    let top = Scope {
+        marks: true,
+        ..Scope::form(0, false)
+    };
+    s.group(&mut cv, tree.root(), top)?;
+    let data = super::deflate(
+        &super::content_bytes(std::mem::replace(&mut cv.c, Content::new()), profile)?,
+        flate::LEVEL,
+    )?;
+    let mut refs = Vec::with_capacity(keys.len());
+    for &key in keys {
+        let id = s.w.alloc.next();
+        s.w.out.form_xobject(&mut s.w.pdf, id, &data, |f| {
+            f.filter(Filter::FlateDecode);
+            f.bbox(bounded(Rect::new(0.0, 0.0, w, h)));
+            f.matrix([1.0 / w, 0.0, 0.0, -1.0 / h, 0.0, 1.0].map(number));
+            f.pair(Name(b"StructParents"), key);
+            cv.write_resources(f.resources());
+        });
+        refs.push(id);
+    }
+    let tags = s.tagging.map(|t| t.tags).unwrap_or_default();
+    Ok((refs, tags))
+}
+
+/// Whether `g` has a part inside, at any depth; adds each group that has
+/// one to `holding`, by address.
+fn hold(g: &Group, parts: &SvgParts, holding: &mut HashSet<*const Group>) -> bool {
+    let mut any = false;
+    for n in g.children() {
+        let inner = match n {
+            Node::Group(child) => hold(child, parts, holding),
+            _ => false,
+        };
+        any |= inner || parts.by_id.contains_key(n.id());
+    }
+    if any {
+        holding.insert(std::ptr::from_ref(g));
+    }
+    any
+}
+
+/// Where tagging an SVG form's content stands.
+struct Tagging<'a> {
+    parts: &'a SvgParts,
+    /// The tag of the sequences of the element the SVG is placed in.
+    outer: &'static [u8],
+    /// The groups with a part inside ([`hold`]).
+    holding: HashSet<*const Group>,
+    /// Whose content is drawn now.
+    owner: Owner,
+    tags: FormTags,
 }
 
 /// The kinds of resource a form's content names, in the order its
@@ -717,6 +822,10 @@ struct Scope {
     ts: Transform,
     depth: u32,
     clip: bool,
+    /// Whether what is drawn is marked here (the top form of an SVG whose
+    /// parts are tagged): a sub-form's content is in the sequence its
+    /// `Do` is in.
+    marks: bool,
 }
 
 impl Scope {
@@ -726,6 +835,7 @@ impl Scope {
             ts: Transform::identity(),
             depth,
             clip,
+            marks: false,
         }
     }
 
@@ -750,9 +860,18 @@ struct Svg<'a> {
     profile: Profile,
     /// The text at the probes, and the fonts to draw it with.
     text: Option<(&'a ProbedText, TextResources<'a, 'a>)>,
+    /// The parts tagged, in a tagged form.
+    tagging: Option<Tagging<'a>>,
 }
 
 type Res = Result<(), InkoxideError>;
+
+/// Closes the sequence that `open` says is open.
+fn end_sequence(cv: &mut Canvas, open: &mut bool) {
+    if std::mem::take(open) {
+        cv.c.end_marked_content();
+    }
+}
 
 fn too_complex() -> InkoxideError {
     InkoxideError::Image(format!(
@@ -889,7 +1008,9 @@ impl Svg<'_> {
 
     /// Draws a group.
     fn group(&mut self, cv: &mut Canvas, g: &Group, at: Scope) -> Res {
-        let Scope { ts, depth, clip } = at;
+        let Scope {
+            ts, depth, clip, ..
+        } = at;
         if depth > MAX_DEPTH {
             return Ok(());
         }
@@ -987,6 +1108,7 @@ impl Svg<'_> {
                 ts: cp.transform(),
                 depth: depth + 1,
                 clip: true,
+                marks: false,
             };
             s.group(inner, cp.root(), at)?;
             inner.c.restore_state();
@@ -1030,23 +1152,122 @@ impl Svg<'_> {
     }
 
     fn children(&mut self, cv: &mut Canvas, g: &Group, at: Scope) -> Res {
+        if at.marks {
+            return self.marked_children(cv, g, at);
+        }
         for n in g.children() {
-            match n {
-                Node::Group(child) => self.group(cv, child, at.deeper())?,
-                Node::Path(p) if self.probe(p).is_some() => self.text(cv, p, at)?,
-                Node::Path(p) if at.clip => {
-                    if let (true, Some(fill)) = (p.is_visible(), p.fill()) {
-                        self.emit_path(&mut cv.c, p.data())?;
-                        super::fill(&mut cv.c, fill.rule().into());
-                    }
-                }
-                Node::Path(p) => self.path(cv, p, at)?,
-                Node::Image(img) if !at.clip => self.image(cv, img, at)?,
-                Node::Image(_) => {}
-                Node::Text(t) => self.group(cv, t.flattened(), at.deeper())?,
-            }
+            self.child(cv, n, at)?;
         }
         Ok(())
+    }
+
+    fn child(&mut self, cv: &mut Canvas, n: &Node, at: Scope) -> Res {
+        match n {
+            Node::Group(child) => self.group(cv, child, at.deeper())?,
+            Node::Path(p) if self.probe(p).is_some() => self.text(cv, p, at)?,
+            Node::Path(p) if at.clip => {
+                if let (true, Some(fill)) = (p.is_visible(), p.fill()) {
+                    self.emit_path(&mut cv.c, p.data())?;
+                    super::fill(&mut cv.c, fill.rule().into());
+                }
+            }
+            Node::Path(p) => self.path(cv, p, at)?,
+            Node::Image(img) if !at.clip => self.image(cv, img, at)?,
+            Node::Image(_) => {}
+            Node::Text(t) => self.group(cv, t.flattened(), at.deeper())?,
+        }
+        Ok(())
+    }
+
+    /// [`Svg::children`] of a tagged form: each child in a sequence of
+    /// its owner, a hidden part in an artifact, and a group with a part
+    /// inside, which is drawn in this form, marked child by child.
+    /// Sequences start and end at this level, so they nest with the save
+    /// levels of groups.
+    fn marked_children(&mut self, cv: &mut Canvas, g: &Group, at: Scope) -> Res {
+        let plain = Scope { marks: false, ..at };
+        let mut open = false;
+        for n in g.children() {
+            let part = self
+                .tagging
+                .as_ref()
+                .and_then(|t| t.parts.by_id.get(n.id()))
+                .cloned();
+            let holds = self.holds(n, at.clip);
+            match part {
+                Some(Part::Hidden) => {
+                    end_sequence(cv, &mut open);
+                    cv.c.begin_marked_content(Name(b"Artifact"));
+                    self.child(cv, n, plain)?;
+                    cv.c.end_marked_content();
+                }
+                Some(Part::Named(alt)) => {
+                    end_sequence(cv, &mut open);
+                    let outer = self.tagging.as_mut().map(|t| {
+                        let parent = match t.owner {
+                            Owner::Outer => None,
+                            Owner::Part(p) => Some(p),
+                        };
+                        t.tags.parts.push((alt, parent));
+                        let own = Owner::Part(t.tags.parts.len() - 1);
+                        std::mem::replace(&mut t.owner, own)
+                    });
+                    if holds {
+                        self.child(cv, n, at)?;
+                    } else {
+                        let mut own = false;
+                        self.sequence(cv, &mut own);
+                        self.child(cv, n, plain)?;
+                        end_sequence(cv, &mut own);
+                    }
+                    if let (Some(t), Some(o)) = (self.tagging.as_mut(), outer) {
+                        t.owner = o;
+                    }
+                }
+                None if holds => {
+                    end_sequence(cv, &mut open);
+                    self.child(cv, n, at)?;
+                }
+                None => {
+                    self.sequence(cv, &mut open);
+                    self.child(cv, n, plain)?;
+                }
+            }
+        }
+        end_sequence(cv, &mut open);
+        Ok(())
+    }
+
+    /// Whether `n` is a group with a part inside drawn in this form, not in
+    /// a transparency group of its own.
+    fn holds(&self, n: &Node, clip: bool) -> bool {
+        let (Node::Group(g), Some(t)) = (n, &self.tagging) else {
+            return false;
+        };
+        if !t.holding.contains(&std::ptr::from_ref(g.as_ref())) {
+            return false;
+        }
+        let masks = g
+            .clip_path()
+            .is_some_and(|cp| matches!(clip_kind(cp, |p| self.probe(p).is_some()), Clip::Masks))
+            || (!clip && g.mask().is_some());
+        !masks && group_transparency(g, clip).is_none()
+    }
+
+    /// Opens a sequence of the owner drawn now, unless `open`.
+    fn sequence(&mut self, cv: &mut Canvas, open: &mut bool) {
+        let Some(t) = &mut self.tagging else { return };
+        if std::mem::replace(open, true) {
+            return;
+        }
+        let tag: &[u8] = match t.owner {
+            Owner::Outer => t.outer,
+            Owner::Part(_) => Kind::Figure.name(),
+        };
+        cv.c.begin_marked_content_with_properties(Name(tag))
+            .properties()
+            .pair(Name(b"MCID"), t.tags.mcids.len() as i32);
+        t.tags.mcids.push(t.owner);
     }
 
     fn path(&mut self, cv: &mut Canvas, p: &usvg::Path, at: Scope) -> Res {
@@ -1634,8 +1855,10 @@ impl Svg<'_> {
                 cv.c.clip_nonzero();
                 cv.c.end_path();
                 cv.c.transform(matrix(scale));
+                // A nested SVG's ids are not the parts'.
                 let inner = Scope {
                     ts: at.ts.pre_concat(scale),
+                    marks: false,
                     ..at.deeper()
                 };
                 self.group(cv, tree.root(), inner)?;

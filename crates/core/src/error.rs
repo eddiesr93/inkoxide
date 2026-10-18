@@ -96,7 +96,7 @@ validation_codes! {
     /// [`render`](crate::render) reports it: [`validate`](crate::validate)
     /// does not know the level.
     PdfaConflict = "PDFA_CONFLICT",
-    /// The document lacks something PDF/UA-1 requires: a title, a
+    /// The document lacks something PDF/UA requires (either part): a title, a
     /// language, alternative text on an image or a `figure` box, a label
     /// on a form field, headings that go down one level at a time from
     /// `h1`, or lists made of items (a `listItem` inside a `list`, a

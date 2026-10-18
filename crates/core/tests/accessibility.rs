@@ -9,8 +9,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-use common::{installed, qpdf_available, root, sorted_files, stores, verapdf, verapdf_report};
-use inkoxide::{Encryption, InputFormat, PdfALevel, Permissions, RenderOptions};
+use common::{installed, qpdf_available, root, sorted_files, stores, verapdf};
+use inkoxide::{Encryption, InputFormat, PdfALevel, PdfUaPart, Permissions, RenderOptions};
 use serde_json::Value;
 
 fn fixture() -> Vec<u8> {
@@ -34,12 +34,10 @@ fn write(name: &str, pdf: &[u8]) -> PathBuf {
 fn pdf_ua_and_the_accessible_pdf_a_levels_pass_verapdf() {
     let ua = RenderOptions::default().with_pdf_ua(true);
     let ua1 = write("ua1", &render(&fixture(), &ua).unwrap());
-    verapdf("ua1", std::slice::from_ref(&ua1));
-    // How far it is from PDF/UA-2 (on PDF 2.0, which inkoxide does not
-    // write): reported, not checked.
-    if let Some(report) = verapdf_report("ua2", &[ua1]) {
-        eprintln!("veraPDF (ua2), for the record:\n{report}");
-    }
+    verapdf("ua1", &[ua1]);
+    let ua2 = RenderOptions::default().with_pdf_ua_part(PdfUaPart::Ua2);
+    let file = write("ua2", &render(&fixture(), &ua2).unwrap());
+    verapdf("ua2", &[file]);
     for level in [PdfALevel::A2a, PdfALevel::A3a] {
         let options = RenderOptions::default().with_pdf_a_level(level);
         let file = write(level.as_str(), &render(&fixture(), &options).unwrap());
@@ -51,6 +49,93 @@ fn pdf_ua_and_the_accessible_pdf_a_levels_pass_verapdf() {
         verapdf(level.as_str(), std::slice::from_ref(&both));
         verapdf("ua1", &[both]);
     }
+}
+
+/// PDF/UA-2 with what the fixtures lack: a section, a block quotation, a
+/// caption, a box with a link around a heading and an image, radio
+/// buttons, links and bookmarks to other pages; plain and encrypted.
+#[test]
+fn pdf_ua_2_passes_verapdf_with_every_role() {
+    let text = |t: &str, extra: &str| {
+        format!(
+            r#"{{"type":"text"{extra},"runs":[{{"text":"{t}","font":"Inter-Regular","size":10}}]}}"#
+        )
+    };
+    let image = r#"{"type":"image","alt":"A logo","src":"logo","style":{"width":10,"height":10}}"#;
+    let children = [
+        text("Title", r#","role":"h1","bookmark":{"title":"Title"}"#),
+        text("To the end", "").replace(
+            r#""size":10}"#,
+            r##""size":10,"link":"#end"}"##,
+        ),
+        format!(
+            r#"{{"type":"box","role":"section","children":[{},{}]}}"#,
+            text("Section", r#","role":"h2""#),
+            text("Body.", "")
+        ),
+        format!(
+            r#"{{"type":"box","role":"blockQuote","children":[{},{}]}}"#,
+            text("Quoted once.", ""),
+            text("Quoted twice.", "")
+        ),
+        text("A quotation of one paragraph.", r#","role":"blockQuote""#),
+        format!(
+            r#"{{"type":"box","role":"figure","alt":"A logo and its caption","children":[{image}]}}"#
+        ),
+        text("Caption of the logo.", r#","role":"caption""#),
+        format!(
+            r#"{{"type":"box","link":"https://example.com","children":[{},{},{image}]}}"#,
+            text("Linked heading", r#","role":"h3""#),
+            text("Linked text", "")
+        ),
+        r#"{"type":"field","field":{"name":"choice","kind":"radio","value":"a","label":"Choice A","checked":true}}"#.into(),
+        r#"{"type":"field","field":{"name":"choice","kind":"radio","value":"b","label":"Choice B"}}"#.into(),
+        r#"{"type":"field","field":{"name":"name","kind":"text","label":"Your name","font":"Inter-Regular"}}"#.into(),
+        r#"{"type":"note","note":{"contents":"A note."}}"#.into(),
+        r#"{"type":"pageBreak"}"#.into(),
+        text("The end", r#","id":"end","bookmark":{"title":"The end"}"#),
+        text("Back", "").replace(r#""size":10}"#, r##""size":10,"link":"#end"}"##),
+    ];
+    let doc = format!(
+        r#"{{"version":1,"meta":{{"title":"Every role","lang":"en"}},"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+        "pages":[{{"size":{{"width":300,"height":600}},"children":[{}]}}]}}"#,
+        children.join(",")
+    );
+    let ua2 = RenderOptions::default().with_pdf_ua_part(PdfUaPart::Ua2);
+    let plain = render(doc.as_bytes(), &ua2).unwrap();
+    assert!(plain.starts_with(b"%PDF-2.0"));
+    let text = String::from_utf8_lossy(
+        &render(doc.as_bytes(), &ua2.clone().with_compress(false)).unwrap(),
+    )
+    .split_whitespace()
+    .collect::<String>();
+    for part in [
+        "<pdfuaid:part>2</pdfuaid:part>",
+        "<pdfuaid:rev>2024</pdfuaid:rev>",
+        "(http://iso.org/pdf2/ssn)",
+        "/RoleMapNS<</BlockQuote[/Div",
+    ] {
+        assert!(text.contains(part), "no {part}");
+    }
+    // Two links and two bookmarks to elements: the link to the end, the
+    // link back, and the bookmarks (each in a go-to action).
+    assert_eq!(text.matches("/SD[").count(), 4);
+    let encrypted = render(
+        doc.as_bytes(),
+        &ua2.clone()
+            .with_encryption(Encryption::new().with_owner_password("owner")),
+    )
+    .unwrap();
+    verapdf(
+        "ua2",
+        &[
+            write("ua2-roles", &plain),
+            write("ua2-roles-encrypted", &encrypted),
+        ],
+    );
+    // PDF/UA-2 is PDF 2.0, which no PDF/A level written is.
+    let err = render(doc.as_bytes(), &ua2.with_pdf_a(true)).unwrap_err();
+    assert!(err.to_string().contains("options.pdfUA"), "{err}");
 }
 
 /// qpdf's objects of `pdf`, written as `name`, by reference (`"12 0 R"`).
@@ -69,6 +154,36 @@ fn objects(name: &str, pdf: &[u8]) -> serde_json::Map<String, Value> {
         .iter()
         .map(|(k, v)| (k.trim_start_matches("obj:").to_string(), v["value"].clone()))
         .collect()
+}
+
+/// Structure elements and the parent tree go into object streams when
+/// the file is compressed and at least PDF 1.5; every one still reads.
+#[test]
+fn structure_elements_go_into_object_streams() {
+    let tagged = RenderOptions::default().with_tagged(true);
+    let packed = render(&fixture(), &tagged).unwrap();
+    let has = |pdf: &[u8], s: &[u8]| pdf.windows(s.len()).any(|w| w == s);
+    assert!(has(&packed, b"/Type /ObjStm") && has(&packed, b"/Type /XRef"));
+    assert!(!has(&packed, b"/StructElem"));
+    for options in [
+        tagged.clone().with_compress(false),
+        tagged.clone().with_pdf_a_level(PdfALevel::A1b),
+    ] {
+        let pdf = render(&fixture(), &options).unwrap();
+        assert!(has(&pdf, b"/StructElem") && !has(&pdf, b"/ObjStm"));
+    }
+    if !qpdf_available() {
+        return;
+    }
+    let elems = |name: &str, pdf: &[u8]| {
+        objects(name, pdf)
+            .values()
+            .filter(|v| v["/Type"] == "/StructElem")
+            .count()
+    };
+    let loose = render(&fixture(), &tagged.clone().with_compress(false)).unwrap();
+    assert_eq!(elems("packed", &packed), elems("loose", &loose));
+    assert!(elems("packed", &packed) > 50);
 }
 
 #[test]
@@ -554,33 +669,44 @@ fn headers_and_footers_are_pagination_artifacts() {
     assert_eq!(pdf.matches("/ArtifactBMC").count(), 1);
 }
 
-/// Under PDF/UA, every fixture is refused for the first thing it lacks
-/// (`UA_CONFLICT`), or passes veraPDF's PDF/UA-1 check.
+/// Under PDF/UA, of either part, every fixture is refused for the first
+/// thing it lacks (`UA_CONFLICT`), or passes veraPDF's check of that part;
+/// both parts refuse the same fixtures.
 #[test]
 fn every_fixture_under_pdf_ua_is_refused_or_passes() {
     let (fonts, images) = stores();
-    let dir = root().join("target/accessibility/fixtures");
-    fs::create_dir_all(&dir).unwrap();
-    let ua = RenderOptions::default().with_pdf_ua(true);
-    let (mut passed, mut refused) = (Vec::new(), 0);
-    for doc in sorted_files(&root().join("fixtures/docs"), &["json"]) {
-        let name = doc.file_stem().unwrap().to_str().unwrap();
-        let input = fs::read(&doc).unwrap();
-        match inkoxide::render(&input, InputFormat::Json, &ua, &fonts, &images) {
-            Ok(pdf) => {
-                let file = dir.join(format!("{name}.pdf"));
-                fs::write(&file, pdf).unwrap();
-                passed.push(file);
+    let mut outcomes = Vec::new();
+    for part in [PdfUaPart::Ua1, PdfUaPart::Ua2] {
+        let dir = root().join(format!("target/accessibility/fixtures-ua{}", part.as_str()));
+        fs::create_dir_all(&dir).unwrap();
+        let ua = RenderOptions::default().with_pdf_ua_part(part);
+        let (mut passed, mut refused) = (Vec::new(), Vec::new());
+        for doc in sorted_files(&root().join("fixtures/docs"), &["json"]) {
+            let name = doc.file_stem().unwrap().to_str().unwrap().to_string();
+            let input = fs::read(&doc).unwrap();
+            match inkoxide::render(&input, InputFormat::Json, &ua, &fonts, &images) {
+                Ok(pdf) => {
+                    let file = dir.join(format!("{name}.pdf"));
+                    fs::write(&file, pdf).unwrap();
+                    passed.push(file);
+                }
+                Err(inkoxide::InkoxideError::Validation(e)) if e.code.as_str() == "UA_CONFLICT" => {
+                    refused.push(name);
+                }
+                Err(e) => panic!("{name}: {e}"),
             }
-            Err(inkoxide::InkoxideError::Validation(e)) if e.code.as_str() == "UA_CONFLICT" => {
-                refused += 1;
-            }
-            Err(e) => panic!("{name}: {e}"),
         }
+        eprintln!(
+            "ua{}: {} pass, {} refused",
+            part.as_str(),
+            passed.len(),
+            refused.len()
+        );
+        assert!(!passed.is_empty() && !refused.is_empty());
+        verapdf(&format!("ua{}", part.as_str()), &passed);
+        outcomes.push(refused);
     }
-    eprintln!("{} pass, {refused} refused", passed.len());
-    assert!(!passed.is_empty() && refused > 0);
-    verapdf("ua1", &passed);
+    assert_eq!(outcomes[0], outcomes[1]);
 }
 
 /// A table split across pages repeats its header row on each: the first is
@@ -678,4 +804,110 @@ fn reading_order_is_document_order() {
         mcids.windows(2).any(|w| w[0] > w[1]),
         "drawn in document order: {mcids:?}"
     );
+}
+
+/// An SVG chart: a named group of bars, one of them named, a hidden grid
+/// and a plain frame.
+const CHART: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">
+  <title>Whole chart</title>
+  <path d="M0 10H40" stroke="gray" aria-hidden="true"/>
+  <g aria-label="Sales by month">
+    <rect x="2" y="5" width="4" height="15"/>
+    <rect x="8" y="2" width="4" height="18"><title>March, the best month</title></rect>
+  </g>
+  <rect width="40" height="20" fill="none" stroke="black"/>
+</svg>"#;
+
+/// The parts of an SVG with names of their own are figures inside the
+/// image's, with their `/Alt`, marked in the image's form and read through
+/// `/Stm`; a hidden part is an artifact. The chart is placed twice on one
+/// page and once on the next, and passes veraPDF's PDF/UA-1 and 2 and
+/// PDF/A-2a.
+#[test]
+fn named_parts_of_an_svg_are_figures_of_their_own() {
+    let (fonts, mut images) = stores();
+    images.insert("chart".to_string(), CHART.as_bytes().to_vec());
+    let image = r#"{"type":"image","alt":"Sales","src":"chart","style":{"width":80,"height":40}}"#;
+    // In a paragraph, the chart is no figure of its own: its text is read
+    // where it is, and its parts are not tagged.
+    let inline = r#"{"type":"box","role":"p","children":[
+      {"type":"image","alt":"Boxed chart","src":"chart","style":{"width":40,"height":20}}]}"#;
+    let doc = format!(
+        r#"{{"version":1,"meta":{{"title":"T","lang":"en"}},"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+        "pages":[{{"size":{{"width":200,"height":200}},"children":[{image},{image},
+          {{"type":"pageBreak"}},{image},{inline}]}}]}}"#
+    );
+    let run = |options: &RenderOptions| {
+        inkoxide::render(doc.as_bytes(), InputFormat::Json, options, &fonts, &images).unwrap()
+    };
+    for part in [PdfUaPart::Ua1, PdfUaPart::Ua2] {
+        let pdf = run(&RenderOptions::default().with_pdf_ua_part(part));
+        let name = format!("svg-parts-ua{}", part.as_str());
+        verapdf(&format!("ua{}", part.as_str()), &[write(&name, &pdf)]);
+    }
+    let a2a = RenderOptions::default()
+        .with_pdf_a_level(PdfALevel::A2a)
+        .with_pdf_ua(true);
+    verapdf("2a", &[write("svg-parts-2a", &run(&a2a))]);
+    if !qpdf_available() {
+        return;
+    }
+    let loose = run(&RenderOptions::default()
+        .with_pdf_ua(true)
+        .with_compress(false));
+    // The forms' content, inflated.
+    let file = write("svg-parts", &loose);
+    let o = Command::new("qpdf")
+        .args(["--qdf", "--object-streams=disable"])
+        .arg(&file)
+        .arg("-")
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&o.stdout);
+    assert_eq!(text.matches("/Artifact BMC").count(), 3, "the grid");
+    assert!(
+        text.contains("/ActualText (Boxed chart)"),
+        "the chart in a paragraph"
+    );
+    // A form for each of the three figures, and the chart as itself, in
+    // the paragraph only.
+    assert_eq!(text.matches("/Subtype /Form").count(), 4);
+    // Untagged, the chart is one form.
+    let untagged = write("svg-parts-untagged", &run(&RenderOptions::default()));
+    let o = Command::new("qpdf")
+        .args(["--qdf", "--object-streams=disable"])
+        .arg(&untagged)
+        .arg("-")
+        .output()
+        .unwrap();
+    let plain = String::from_utf8_lossy(&o.stdout);
+    assert_eq!(plain.matches("/Subtype /Form").count(), 1);
+    assert!(!plain.contains("/StructParents"));
+    assert_eq!(
+        text.matches("/StructParents").count(),
+        3 + 2,
+        "three forms, two pages"
+    );
+    let objects = objects("svg-parts", &loose);
+    let figures: Vec<&Value> = objects.values().filter(|v| v["/S"] == "/Figure").collect();
+    let alt = |a: &str| figures.iter().filter(|f| f["/Alt"] == a).count();
+    assert_eq!(alt("u:Sales"), 3);
+    assert_eq!(alt("u:Sales by month"), 3);
+    assert_eq!(alt("u:March, the best month"), 3);
+    // The month inside the bars, inside the image.
+    let parent = |f: &Value| objects[f["/P"].as_str().unwrap()]["/Alt"].clone();
+    for f in &figures {
+        match f["/Alt"].as_str().unwrap() {
+            "u:March, the best month" => assert_eq!(parent(f), "u:Sales by month"),
+            "u:Sales by month" => assert_eq!(parent(f), "u:Sales"),
+            _ => {}
+        }
+    }
+    // The parts' content is read in the form it is drawn in.
+    let stm = figures
+        .iter()
+        .flat_map(|f| f["/K"].as_array().cloned().unwrap_or_default())
+        .filter(|k| k.get("/Stm").is_some())
+        .count();
+    assert!(stm >= 6, "{stm}");
 }

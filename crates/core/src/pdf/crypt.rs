@@ -103,13 +103,24 @@ impl Dict {
 }
 
 /// Adds `/Encrypt r` to the trailer of `pdf`, as pdf-writer finished it
-/// (pdf-writer 0.15 writes no `Encrypt` entry). The trailer follows the
-/// cross-reference table, so no offset moves. `None` if there is no
-/// trailer where pdf-writer puts it.
+/// (pdf-writer 0.15 writes no `Encrypt` entry): the dictionary after its
+/// cross-reference table, or that of its cross-reference stream. Either
+/// comes last and where `startxref` points, so no offset moves. `None` if
+/// there is no trailer where pdf-writer puts it.
 pub(crate) fn splice_encrypt(mut pdf: Vec<u8>, r: Ref) -> Option<Vec<u8>> {
-    const END: &[u8] = b"\n>>\nstartxref\n";
-    let trailer = pdf.windows(9).rposition(|w| w == b"\ntrailer\n")?;
-    let at = trailer + pdf[trailer..].windows(END.len()).position(|w| w == END)?;
+    let find = |hay: &[u8], needle: &[u8]| hay.windows(needle.len()).position(|w| w == needle);
+    let tail = pdf.windows(10).rposition(|w| w == b"startxref\n")?;
+    let digits = pdf[tail + 10..].split(|&b| b == b'\n').next()?;
+    let xref: usize = std::str::from_utf8(digits).ok()?.parse().ok()?;
+    let start = pdf.get(xref..tail)?;
+    let at = if start.starts_with(b"xref\n") {
+        let trailer = find(start, b"\ntrailer\n")?;
+        xref + trailer + find(&start[trailer..], b"\n>>\n")?
+    } else {
+        // The stream's dictionary comes before its data.
+        const TYPE: &[u8] = b"/Type /XRef";
+        xref + find(start, TYPE)? + TYPE.len()
+    };
     let entry = format!("\n  /Encrypt {} 0 R", r.get());
     pdf.splice(at..at, entry.into_bytes());
     Some(pdf)
@@ -520,6 +531,26 @@ mod tests {
             "{text}"
         );
         assert!(splice_encrypt(b"%PDF-1.7".to_vec(), Ref::new(3)).is_none());
+    }
+
+    #[test]
+    fn the_encrypt_entry_goes_into_a_cross_reference_stream() {
+        let mut pdf = pdf_writer::Pdf::new();
+        pdf.catalog(Ref::new(1)).pages(Ref::new(2));
+        pdf.pages(Ref::new(2)).count(0);
+        let plain = pdf.finish_with_xref_stream(Ref::new(4));
+        let spliced = splice_encrypt(plain.clone(), Ref::new(3)).unwrap();
+        let text = String::from_utf8_lossy(&spliced);
+        assert!(text.contains("/Type /XRef\n  /Encrypt 3 0 R\n"), "{text}");
+        let xref = spliced
+            .windows(9)
+            .position(|w| w == b"\n4 0 obj\n")
+            .unwrap()
+            + 1;
+        assert!(
+            text.ends_with(&format!("startxref\n{xref}\n%%EOF")),
+            "{text}"
+        );
     }
 
     #[test]

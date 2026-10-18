@@ -342,6 +342,19 @@ pub(crate) struct Plan {
     /// Text node (by address) → the elements of its runs, when some run
     /// has one.
     runs: HashMap<usize, Box<[RunTag]>>,
+    /// Node id → the element of the first node with that id, for the
+    /// structure destinations of links to it.
+    ids: HashMap<String, StructId>,
+    /// Node with a bookmark (by address) → its element, for the
+    /// structure destination of the bookmark.
+    bookmarks: HashMap<usize, StructId>,
+    /// The SVGs whose parts are tagged ([`crate::images::svg::SvgParts`]).
+    pub parted: std::collections::BTreeSet<crate::images::ImageKey>,
+    /// PDF 2.0 (PDF/UA-2): a box with a link holds its content in its
+    /// `Link`, which may not hold a `P` there, and a block quotation's text
+    /// is a `P` inside it, as PDF 1.7's `BlockQuote` maps to a `Div`,
+    /// which holds no content.
+    pdf_2: bool,
 }
 
 /// The elements of a run of text inside its paragraph's.
@@ -361,10 +374,11 @@ fn key(node: &Node) -> usize {
 }
 
 impl Plan {
-    /// The plan of `doc`.
-    pub fn new(doc: &Document) -> Self {
+    /// The plan of `doc`; for PDF/UA-2 with `pdf_ua_2`.
+    pub fn new(doc: &Document, pdf_ua_2: bool) -> Self {
         let mut plan = Self {
             elems: vec![Elem::new(Kind::Document, None)],
+            pdf_2: pdf_ua_2,
             ..Self::default()
         };
         let lang = doc.meta.lang.as_deref();
@@ -376,10 +390,26 @@ impl Plan {
         plan
     }
 
+    /// With the parts of `images`' SVGs tagged.
+    pub fn with_parted(mut self, images: &crate::images::ImageSet) -> Self {
+        self.parted = images.parted();
+        self
+    }
+
     /// The element the content of `node` belongs to; `None` for
     /// decoration.
     pub fn owner(&self, node: &Node) -> Option<StructId> {
         self.content.get(&key(node)).copied()
+    }
+
+    /// The element of the first node with id `id`.
+    pub fn anchor(&self, id: &str) -> Option<StructId> {
+        self.ids.get(id).copied()
+    }
+
+    /// The element of `node`, which has a bookmark.
+    pub fn bookmark(&self, node: &Node) -> Option<StructId> {
+        self.bookmarks.get(&key(node)).copied()
     }
 
     /// The `Link` element of a box with a link.
@@ -435,6 +465,24 @@ impl Plan {
         if node.is_decoration() {
             return;
         }
+        let own = self.node_elems(node, parent, merge, lang);
+        if let Some(id) = &node.id {
+            self.ids.entry(id.clone()).or_insert(own);
+        }
+        if node.bookmark.is_some() {
+            self.bookmarks.insert(key(node), own);
+        }
+    }
+
+    /// Plans `node`, not decoration ([`node`](Self::node)); returns its
+    /// element: its own, or the one its content is in.
+    fn node_elems(
+        &mut self,
+        node: &Node,
+        parent: StructId,
+        merge: Option<StructId>,
+        lang: Option<&str>,
+    ) -> StructId {
         let own_lang = node.style.lang.as_deref().filter(|l| Some(*l) != lang);
         match &node.kind {
             NodeKind::Text { runs } => {
@@ -442,14 +490,20 @@ impl Plan {
                     let kind = node.role.and_then(Kind::of).unwrap_or(Kind::P);
                     let mut e = Elem::new(kind, Some(parent));
                     e.lang = own_lang.map(str::to_string);
-                    self.push(e)
+                    let id = self.push(e);
+                    if kind == Kind::BlockQuote && self.pdf_2 {
+                        self.push(Elem::new(Kind::P, Some(id)))
+                    } else {
+                        id
+                    }
                 });
                 self.content.insert(key(node), id);
                 self.runs_of(node, runs, id);
+                id
             }
             NodeKind::Image { alt, .. } => {
                 if alt.as_deref() == Some("") {
-                    return;
+                    return merge.unwrap_or(parent);
                 }
                 let id = merge.unwrap_or_else(|| {
                     let mut e = Elem::new(Kind::Figure, Some(parent));
@@ -457,10 +511,14 @@ impl Plan {
                     self.push(e)
                 });
                 self.content.insert(key(node), id);
+                id
             }
             NodeKind::Box { children, alt } => {
                 let mut parent = parent;
                 let mut merge = merge;
+                // Its role's element, else its link's.
+                let mut own = None;
+                let around = merge.unwrap_or(parent);
                 if merge.is_none() {
                     if let Some(kind) = node.role.and_then(Kind::of) {
                         let mut e = Elem::new(kind, Some(parent));
@@ -470,6 +528,7 @@ impl Plan {
                             e.numbering = Numbering::of(&list_labels(node));
                         }
                         parent = self.push(e);
+                        own = Some(parent);
                         if kind.holds_content() {
                             merge = Some(parent);
                         }
@@ -482,7 +541,11 @@ impl Plan {
                     if node.link.is_some() {
                         let link = self.push(Elem::new(Kind::Link, Some(parent)));
                         self.links.insert(key(node), link);
+                        own.get_or_insert(link);
                         parent = link;
+                        if self.pdf_2 {
+                            merge = Some(link);
+                        }
                     }
                 } else if node.link.is_some() {
                     // A link inside a paragraph: its annotation joins the
@@ -492,32 +555,36 @@ impl Plan {
                 for c in children {
                     self.node(c, parent, merge, own_lang.or(lang));
                 }
+                own.unwrap_or(around)
             }
             NodeKind::Table(t) => {
                 if let Some(m) = merge {
                     for c in node.children() {
                         self.node(c, m, Some(m), lang);
                     }
+                    m
                 } else {
-                    self.table(t, parent, lang);
+                    self.table(t, parent, lang)
                 }
             }
             NodeKind::Field(_) => {
                 let id = self.push(Elem::new(Kind::Form, Some(merge.unwrap_or(parent))));
                 self.content.insert(key(node), id);
+                id
             }
             NodeKind::Note(_) | NodeKind::Attachment(_) => {
                 let id = self.push(Elem::new(Kind::Annot, Some(merge.unwrap_or(parent))));
                 self.content.insert(key(node), id);
+                id
             }
-            NodeKind::PageBreak | NodeKind::Spacer => {}
+            NodeKind::PageBreak | NodeKind::Spacer => merge.unwrap_or(parent),
         }
     }
 
     /// A table: its header rows in `THead`, the others in `TBody`; the
     /// cells of header rows are `TH` for their column, the other cells
-    /// `TD`, or `TH` for their row with `header`.
-    fn table(&mut self, t: &Table, parent: StructId, lang: Option<&str>) {
+    /// `TD`, or `TH` for their row with `header`. Returns the `Table`.
+    fn table(&mut self, t: &Table, parent: StructId, lang: Option<&str>) -> StructId {
         let table = self.push(Elem::new(Kind::Table, Some(parent)));
         let heads = (t.header_rows as usize).min(t.rows.len());
         let (head, body) = t.rows.split_at(heads);
@@ -547,6 +614,7 @@ impl Plan {
                 }
             }
         }
+        table
     }
 }
 

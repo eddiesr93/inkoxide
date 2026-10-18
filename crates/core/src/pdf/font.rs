@@ -217,7 +217,9 @@ pub(crate) fn write_font(
     embedded: &Embedded<'_, '_>,
     profile: Profile,
 ) -> Result<FontRefs, InkoxideError> {
-    let Writer { pdf, alloc, out } = w;
+    let Writer {
+        pdf, alloc, out, ..
+    } = w;
     let Embedded {
         font,
         program,

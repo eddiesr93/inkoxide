@@ -14,9 +14,12 @@ use crate::InkoxideError;
 
 use super::{
     alpha_key, attach, deflate, font, font_name, forms, gs_name, image, image_name, key_alpha,
-    notes, pdfa, round_pt, svg, svg_text_uses, tag, text_ink, type3, type3_name, write_link,
-    write_outline, DocumentOut, FontPrograms, Out, PdfWriterSink, Writer, MAX_NUMBER,
+    notes, pdfa, placement_name, round_pt, svg, svg_text_uses, tag, text_ink, type3, type3_name,
+    write_link, write_outline, DocumentOut, FontPrograms, Out, PdfWriterSink, Writer, MAX_NUMBER,
 };
+
+/// Where an SVG is placed: each page and placement on it.
+type Uses = Vec<(usize, usize)>;
 
 /// Maximum kids per page-tree node (keeps viewers fast on long documents).
 pub(super) const PAGE_TREE_FANOUT: usize = 50;
@@ -28,6 +31,9 @@ struct Resources {
     fonts: BTreeMap<FontKey, Ref>,
     images: BTreeMap<ImageKey, Ref>,
     type3: BTreeMap<u16, Ref>,
+    /// The forms of the SVGs placed with their parts tagged, by page and
+    /// place ([`super::EncodedPage::placements`]).
+    placements: Vec<Vec<Ref>>,
 }
 
 impl PdfWriterSink {
@@ -45,6 +51,13 @@ impl PdfWriterSink {
         if let Some((major, minor)) = self.profile.version() {
             w.pdf.set_version(major, minor);
         }
+        // Structure elements go into object streams, compressed as the
+        // content streams are.
+        if let Some(level) = self.compression.filter(|_| doc.plan.is_some()) {
+            if self.profile.object_streams() {
+                w.pack(level);
+            }
+        }
         let catalog = w.alloc.next();
         let info = w.alloc.next();
 
@@ -60,18 +73,35 @@ impl PdfWriterSink {
         let opacities = self.write_opacities(&mut w, doc)?;
         let (font_refs, vertical) = self.write_fonts(&mut w, doc, fonts)?;
         let image_refs = self.write_images(&mut w, doc, (&font_refs, &vertical))?;
+        let mut tags = doc.plan.map(|_| tag::AnnotTags::new(doc.pages.len()));
+        let placements = match tags.as_mut() {
+            Some(t) => {
+                self.write_placements(&mut w, doc, (&font_refs, &vertical), &image_refs, t)?
+            }
+            None => Vec::new(),
+        };
         let type3 = self.write_type3(&mut w, doc, &image_refs)?;
         let res = Resources {
             opacities,
             fonts: font_refs,
             images: image_refs,
             type3,
+            placements,
         };
-        let files = attach::write_files(&mut w, doc.files);
-        let mut tags = doc.plan.map(|_| tag::AnnotTags::new(doc.pages.len()));
+        let files = attach::write_files(&mut w, doc.files, self.profile.pdf_2());
         let (annots, form) =
             self.write_annotations(&mut w, doc, &page_refs, &res.fonts, &files, tags.as_mut())?;
-        let outline = write_outline(&mut w, &doc.marks.outline, &page_refs);
+        // PDF/UA-2: each bookmark goes to its element too.
+        let outline_sd: Vec<Option<Ref>> = match (doc.plan, tags.as_mut()) {
+            (Some(plan), Some(t)) if self.profile.pdf_2() => doc
+                .marks
+                .outline
+                .iter()
+                .map(|e| plan.bookmark(e.node).map(|id| t.dest(id, &mut w.alloc)))
+                .collect(),
+            _ => Vec::new(),
+        };
+        let outline = write_outline(&mut w, &doc.marks.outline, &page_refs, &outline_sd);
         write_pages(
             &mut w,
             doc,
@@ -97,7 +127,15 @@ impl PdfWriterSink {
         self.write_catalog(&mut w, doc, catalog, &nav, &res.fonts, producer)?;
         self.write_info(&mut w, doc, info, producer);
         if let (Some(plan), Some(root), Some(tags)) = (doc.plan, struct_root, &tags) {
-            tag::write_tree(&mut w, plan, root, doc.pages, &page_refs, tags);
+            tag::write_tree(
+                &mut w,
+                plan,
+                root,
+                doc.pages,
+                &page_refs,
+                tags,
+                self.profile.pdf_2(),
+            );
         }
 
         // Content streams are checked as they are finished; this covers
@@ -217,6 +255,73 @@ impl PdfWriterSink {
         Ok(image_refs)
     }
 
+    /// The forms of the SVGs placed with their parts tagged, by page and
+    /// place: one for each placement, each with a `/StructParents` key of
+    /// `tags`, and the content written once for each SVG and tag of the
+    /// sequences of the element it is in.
+    fn write_placements(
+        &self,
+        w: &mut Writer,
+        doc: &DocumentOut<'_>,
+        (font_refs, vertical): (&BTreeMap<FontKey, Ref>, &svg::VerticalFonts),
+        image_refs: &BTreeMap<ImageKey, Ref>,
+        tags: &mut tag::AnnotTags,
+    ) -> Result<Vec<Vec<Ref>>, InkoxideError> {
+        let Some(plan) = doc.plan else {
+            return Ok(Vec::new());
+        };
+        // Each SVG and the kind of its element, and where it is placed.
+        let mut groups: BTreeMap<(ImageKey, &'static [u8]), Uses> = BTreeMap::new();
+        for (i, page) in doc.pages.iter().enumerate() {
+            for (n, p) in page.placements.iter().enumerate() {
+                let outer = plan.elems[p.owner as usize].kind.name();
+                groups.entry((p.key, outer)).or_default().push((i, n));
+            }
+        }
+        let mut refs: Vec<Vec<Option<Ref>>> = doc
+            .pages
+            .iter()
+            .map(|p| vec![None; p.placements.len()])
+            .collect();
+        for ((key, outer), uses) in groups {
+            let keys: Vec<i32> = uses.iter().map(|_| tags.form_key()).collect();
+            let res = svg::TextResources {
+                ink: text_ink(doc),
+                refs: font_refs,
+                vertical,
+                image_refs,
+            };
+            let img = doc.images.get(key);
+            let Some((forms, form_tags)) =
+                image::write_tagged_svg(w, img, self.profile, Some(res), (outer, &keys))?
+            else {
+                // Not an SVG with parts after all: drawn as itself.
+                let r = image::write_image(w, img, self.profile, Some(res))?;
+                for &(page, n) in &uses {
+                    refs[page][n] = Some(r);
+                }
+                continue;
+            };
+            let form_tags = std::rc::Rc::new(form_tags);
+            for ((&(page, n), &key), r) in uses.iter().zip(&keys).zip(forms) {
+                let p = doc.pages[page].placements[n];
+                refs[page][n] = Some(r);
+                tags.forms.push(tag::FormEntry {
+                    key,
+                    r,
+                    page,
+                    after: p.after,
+                    owner: p.owner,
+                    tags: form_tags.clone(),
+                });
+            }
+        }
+        Ok(refs
+            .into_iter()
+            .map(|page| page.into_iter().flatten().collect())
+            .collect())
+    }
+
     /// The Type 3 fonts of colour glyphs the pages use, by index.
     fn write_type3(
         &self,
@@ -268,6 +373,16 @@ impl PdfWriterSink {
                 // Recorded only when written: an anchor may have no
                 // destination.
                 let key = tags.as_deref().map(tag::AnnotTags::peek);
+                // PDF/UA-2: a link within the document goes to the
+                // element of its target too (ISO 14289-2, 8.8).
+                let sd = match (doc.plan, tags.as_deref_mut()) {
+                    (Some(plan), Some(t)) if self.profile.pdf_2() => link
+                        .target
+                        .strip_prefix('#')
+                        .and_then(|id| plan.anchor(id))
+                        .map(|id| t.dest(id, &mut w.alloc)),
+                    _ => None,
+                };
                 if write_link(
                     w,
                     r,
@@ -275,7 +390,7 @@ impl PdfWriterSink {
                     link,
                     (doc.marks, page_refs),
                     self.profile,
-                    key,
+                    (key, sd),
                 ) {
                     if let Some(t) = tags.as_deref_mut() {
                         t.add(r, i, link.owner, tag::AnnotKind::Link);
@@ -322,7 +437,8 @@ impl PdfWriterSink {
             .level()
             .map(|level| (level, w.alloc.next(), w.alloc.next()));
         let intent = pdf_a.map(|_| (w.out.text("sRGB"), w.out.text("sRGB IEC61966-2.1")));
-        // PDF/UA without PDF/A: metadata of its own (ISO 14289-1, 7.1).
+        // PDF/UA without PDF/A: metadata of its own (ISO 14289-1, 7.1;
+        // ISO 14289-2, 8.6).
         let ua_metadata = (pdf_a.is_none() && self.profile.ua()).then(|| w.alloc.next());
         let embedded = attach::name_tree(doc.files, nav.files, |key| w.out.bytes(key));
         let mut cat = w.pdf.catalog(catalog);
@@ -381,9 +497,9 @@ impl PdfWriterSink {
         if let Some(lang) = &lang {
             cat.pair(Name(b"Lang"), Str(lang));
         }
-        if encrypted {
+        if encrypted && !self.profile.pdf_2() {
             // Revision 6 of the security handler is extension level 8 of
-            // PDF 1.7.
+            // PDF 1.7, and part of PDF 2.0.
             cat.insert(Name(b"Extensions"))
                 .dict()
                 .insert(Name(b"ADBE"))
@@ -397,7 +513,13 @@ impl PdfWriterSink {
         let (Some((level, metadata, profile)), Some((condition, info))) = (pdf_a, intent) else {
             cat.finish();
             if let Some(m) = ua_metadata {
-                let xmp = pdfa::xmp(doc.meta, producer, doc.creation_date, None, true);
+                let xmp = pdfa::xmp(
+                    doc.meta,
+                    producer,
+                    doc.creation_date,
+                    None,
+                    self.profile.ua_part(),
+                );
                 w.out.metadata(&mut w.pdf, m, &xmp, |_| {});
             }
             return Ok(());
@@ -420,7 +542,7 @@ impl PdfWriterSink {
             producer,
             doc.creation_date,
             Some(level),
-            self.profile.ua(),
+            self.profile.ua_part(),
         );
         w.out.metadata(&mut w.pdf, metadata, &xmp, |_| {});
         let icc = deflate(&pdfa::srgb_icc(), 9)?;
@@ -541,10 +663,14 @@ fn write_pages(
                 f.pair(Name(type3_name(*index).as_bytes()), res.type3[index]);
             }
         }
-        if !page.images.is_empty() {
+        let placed = res.placements.get(i).map_or(&[][..], Vec::as_slice);
+        if !page.images.is_empty() || !placed.is_empty() {
             let mut x = r.x_objects();
             for key in &page.images {
                 x.pair(Name(image_name(*key).as_bytes()), res.images[key]);
+            }
+            for (n, form) in placed.iter().enumerate() {
+                x.pair(Name(placement_name(n).as_bytes()), *form);
             }
         }
         r.finish();

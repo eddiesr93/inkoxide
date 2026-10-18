@@ -9,8 +9,8 @@ export interface OutputOptions {
   pdfA?: PdfALevel;
   /** `<Document tagged>`: tagged PDF. */
   tagged?: boolean;
-  /** `<Document pdfUA>`: PDF/UA-1. */
-  pdfUA?: boolean;
+  /** `<Document pdfUA>`: PDF/UA-1, or the part named. */
+  pdfUA?: true | PdfUaPart;
   /** `<Document flattenAlpha>`: images with partial alpha drawn on white at PDF/A-1b. */
   flattenAlpha?: boolean;
   /**
@@ -48,6 +48,17 @@ const PDF_A_LEVELS = ['1b', '2b', '2a', '3b', '3a'] as const;
 
 /** A PDF/A part and conformance level the engine writes. */
 export type PdfALevel = (typeof PDF_A_LEVELS)[number];
+
+/** A part of PDF/UA the engine writes: `'1'` on PDF 1.7, `'2'` on PDF 2.0. */
+export type PdfUaPart = '1' | '2';
+
+/** `<Document pdfUA>`: `true` (PDF/UA-1) or a part; `false` or left out is none. */
+export function documentPdfUa(value: unknown, fail: Fail): true | PdfUaPart | undefined {
+  if (value === undefined || value === false) return undefined;
+  if (value === true || value === '1' || value === '2') return value;
+  const shown = typeof value === 'string' ? `"${value}"` : `{${String(value)}}`;
+  fail(`<Document pdfUA=${shown}> must be true, false, '1' or '2'.`);
+}
 
 /**
  * The encryption of `<Document userPassword ownerPassword permissions entropy>`, its types

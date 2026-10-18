@@ -9,7 +9,8 @@ use crate::pipeline::{Dest, Marks};
 use super::{round_pt, LinkArea, Profile, Writer};
 
 /// Writes one link annotation as object `r`; `false` (nothing written)
-/// when an anchor has no destination.
+/// when an anchor has no destination. Tagged, it has `struct_parent`, and
+/// a link within the document goes to element `sd` as well, if any.
 pub(super) fn write_link(
     w: &mut Writer,
     r: Ref,
@@ -17,7 +18,7 @@ pub(super) fn write_link(
     link: &LinkArea,
     (marks, pages): (&Marks<'_>, &[Ref]),
     profile: Profile,
-    struct_parent: Option<i32>,
+    (struct_parent, sd): (Option<i32>, Option<Ref>),
 ) -> bool {
     let target = &*link.target;
     let dest = match target.strip_prefix('#') {
@@ -50,6 +51,11 @@ pub(super) fn write_link(
         Some(d) => {
             action.action_type(ActionType::GoTo);
             xyz(action.destination(), d, pages);
+            // A structure destination (ISO 32000-2, 12.6.4.2): the
+            // element, then the same view as the page destination.
+            if let Some(e) = sd {
+                sd_array(action.insert(Name(b"SD")).array(), e, d);
+            }
         }
         None => {
             action
@@ -58,6 +64,16 @@ pub(super) fn write_link(
         }
     }
     true
+}
+
+/// `[element /XYZ left top null]`: a structure destination, with the view
+/// of page destination `d`.
+fn sd_array(mut a: pdf_writer::Array<'_>, elem: Ref, d: Dest) {
+    a.item(elem)
+        .item(Name(b"XYZ"))
+        .item(round_pt(d.x))
+        .item(round_pt(d.y))
+        .item(pdf_writer::Null);
 }
 
 /// What a link's `/Contents` says: where it goes.
@@ -108,15 +124,19 @@ pub(super) fn uri_bytes(uri: &str) -> Vec<u8> {
 
 /// Writes the document outline; returns its root. Each entry nests under
 /// the nearest earlier entry of a lower level; all entries start open.
+/// An entry with an element in `sd` goes to it as well.
 pub(super) fn write_outline(
     w: &mut Writer,
     entries: &[crate::pipeline::OutlineEntry<'_>],
     page_refs: &[Ref],
+    sd: &[Option<Ref>],
 ) -> Option<Ref> {
     if entries.is_empty() {
         return None;
     }
-    let Writer { pdf, alloc, out } = w;
+    let Writer {
+        pdf, alloc, out, ..
+    } = w;
     let root = alloc.next();
     let refs: Vec<Ref> = entries.iter().map(|_| alloc.next()).collect();
     // parent[i]: index of the parent entry (None: the outline root).
@@ -166,7 +186,19 @@ pub(super) fn write_outline(
         if let (Some(&f), Some(&l)) = (kids[i].first(), kids[i].last()) {
             item.first(refs[f]).last(refs[l]).count(count[i]);
         }
-        xyz(item.dest(), e.dest, page_refs);
+        match sd.get(i) {
+            // An outline item has no structure destination of its own: a
+            // go-to action has it (ISO 32000-2, 12.6.4.2).
+            Some(&Some(r)) => {
+                let mut action = item
+                    .insert(Name(b"A"))
+                    .start::<pdf_writer::writers::Action>();
+                action.action_type(ActionType::GoTo);
+                xyz(action.destination(), e.dest, page_refs);
+                sd_array(action.insert(Name(b"SD")).array(), r, e.dest);
+            }
+            _ => xyz(item.dest(), e.dest, page_refs),
+        }
     }
     let mut o = pdf.outline(root);
     if let (Some(&f), Some(&l)) = (top.first(), top.last()) {

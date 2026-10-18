@@ -8,7 +8,7 @@
 //! `deferredFonts`, the font ids of `RenderOptions::deferred_fonts`, is
 //! this binding's own: the wrapper sends the ids of its `deferredFonts`.
 
-use inkoxide_binding::{EncryptionOptions, Failure, Options, PdfA, PermissionOptions};
+use inkoxide_binding::{EncryptionOptions, Failure, Options, PdfA, PdfUa, PermissionOptions};
 use serde_json::{Map, Value};
 
 type Object = Map<String, Value>;
@@ -51,7 +51,17 @@ pub(crate) fn parse(json: &[u8]) -> Result<Parsed, Failure> {
             .map(|e| encryption(e, "options.encryption"))
             .transpose()?,
         tagged: boolean(&o, at, "tagged")?,
-        pdf_ua: boolean(&o, at, "pdfUA")?,
+        pdf_ua: match o.get("pdfUA") {
+            None => None,
+            Some(Value::Bool(b)) => Some(PdfUa::On(*b)),
+            Some(Value::String(s)) => Some(PdfUa::Part(s.clone())),
+            Some(_) => {
+                return Err(Failure::invalid_arg(
+                    "options.pdfUA",
+                    "must be a boolean or a string",
+                ))
+            }
+        },
         flatten_alpha: boolean(&o, at, "flattenAlpha")?,
     };
     let deferred_fonts = match o.get("deferredFonts") {

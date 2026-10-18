@@ -62,8 +62,11 @@ export function checkOptionTypes(opts: RenderOpts & Abortable): void {
   }
   check('timeoutMs', opts.timeoutMs, 'milliseconds from 0 (Infinity for no limit)');
   checkTypes(o, ENGINE_OPTION_TYPES, '', true);
-  if (!absent(o.pdfA) && typeof o.pdfA !== 'boolean' && typeof o.pdfA !== 'string') {
-    rejectType('pdfA', 'a boolean or a string', o.pdfA);
+  for (const key of ['pdfA', 'pdfUA'] as const) {
+    const v = o[key];
+    if (!absent(v) && typeof v !== 'boolean' && typeof v !== 'string') {
+      rejectType(key, 'a boolean or a string', v);
+    }
   }
   for (const key of ['images', 'attachments'] as const) {
     const files = o[key];
@@ -117,7 +120,6 @@ const ENGINE_OPTION_TYPES = {
   compress: 'boolean',
   subsetFonts: 'boolean',
   tagged: 'boolean',
-  pdfUA: 'boolean',
   flattenAlpha: 'boolean',
 } as const;
 

@@ -42,19 +42,23 @@ only on demand, from the Actions tab, with the ID of that release run.
   carry files render only as PDF/A-3b, and the other levels reject them
   with `PDFA_CONFLICT` at the first file (`ONLY_PDF_A_3B`).
 - `crates/core/tests/accessibility.rs`: `fixtures/docs/accessible.json`
-  (from `scripts/fixtures/accessible.py`) as PDF/UA-1 and PDF/A-2a and
-  3a passes veraPDF (and its PDF/UA-2 report is printed, not checked:
-  inkoxide writes PDF 1.7); its structure tree, read back with qpdf, is
-  in document order, with its lists and their numbering, table headers
-  and spans, figures and where they are, links and what they say, fields
-  and notes; images and links in text are elements in place among the
-  text; a split table's repeated header is read once, headers and
-  footers are pagination artifacts, and their annotations come in page
-  order; reading order is document order whatever `zIndex` and floats
-  draw first; tagged output is the same on any number of threads, and
-  reads and looks as untagged (with poppler); a document without what
-  PDF/UA requires fails with `UA_CONFLICT` at its path, and every
-  fixture under PDF/UA either does or passes veraPDF.
+  (from `scripts/fixtures/accessible.py`) as PDF/UA-1, PDF/UA-2 and
+  PDF/A-2a and 3a passes veraPDF, and so does a PDF/UA-2 document with
+  every role the fixtures lack (a section, a quotation, a caption, a
+  box with a link, radio buttons, links to other pages), plain and
+  encrypted; the named parts of an SVG image, tagged as figures of their
+  own, pass PDF/UA-1, PDF/UA-2 and PDF/A-2a; the structure tree, read
+  back with qpdf, is in document order, with its lists and their
+  numbering, table headers and spans, figures and where they are, links
+  and what they say, fields and notes; images and links in text are
+  elements in place among the text; a split table's repeated header is
+  read once, headers and footers are pagination artifacts, and their
+  annotations come in page order; reading order is document order
+  whatever `zIndex` and floats draw first; tagged output is the same on
+  any number of threads, and reads and looks as untagged (with poppler);
+  a document without what PDF/UA requires fails with `UA_CONFLICT` at
+  its path, and every fixture under PDF/UA is either refused (the same
+  fixtures at both parts) or passes veraPDF.
 - `crates/core/tests/output_hashes.rs`: every fixture's output, untagged
   and tagged, has the SHA-256 pinned in `output_hashes.sha256` (but those
   whose numbers depend on the platform's math library,

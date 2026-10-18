@@ -117,6 +117,8 @@ fn options_are_checked_at_their_path() {
         (r#"{"compress":"no"}"#, "options.compress"),
         (r#"{"pdfA":5}"#, "options.pdfA"),
         (r#"{"pdfA":"4z"}"#, "options.pdfA"),
+        (r#"{"pdfUA":2}"#, "options.pdfUA"),
+        (r#"{"pdfUA":"3"}"#, "options.pdfUA"),
         (r#"{"format":"yaml"}"#, "options.format"),
         (r#"{"encryption":null}"#, "options.encryption"),
         (

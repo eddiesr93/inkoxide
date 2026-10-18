@@ -9,6 +9,7 @@ mod forms;
 mod image;
 mod nav;
 mod notes;
+mod objstm;
 mod out;
 mod pdfa;
 mod svg;
@@ -17,7 +18,7 @@ mod type3;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use pdf_writer::{Content, Pdf, Ref};
+use pdf_writer::{Chunk, Content, Obj, Pdf, Ref};
 use rayon::prelude::*;
 
 use crate::date::Timestamp;
@@ -33,7 +34,7 @@ pub(crate) use font::SUBSETS;
 
 use content::{
     alpha_key, bounds, clip, fill, font_name, gs_name, image_name, invisible_glyph, key_alpha,
-    path, set_fill, show_kerned, show_text, type3_name,
+    path, placement_name, set_fill, show_kerned, show_text, type3_name,
 };
 pub(crate) use image::transparency as image_transparency;
 pub(crate) use nav::written_uri_len;
@@ -73,6 +74,20 @@ pub(crate) struct EncodedPage {
     /// The text of each colour glyph drawn, by Type 3 font and code: that
     /// of its first span.
     pub type3_text: BTreeMap<(u16, u8), String>,
+    /// In tagged output, each SVG drawn with its parts tagged, in order:
+    /// each is a form of its own, named by its place here
+    /// ([`content::placement_name`]).
+    pub placements: Vec<Placement>,
+}
+
+/// An SVG drawn with its parts tagged.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Placement {
+    pub key: ImageKey,
+    /// The element it is in.
+    pub owner: crate::tag::StructId,
+    /// The MCIDs of the page before it: its content comes after theirs.
+    pub after: i32,
 }
 
 /// A link of a page.
@@ -209,6 +224,8 @@ pub(super) struct Writer {
     pub pdf: Pdf,
     pub alloc: RefAlloc,
     pub out: Out,
+    /// The objects bound for object streams, when the file has them.
+    packed: Option<objstm::Packed>,
 }
 
 impl Writer {
@@ -217,6 +234,50 @@ impl Writer {
             pdf: Pdf::new(),
             alloc: RefAlloc(0),
             out,
+            packed: None,
+        }
+    }
+
+    /// Puts the objects written with [`Writer::packable`] from now on into
+    /// object streams, deflated at `level`.
+    pub fn pack(&mut self, level: u32) {
+        self.packed = Some(objstm::Packed::new(level));
+    }
+
+    /// Writes object `r` with `f`: into an object stream when the file
+    /// has them, or else into the file. Its strings come from
+    /// [`Writer::packable_text`].
+    pub fn packable(&mut self, r: Ref, f: impl FnOnce(Obj<'_>)) {
+        let Some(packed) = &mut self.packed else {
+            return f(self.pdf.indirect(r));
+        };
+        let mut chunk = Chunk::new();
+        f(chunk.indirect(r));
+        self.pdf.merge_limits(chunk.limits());
+        packed.push(r, chunk.as_bytes());
+    }
+
+    /// A text string of an object written with [`Writer::packable`]: in an
+    /// object stream, as it is, since the whole stream is encrypted
+    /// (ISO 32000-2, 7.6.2).
+    pub fn packable_text(&mut self, s: &str) -> Vec<u8> {
+        match self.packed {
+            Some(_) => out::text_bytes(s),
+            None => self.out.text(s),
+        }
+    }
+
+    /// The file: its object streams, if any, and its trailer.
+    fn finish(self) -> Result<Vec<u8>, InkoxideError> {
+        let Self {
+            pdf,
+            mut alloc,
+            mut out,
+            packed,
+        } = self;
+        match packed {
+            Some(p) => p.finish(pdf, &mut alloc, &mut out),
+            None => Ok(pdf.finish()),
         }
     }
 }
@@ -235,23 +296,22 @@ impl PdfWriterSink {
     pub fn write(&mut self, doc: &DocumentOut<'_>) -> Result<Vec<u8>, InkoxideError> {
         let fonts = self.font_programs(doc)?;
         let Some(params) = &self.encryption else {
-            return Ok(self.emit(doc, &fonts, Out::plain())?.pdf.finish());
+            return self.emit(doc, &fonts, Out::plain())?.finish();
         };
         // The keys are derived from the whole file as it is written
         // unencrypted, so documents that differ anywhere get different
         // keys.
-        let plain = self.emit(doc, &fonts, Out::plain())?.pdf.finish();
+        let plain = self.emit(doc, &fonts, Out::plain())?.finish()?;
         let (crypt, dict) =
             crypt::Crypt::new(params, &crypt::digest(&plain, params.entropy.as_deref()));
         drop(plain);
-        let Writer {
-            mut pdf, mut alloc, ..
-        } = self.emit(doc, &fonts, Out::encrypted(crypt))?;
-        // Last, so every other object keeps its number.
-        let r = alloc.next();
-        dict.write(&mut pdf, r);
-        pdf.set_file_id((dict.id.to_vec(), dict.id.to_vec()));
-        crypt::splice_encrypt(pdf.finish(), r)
+        let mut w = self.emit(doc, &fonts, Out::encrypted(crypt))?;
+        // Last but for the object streams, so every other object keeps
+        // its number.
+        let r = w.alloc.next();
+        dict.write(&mut w.pdf, r);
+        w.pdf.set_file_id((dict.id.to_vec(), dict.id.to_vec()));
+        crypt::splice_encrypt(w.finish()?, r)
             .ok_or_else(|| InkoxideError::Pdf("the file has no trailer to encrypt".into()))
     }
 

@@ -79,7 +79,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Floats | `layout/flow.rs`, `layout/float.rs`, `layout/shape.rs` | Float containers (the root, a column box or a cell with floated children), Taffy leaves like tables: children stacked as in a column, floats placed, text wrapped beside them (around a `shapeOutside`, in strips), column boxes laid out beside them with the floats seeded in, other boxes narrowed |
 | Pagination | `paginate`, `pipeline` | Breaks flows into pages: orphans and widows, keep-together, forced breaks; page numbers (`pipeline/numbering.rs`) |
 | Paint | `paint` | Display lists: backgrounds, borders, radii, opacity, transforms, clipping |
-| PDF | `pdf` | Pages and content streams (encoded in parallel, `pdf/content.rs`), the document around them (`pdf/document.rs`: page tree, resources, catalog), links and outline (`pdf/nav.rs`), notes, forms, the structure tree of tagged PDF and PDF/UA (`pdf/tag.rs`), PDF/A-1b, 2b, 2a, 3b and 3a, encryption. Objects go into the file through one `Writer` (the file, the object numbers, `Out`). Every string and stream goes into the file through `pdf/out.rs`, which encrypts it when the file is encrypted; `crates/core/clippy.toml` forbids pdf-writer's `TextStr`, `TextStrWithLang`, `Date`, the other writers that make strings of their own, and its stream writers anywhere else. Two exceptions, both in `pdf/crypt.rs`: `Dict::write` writes the strings of the `Encrypt` dictionary as they are, since the standard leaves them unencrypted, and `splice_encrypt` adds the `/Encrypt` entry to the trailer pdf-writer finished, which has no setter for it |
+| PDF | `pdf` | Pages and content streams (encoded in parallel, `pdf/content.rs`), the document around them (`pdf/document.rs`: page tree, resources, catalog), links and outline (`pdf/nav.rs`), notes, forms, the structure tree of tagged PDF and PDF/UA-1 and 2 (`pdf/tag.rs`), PDF/A-1b, 2b, 2a, 3b and 3a, encryption. Objects go into the file through one `Writer` (the file, the object numbers, `Out`). Every string and stream goes into the file through `pdf/out.rs`, which encrypts it when the file is encrypted; `crates/core/clippy.toml` forbids pdf-writer's `TextStr`, `TextStrWithLang`, `Date`, the other writers that make strings of their own, and its stream writers anywhere else. Two exceptions, both in `pdf/crypt.rs`: `Dict::write` writes the strings of the `Encrypt` dictionary as they are, since the standard leaves them unencrypted, and `splice_encrypt` adds the `/Encrypt` entry to the trailer pdf-writer finished, which has no setter for it |
 | Images | `images` | JPEG passthrough, PNG with SMask (a stencil mask for binary alpha at PDF/A-1b), GIF and WebP, SVG as vector form XObjects, SVG text read and replaced with probes (`images/svg_text`) |
 | SVG | `images/svg/` | Parsing through usvg with limits for untrusted input: what a file's copies, markers and references expand to is checked before usvg converts it (`check.rs`, against `limits.rs`); the root `viewBox` (`view_box.rs`); the text converted again with a render's fonts, cached across renders (`text.rs`) |
 | Forms | `forms` | AcroForm fields: intrinsic sizes, the widget ops painting hands to the PDF writer, and field formats (`forms/format.rs`) |
@@ -203,6 +203,27 @@ their own. The tree, the parent tree and the elements are written last;
 an element's kids are in document order, but the links and figures of a
 paragraph, which sit among its text as they are drawn. Untagged output is
 byte for byte what it was (`tests/output_hashes.rs` pins it).
+
+PDF/UA-2 is PDF 2.0: `Plan::new` takes whether the profile is PDF 2.0,
+and the writer then puts every element in a namespace (the standard
+ones of PDF 2.0) and points links at structure destinations. When
+the output is compressed and not PDF/A-1b, the writer hands the structure
+elements and the parent tree to `pdf/objstm.rs` instead of writing them
+as top-level objects. It packs them, 128 to an object stream (ISO
+32000-1, 7.5.7), and ends the file with a cross-reference stream, whose
+entries for the packed objects it fills in itself (pdf-writer writes
+only its own). Encryption (`pdf/out.rs`) encrypts each stream as a
+whole, not the objects in it. Untagged and uncompressed output keeps its
+table.
+
+The named parts of an SVG image (`images/svg/parts.rs`) are found in the
+XML before usvg converts it, which keeps the `id` of groups, shapes,
+images and text but drops titles and `aria-*` attributes; an element
+without an `id` is given one (`inkoxide-part-N`). In tagged output an
+image with parts is drawn as a form XObject of its own for each
+placement, with `/StructParents`; its parts' content is marked inside the
+form, and the structure tree refers to it with marked-content references
+that carry `/Stm`.
 
 A variable font is registered once; each declaration with `variations`
 draws with an `Instance` of it (`fonts/mod.rs`): canonical coordinates

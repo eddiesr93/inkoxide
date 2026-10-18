@@ -16,7 +16,7 @@ import type {
 } from '@inkoxide/style';
 import { createElement, type FC, type ReactNode } from 'react';
 
-import type { PdfALevel } from '../tree/output.ts';
+import type { PdfALevel, PdfUaPart } from '../tree/output.ts';
 
 /**
  * Host element types. Components are host elements, not function components: one fiber per
@@ -472,11 +472,12 @@ export interface DocumentProps {
    */
   tagged?: boolean;
   /**
-   * Write PDF/UA-1, the standard for accessible PDF: tagged, with a `title`, a `lang`, `alt` on
+   * Write PDF/UA, the standard for accessible PDF: tagged, with a `title`, a `lang`, `alt` on
    * every image that is not decoration and `label` on every field; without them the render
-   * fails with `UA_CONFLICT`.
+   * fails with `UA_CONFLICT`. `true` or `'1'` writes PDF/UA-1, on PDF 1.7; `'2'` writes
+   * PDF/UA-2, on PDF 2.0, which does not combine with `conformance`.
    */
-  pdfUA?: boolean;
+  pdfUA?: boolean | PdfUaPart;
   /**
    * Files the PDF carries, listed in the viewer's attachments panel; `<Attachment file>` shows
    * an icon that opens one. Under PDF/A, only `'PDF/A-3b'` and `'PDF/A-3a'` allow them.

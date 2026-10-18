@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use super::limits::MAX_DEPTH;
+use super::limits::{MAX_DEPTH, MAX_XML_DEPTH};
 use super::*;
 use crate::geom::Rect;
 
@@ -56,17 +56,17 @@ fn refuses_sizes_and_view_boxes_too_small_to_scale() {
 #[test]
 fn reads_text_and_rejects_garbage() {
     // The tree leaves text out; it comes with what drawing it needs.
-    let (_, _, text) = parse_text(svg("<text x='1' y='5'>Hi</text>").as_bytes()).unwrap();
+    let (_, _, text, _) = parse_text(svg("<text x='1' y='5'>Hi</text>").as_bytes()).unwrap();
     assert_eq!(text.unwrap().text.texts.len(), 1);
     // Empty text elements are no text.
-    let (_, _, text) = parse_text(svg("<text x='1' y='5'> </text>").as_bytes()).unwrap();
+    let (_, _, text, _) = parse_text(svg("<text x='1' y='5'> </text>").as_bytes()).unwrap();
     assert!(text.is_none());
     assert!(parse(b"<svg").is_err());
     assert!(parse(b"<html/>").is_err());
     assert!(parse(&[0xFF, 0xFE, 0x3C]).is_err());
     // Text in a nested SVG comes with the outer one.
     let outer = image_of(&svg("<text x='1' y='5'>Hi</text>"), 1, 0);
-    let (_, _, text) = parse_text(outer.as_bytes()).unwrap();
+    let (_, _, text, _) = parse_text(outer.as_bytes()).unwrap();
     let text = text.unwrap();
     assert!(text.text.texts.is_empty());
     assert_eq!(text.nested[0].text.texts.len(), 1);
@@ -77,7 +77,7 @@ fn reads_text_and_rejects_garbage() {
         "<text writing-mode='tb'>Hi</text>",
         "<path id='p' d='M0 0H9'/><text writing-mode='tb'><textPath href='#p'>Hi</textPath></text>",
     ] {
-        let (_, _, text) = parse_text(svg(body).as_bytes()).unwrap();
+        let (_, _, text, _) = parse_text(svg(body).as_bytes()).unwrap();
         assert_eq!(text.unwrap().text.texts.len(), 1, "{body}");
     }
 }
@@ -678,4 +678,47 @@ fn charges_inherited_text_properties_per_span() {
         .as_bytes(),
     )
     .unwrap();
+}
+
+#[test]
+fn deep_xml_is_refused_before_it_is_parsed() {
+    // The XML parser and the conversion recurse per element: a deep
+    // document would overflow the stack before the element depth is
+    // checked. A level takes about half a KiB of stack in a release build
+    // and some 14 KiB in a debug one.
+    let on_stack = |mib: usize, doc: String| {
+        std::thread::Builder::new()
+            .stack_size(mib << 20)
+            .spawn(move || parse(doc.as_bytes()).map(|_| ()))
+            .unwrap()
+            .join()
+            .unwrap()
+    };
+    let nested = |n: usize| format!("{}{}", "<g>".repeat(n), "</g>".repeat(n));
+    let e = on_stack(2, svg(&nested(20_000))).unwrap_err();
+    assert!(e.contains("deeper than 256"), "{e}");
+    // As deep as the parser is given: the element depth refuses it.
+    let metadata = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="5" height="5"><metadata>{}</metadata></svg>"#,
+        nested(MAX_XML_DEPTH - 2)
+    );
+    let e = on_stack(8, metadata).unwrap_err();
+    assert!(e.contains(&format!("deeper than {MAX_DEPTH}")), "{e}");
+    // An entity's elements nest where it is referred to; comments,
+    // character data and self-closing tags do not nest.
+    let entity = format!(
+        r#"<?xml version="1.0"?><!DOCTYPE svg [<!ENTITY e "{}">]><svg xmlns="http://www.w3.org/2000/svg" width="5" height="5">{}&e;{}</svg>"#,
+        nested(150),
+        "<g>".repeat(150),
+        "</g>".repeat(150)
+    );
+    let e = on_stack(2, entity).unwrap_err();
+    assert!(e.contains("deeper than 256"), "{e}");
+    let flat = svg(&format!(
+        "<!-- {} --><![CDATA[{}]]>{}",
+        "<g>".repeat(2000),
+        "<g>".repeat(2000),
+        "<g/>".repeat(2000)
+    ));
+    on_stack(2, flat).unwrap();
 }

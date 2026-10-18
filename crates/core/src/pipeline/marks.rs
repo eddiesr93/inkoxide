@@ -16,11 +16,24 @@ pub(crate) struct Dest {
     pub y: f32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub(crate) struct OutlineEntry<'d> {
     pub title: &'d str,
     pub level: u8,
     pub dest: Dest,
+    /// The node with the bookmark.
+    pub node: &'d crate::schema::Node,
+}
+
+/// Without the node, which says nothing the rest does not.
+impl std::fmt::Debug for OutlineEntry<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OutlineEntry")
+            .field("title", &self.title)
+            .field("level", &self.level)
+            .field("dest", &self.dest)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Destinations found after pagination: the first displayed node of each
@@ -87,6 +100,7 @@ pub(super) fn subtree_marks<'d>(
                 title: &b.title,
                 level: b.level,
                 dest,
+                node,
             });
         }
     }

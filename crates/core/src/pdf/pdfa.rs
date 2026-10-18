@@ -7,7 +7,7 @@ use crate::date::Timestamp;
 use pdf_writer::Limits;
 
 use crate::schema::{Meta, XmpSchema};
-use crate::{InkoxideError, PdfALevel};
+use crate::{InkoxideError, PdfALevel, PdfUaPart};
 
 /// Shortest page side PDF/A allows, in points, at every level: PDF/A-1
 /// keeps PDF 1.4's implementation limits (ISO 19005-1, 6.1.12), PDF/A-2
@@ -39,7 +39,7 @@ pub(crate) mod limits {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct Profile {
     level: Option<PdfALevel>,
-    ua: bool,
+    ua: Option<PdfUaPart>,
     flatten_alpha: bool,
 }
 
@@ -48,14 +48,14 @@ impl Profile {
     pub fn new(level: Option<PdfALevel>) -> Self {
         Self {
             level,
-            ua: false,
+            ua: None,
             flatten_alpha: false,
         }
     }
 
-    /// The profile, and PDF/UA-1 with `ua`.
+    /// The profile, and PDF/UA of part `ua`.
     #[must_use]
-    pub fn with_ua(self, ua: bool) -> Self {
+    pub fn with_ua(self, ua: Option<PdfUaPart>) -> Self {
         Self { ua, ..self }
     }
 
@@ -75,9 +75,19 @@ impl Profile {
         self.flatten_alpha && !self.transparency()
     }
 
-    /// Writing PDF/UA-1.
+    /// Writing PDF/UA, of either part.
     pub fn ua(self) -> bool {
+        self.ua.is_some()
+    }
+
+    /// The part of PDF/UA written.
+    pub fn ua_part(self) -> Option<PdfUaPart> {
         self.ua
+    }
+
+    /// Writing PDF 2.0: PDF/UA-2.
+    pub fn pdf_2(self) -> bool {
+        self.ua == Some(PdfUaPart::Ua2)
     }
 
     /// Writing PDF/A: XMP metadata, an output intent, a file identifier,
@@ -90,7 +100,7 @@ impl Profile {
     /// glyph keeping its position: PDF/A and PDF/UA forbid them
     /// (ISO 19005-2, 6.2.11.8; ISO 14289-1, 7.21.8).
     pub fn skips_notdef(self) -> bool {
-        self.is_pdf_a() || self.ua
+        self.is_pdf_a() || self.ua()
     }
 
     /// The PDF/A level written; `None` for plain PDF.
@@ -104,8 +114,11 @@ impl Profile {
     }
 
     /// The PDF version in the header, when not pdf-writer's 1.7: PDF/A-1
-    /// is based on PDF 1.4.
+    /// is based on PDF 1.4, PDF/UA-2 on PDF 2.0.
     pub fn version(self) -> Option<(u8, u8)> {
+        if self.pdf_2() {
+            return Some((2, 0));
+        }
         self.is_1b().then_some((1, 4))
     }
 
@@ -120,6 +133,12 @@ impl Profile {
     /// Font subsets list their CIDs in a `CIDSet` (PDF/A-1).
     pub fn cid_set(self) -> bool {
         self.is_1b()
+    }
+
+    /// Whether the file may have object streams, from PDF 1.5: not under
+    /// PDF/A-1, based on PDF 1.4 (ISO 19005-1, 6.1.4).
+    pub fn object_streams(self) -> bool {
+        !self.is_1b()
     }
 
     /// Whether the output may use transparency: constant alpha, soft
@@ -368,7 +387,7 @@ pub(crate) fn srgb_icc() -> Vec<u8> {
 }
 
 /// The XMP packet for the catalog `/Metadata` stream, at PDF/A `level`
-/// and, with `ua`, PDF/UA-1. Every entry mirrors the information
+/// and, with `ua`, PDF/UA of that part. Every entry mirrors the information
 /// dictionary, as PDF/A requires. The properties of `meta.xmpExtensions`
 /// follow, with the PDF/A extension schema that declares them (ISO
 /// 19005-2, 6.6.2.3), and that of PDF/UA's identification under PDF/A.
@@ -377,7 +396,7 @@ pub(crate) fn xmp(
     producer: &str,
     created: Option<Timestamp>,
     level: Option<PdfALevel>,
-    ua: bool,
+    ua: Option<PdfUaPart>,
 ) -> Vec<u8> {
     let mut d = String::new();
     let mut prop = |name: &str, value: &str| {
@@ -390,8 +409,14 @@ pub(crate) fn xmp(
             if level.accessible() { "A" } else { "B" },
         );
     }
-    if ua {
-        prop("pdfuaid:part", "1");
+    match ua {
+        Some(PdfUaPart::Ua1) => prop("pdfuaid:part", "1"),
+        // ISO 14289-2:2024, 8.6: the part, and the year of its revision.
+        Some(PdfUaPart::Ua2) => {
+            prop("pdfuaid:part", "2");
+            prop("pdfuaid:rev", "2024");
+        }
+        None => {}
     }
     prop("dc:format", "application/pdf");
     prop("pdf:Producer", producer);
@@ -437,14 +462,14 @@ pub(crate) fn xmp(
          </rdf:RDF>\n\
          </x:xmpmeta>\n\
          <?xpacket end=\"w\"?>",
-        if ua {
+        if ua.is_some() {
             "xmlns:pdfuaid=\"http://www.aiim.org/pdfua/ns/id/\" "
         } else {
             ""
         },
         extension_descriptions(
             meta.xmp_extensions.as_deref().unwrap_or(&[]),
-            ua && level.is_some()
+            ua.is_some() && level.is_some()
         )
     )
     .into_bytes()
@@ -669,7 +694,9 @@ mod tests {
     #[test]
     fn pdf_a_and_pdf_ua_leave_notdef_out() {
         assert!(!Profile::default().skips_notdef());
-        assert!(Profile::default().with_ua(true).skips_notdef());
+        assert!(Profile::default()
+            .with_ua(Some(crate::PdfUaPart::Ua1))
+            .skips_notdef());
         assert!(Profile::new(Some(PdfALevel::A2b)).skips_notdef());
     }
 
@@ -680,8 +707,7 @@ mod tests {
             (PdfALevel::A2b, 2),
             (PdfALevel::A3b, 3),
         ] {
-            let x =
-                String::from_utf8(xmp(&Meta::default(), "P", None, Some(level), false)).unwrap();
+            let x = String::from_utf8(xmp(&Meta::default(), "P", None, Some(level), None)).unwrap();
             assert!(
                 x.contains(&format!("<pdfaid:part>{part}</pdfaid:part>")),
                 "{x}"
@@ -726,7 +752,7 @@ mod tests {
             },
             offset_minutes: -150,
         };
-        let x = String::from_utf8(xmp(&meta, "P", Some(t), Some(PdfALevel::A2b), false)).unwrap();
+        let x = String::from_utf8(xmp(&meta, "P", Some(t), Some(PdfALevel::A2b), None)).unwrap();
         assert!(x.contains(">A &amp; &lt;B&gt;</rdf:li>"), "{x}");
         assert!(x.contains("<xmp:CreateDate>2026-03-04T05:06:07-02:30</xmp:CreateDate>"));
         assert_eq!(

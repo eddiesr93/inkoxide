@@ -401,6 +401,7 @@ impl ImageSet {
                 tree,
                 text: Some(source),
                 view_box,
+                parts,
                 ..
             } = &image.body
             else {
@@ -419,6 +420,7 @@ impl ImageSet {
                     view_box: *view_box,
                     text: None,
                     probed: Some(Arc::new(probed)),
+                    parts: parts.clone(),
                 },
             });
         }
@@ -488,6 +490,15 @@ impl ImageSet {
     /// The background image of box `node`.
     pub fn background_key(&self, node: &Node) -> Option<ImageKey> {
         self.by_background.get(&node_key(node)).copied()
+    }
+
+    /// The SVGs with parts tagged output tags on their own.
+    pub fn parted(&self) -> BTreeSet<ImageKey> {
+        (0..)
+            .zip(&self.images)
+            .filter(|(_, i)| matches!(&i.body, ImageBody::Svg { parts: Some(_), .. }))
+            .map(|(k, _)| k)
+            .collect()
     }
 
     pub fn get(&self, key: ImageKey) -> &DecodedImage {

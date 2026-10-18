@@ -1,4 +1,4 @@
-import type { EncryptionOptions, PdfALevel } from '@inkoxide/react';
+import type { EncryptionOptions, PdfALevel, PdfUaPart } from '@inkoxide/react';
 import type { Document } from '@inkoxide/schema';
 
 export interface RenderOpts {
@@ -27,8 +27,11 @@ export interface RenderOpts {
   pdfA?: boolean | PdfALevel;
   /** Write tagged PDF (see `<Document tagged>`), which it overrides. */
   tagged?: boolean;
-  /** Write PDF/UA-1 (see `<Document pdfUA>`), which it overrides. */
-  pdfUA?: boolean;
+  /**
+   * Write PDF/UA (see `<Document pdfUA>`), which it overrides: `true` or `'1'` PDF/UA-1, `'2'`
+   * PDF/UA-2. Another string fails the render with `ENGINE_REJECTED` at `options.pdfUA`.
+   */
+  pdfUA?: boolean | PdfUaPart;
   /**
    * At PDF/A-1b, draw images with partial alpha on white instead of failing (see
    * `<Document flattenAlpha>`), which it overrides.

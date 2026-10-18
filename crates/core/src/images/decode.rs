@@ -53,6 +53,8 @@ pub(crate) enum ImageBody {
         /// In a render's own copy: the text laid out with its fonts, and
         /// the probes `tree` draws it at.
         probed: Option<Arc<super::svg::ProbedText>>,
+        /// The parts tagged output tags on their own, when it has any.
+        parts: Option<Arc<super::svg::SvgParts>>,
     },
 }
 
@@ -179,7 +181,7 @@ pub(crate) struct ImageCrateDecoder;
 impl ImageDecoder for ImageCrateDecoder {
     fn decode(&self, bytes: &[u8]) -> Result<DecodedImage, String> {
         if super::svg::is_svg(bytes) {
-            let (tree, view_box, text) = super::svg::parse_text(bytes)?;
+            let (tree, view_box, text, parts) = super::svg::parse_text(bytes)?;
             let s = tree.size();
             return Ok(DecodedImage {
                 width: s.width().ceil() as u32,
@@ -190,6 +192,7 @@ impl ImageDecoder for ImageCrateDecoder {
                     view_box,
                     text: text.map(Arc::new),
                     probed: None,
+                    parts: parts.map(Arc::new),
                 },
             });
         }

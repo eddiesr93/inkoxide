@@ -98,7 +98,8 @@ How it differs from the Node package:
 | `pdf_a_level` / `with_pdf_a_level` (also sets `pdf_a`) | `pdfA: '1b' \| '2b' \| '2a' \| '3b' \| '3a'` | `PdfALevel::A2b` | The PDF/A level: 1b, 2b, 2a, 3b or 3a (see [PDF/A](#pdfa)). Node: another string is `INVALID_ARGUMENT` |
 | `tagged` / `with_tagged` | `tagged` | `false` | Write tagged PDF: a structure tree in document order, with roles (`role`), alternative text (`alt`), table headers and field labels, and the rest marked as artifacts. PDF/UA and the "a" levels imply it |
 | `flatten_alpha` / `with_flatten_alpha` | `flattenAlpha` | `false` | At PDF/A-1b, draw images with partial alpha (neither only clear nor only opaque) on white instead of failing with `PDFA_CONFLICT`. Other levels and plain PDF keep the alpha. Binary alpha needs no option: PDF/A-1b writes it as a stencil mask |
-| `pdf_ua` / `with_pdf_ua` | `pdfUA` | `false` | Write PDF/UA-1: tagged, with XMP metadata (`pdfuaid`), the title shown as the window title, link descriptions and field labels. A document without a title, a language, `alt` on its images and `figure` boxes, labels on its fields, or headings in order fails with `UA_CONFLICT`; encryption must keep `contentAccessibility` |
+| `pdf_ua` / `with_pdf_ua` | `pdfUA` | `false` | Write PDF/UA, at `pdf_ua_part`: tagged, with XMP metadata (`pdfuaid`), the title shown as the window title, link descriptions and field labels. A document without a title, a language, `alt` on its images and `figure` boxes, labels on its fields, or headings in order fails with `UA_CONFLICT`; encryption must keep `contentAccessibility` |
+| `pdf_ua_part` / `with_pdf_ua_part` (also sets `pdf_ua`) | `pdfUA: true \| '1' \| '2'` | `PdfUaPart::Ua1` | The PDF/UA part: 1 (ISO 14289-1, PDF 1.7) or 2 (ISO 14289-2, PDF 2.0; see [Tagged PDF and PDF/UA](#tagged-pdf-and-pdfua)). `PdfUaPart` parses `"1"` and `"2"`. Part 2 with `pdf_a` is `INVALID_VALUE` at `options.pdfUA` in Rust and `INVALID_ARGUMENT` in Node. Node: another string is `INVALID_ARGUMENT` |
 | `attachments` / `with_attachments` (`AttachmentStore`) | `attachments: Record<string, Uint8Array>` | none | The bytes of the files the document's `attachments` name in `src`, by id. A `src` missing from them is `ATTACHMENT_NOT_REGISTERED` |
 | `hyphenation` / `with_hyphenation` | (`registerHyphenationPatterns`) | none | Runtime TeX patterns; and, for a build without the `embedded-hyphenation` feature, built-in patterns given with `register_builtin` |
 | `deferred_fonts` / `with_deferred_fonts` | (`@inkoxide/wasm`: `deferredFonts`, id → URL) | none | Ids of declared fonts that may be missing: a render that does not draw with one, or try it for a character, renders as if it were registered; one that does fails with `NOT_LOADED` naming it |
@@ -182,9 +183,13 @@ inkoxide validate doc.json --fonts fonts/ --pdf-a=1b
 With `tagged` (Rust: `with_tagged`), the file has a structure tree:
 what each part of the page is, in reading order, for screen readers,
 reflowing viewers and text extraction. `pdfUA` (`with_pdf_ua`) writes
-PDF/UA-1 (ISO 14289-1), which is tagged; the PDF/A levels 2a and 3a are
-tagged too, and combine with `pdfUA`. In the CLI, `--tagged` and
-`--pdf-ua`.
+PDF/UA, which is tagged: part 1 (ISO 14289-1) by default, part 2
+(ISO 14289-2) with `pdfUA: '2'` (`with_pdf_ua_part(PdfUaPart::Ua2)`).
+The PDF/A levels 2a and 3a are tagged too, and combine with part 1.
+Part 2 is PDF 2.0, which writes the structure elements in PDF 2.0's
+namespace and links to structure destinations; PDF/A-1, -2 and -3 are
+older than PDF 2.0, so part 2 with `pdfA` is refused. In the CLI,
+`--tagged`, `--pdf-ua` (part 1) and `--pdf-ua=2`.
 
 - **Elements.** The reading order is document order, whatever `zIndex`,
   floats or positioning do on the page. A text is a paragraph and an
@@ -211,7 +216,16 @@ tagged too, and combine with `pdfUA`. In the CLI, `--tagged` and
   dots of an Arabic letter) maps to the combining grapheme joiner, inside
   a span with no text (`/ActualText ()`), so that extraction reads the
   cluster once.
-- **`UA_CONFLICT`.** With `pdfUA`, a document without a `meta.title`, a
+- **Parts of SVG images.** An element of an SVG image (a group, `use`,
+  shape, `image`, `text` or `a`) with `aria-label`, or else a `<title>`
+  child, is a figure of its own with that text as its `alt`, inside the
+  image's figure; `aria-hidden="true"` makes an element decoration. Only
+  the outermost SVG counts, and only elements that are drawn (not those
+  in `defs`, `symbol`, `clipPath`, `mask`, `marker`, patterns, gradients
+  or filters). Each placement of the image is a form XObject of its own,
+  with its parts marked inside it. An image with parts and `alt` is not
+  one `/ActualText` span, which would hide them.
+- **`UA_CONFLICT`.** With `pdfUA` (either part), a document without a `meta.title`, a
   `meta.lang`, `alt` on each image (in text too) and `figure` box that
   is not decoration, a `label` on each field (in decoration too: its
   widget is tagged), headings that go down one level at a time from
@@ -223,7 +237,11 @@ tagged too, and combine with `pdfUA`. In the CLI, `--tagged` and
 Without these options the output does not change. A tagged file is the
 same on any number of threads, draws the same pixels and extracts the
 same text as untagged; it is larger, about 2.5 times for a long report
-of tables.
+of tables. With compression on, other than at PDF/A-1b, the structure
+elements and the parent tree go into object streams (up to 128 objects
+each) and the file ends with a cross-reference stream, not a table: a
+tagged 100-page report is half the size it would be otherwise. Encrypted
+files encrypt the object streams as a whole.
 
 ## Encryption
 
@@ -433,7 +451,7 @@ Handle unknown codes, because new ones may be added in minor versions.
 |---|---|---|---|
 | `PARSE_ERROR` … `UNKNOWN_ANCHOR` | `ValidationCode` (in `ValidationError` or `InkoxideError::Validation`) | `ValidationError.code`, or `InkoxideError.code` from `render` | The document is invalid. See the code table in [`SCHEMA.md`](SCHEMA.md). In Rust, also an invalid `creation_date` option (`INVALID_VALUE` at `options.creationDate`) |
 | `PDFA_CONFLICT` | `ValidationCode::PdfaConflict` | `InkoxideError.code` from `render` | The document uses something its PDF/A level does not allow: a page side under 3 points, at any level, transparency under PDF/A-1b, or `attachments` under PDF/A-1b, 2b and 2a. The path names the first such use. `validate` reports it with the render's options |
-| `UA_CONFLICT` | `ValidationCode::UaConflict` | `InkoxideError.code` from `render` | With `pdfUA`, the document lacks something PDF/UA-1 requires (see [Tagged PDF and PDF/UA](#tagged-pdf-and-pdfua)). The path names the first thing it lacks. `validate` reports it with the render's options |
+| `UA_CONFLICT` | `ValidationCode::UaConflict` | `InkoxideError.code` from `render` | With `pdfUA`, the document lacks something PDF/UA requires, at either part (see [Tagged PDF and PDF/UA](#tagged-pdf-and-pdfua)). The path names the first thing it lacks. `validate` reports it with the render's options |
 | `FONT_ERROR` | `InkoxideError::Font` | same | Font bytes cannot be parsed or embedded, or the shaper panicked on the font, or the font shaped the text to far more glyphs than it has bytes (the message names the font) |
 | `IMAGE_ERROR` | `InkoxideError::Image` | same | An image cannot be embedded. Images that do not decode are `INVALID_IMAGE` at their path, found by validation first |
 | `LAYOUT_ERROR` | `InkoxideError::Layout` | same | Layout failed, for example the page limit (100,000 pages) or the limit on content repeated on every page was exceeded |

@@ -78,7 +78,7 @@ test('pdfA writes PDF/A metadata and an output intent', () => {
   );
 });
 
-test('tagged writes a structure tree, and pdfUA PDF/UA-1 or the first thing it lacks', () => {
+test('tagged writes a structure tree, and pdfUA PDF/UA-1 or -2 or the first thing it lacks', () => {
   const doc = (meta, field = { name: 'agree', kind: 'checkbox', label: 'Agree' }) =>
     JSON.stringify({
       version: 1,
@@ -97,6 +97,22 @@ test('tagged writes a structure tree, and pdfUA PDF/UA-1 or the first thing it l
   const ua = render(ok, { pdfUA: true });
   assert.match(ua, /\/StructTreeRoot/);
   assert.match(ua, /<pdfuaid:part>1<\/pdfuaid:part>/);
+  const ua2 = render(ok, { pdfUA: '2' });
+  assert.ok(ua2.startsWith('%PDF-2.0'));
+  assert.match(ua2, /<pdfuaid:part>2<\/pdfuaid:part>/);
+  for (const [pdfUA, message] of [
+    ['3', /unsupported PDF\/UA part `3`/],
+    [2, /must be a boolean or a string/],
+  ]) {
+    assert.throws(
+      () => ink.renderSync(ok, { pdfUA }),
+      (e) => e.code === 'INVALID_ARGUMENT' && e.path === 'options.pdfUA' && message.test(e.message),
+    );
+  }
+  assert.throws(
+    () => ink.renderSync(ok, { pdfUA: '2', pdfA: true }),
+    (e) => e.code === 'INVALID_ARGUMENT' && e.path === 'options.pdfUA',
+  );
   // PDF/UA's needs are the render's: validate checks them with its options.
   const bare = doc({ title: 'Form', lang: 'en' }, { name: 'agree', kind: 'checkbox' });
   assert.deepStrictEqual(ink.validate(bare), []);
