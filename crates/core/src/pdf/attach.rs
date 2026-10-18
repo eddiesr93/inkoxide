@@ -23,8 +23,13 @@ pub(super) struct FileRefs<'a> {
 
 /// Writes every file: its stream, then its file specification, in
 /// declaration order. Nothing is allocated without files, so other object
-/// numbers stay as they were.
-pub(super) fn write_files<'a>(w: &mut Writer, files: &'a [PreparedFile]) -> FileRefs<'a> {
+/// numbers stay as they were. With `described`, every file has a `/Desc`,
+/// its name when it has no description (PDF/UA-2, ISO 14289-2, 8.11).
+pub(super) fn write_files<'a>(
+    w: &mut Writer,
+    files: &'a [PreparedFile],
+    described: bool,
+) -> FileRefs<'a> {
     let mut refs = FileRefs::default();
     for f in files {
         let spec = w.alloc.next();
@@ -44,7 +49,11 @@ pub(super) fn write_files<'a>(w: &mut Writer, files: &'a [PreparedFile]) -> File
         });
         let ascii = w.out.bytes(ascii_name(&f.name).as_bytes());
         let unicode = w.out.text(&f.name);
-        let description = f.description.as_deref().map(|d| w.out.text(d));
+        let description = f
+            .description
+            .as_deref()
+            .or(described.then_some(f.name.as_str()))
+            .map(|d| w.out.text(d));
         let mut d = w.pdf.indirect(spec).dict();
         d.pair(Name(b"Type"), Name(b"Filespec"));
         d.pair(Name(b"F"), Str(&ascii));

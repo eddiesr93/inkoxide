@@ -23,7 +23,10 @@ fn qpdf(args: &[&str], file: &Path) -> Output {
 
 /// qpdf's JSON view of `file` (decrypted with `password`): its objects,
 /// streams decoded, without the `Encrypt` dictionary and the trailer, and
-/// without the catalog's `/Extensions`, which encryption adds. Radio
+/// without the catalog's `/Extensions`, which encryption adds. Object and
+/// cross-reference streams are left out too: the `Encrypt` dictionary
+/// comes before them, so they are numbered one up; what they hold is in
+/// the other objects. Radio
 /// buttons are seen by position ([`radios_by_position`]), as encryption
 /// writes them.
 fn objects(file: &Path, password: Option<&str>) -> serde_json::Map<String, serde_json::Value> {
@@ -38,12 +41,15 @@ fn objects(file: &Path, password: Option<&str>) -> serde_json::Map<String, serde
     let json: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
     let mut objects = json["qpdf"][1].as_object().unwrap().clone();
     objects.remove("trailer");
-    let encrypt: Vec<String> = objects
+    let dropped: Vec<String> = objects
         .iter()
-        .filter(|(_, v)| v["value"]["/Filter"] == "/Standard")
+        .filter(|(_, v)| {
+            let kind = &v["stream"]["dict"]["/Type"];
+            v["value"]["/Filter"] == "/Standard" || kind == "/ObjStm" || kind == "/XRef"
+        })
         .map(|(k, _)| k.clone())
         .collect();
-    for k in encrypt {
+    for k in dropped {
         objects.remove(&k);
     }
     for v in objects.values_mut() {
@@ -776,6 +782,49 @@ fn unicode_passwords_open_the_file() {
         assert!(!qpdf(&["--check", "--password=wrong"], &path)
             .status
             .success());
+    }
+}
+
+/// Tagged files keep their structure elements in object streams, whose
+/// strings are encrypted with the whole stream: they decrypt to the plain
+/// render too.
+#[test]
+fn encrypted_object_streams_decrypt_to_the_plain_render() {
+    if !qpdf_available() {
+        return;
+    }
+    let (fonts, images) = stores();
+    let out_dir = root().join("target/fixtures-encrypted");
+    fs::create_dir_all(&out_dir).unwrap();
+    for name in ["accessible", "forms", "links-bookmarks"] {
+        let input = fs::read(root().join(format!("fixtures/docs/{name}.json"))).unwrap();
+        let render = |e: Option<Encryption>| {
+            let options = options(e).with_tagged(true);
+            inkoxide::render(&input, InputFormat::Json, &options, &fonts, &images).unwrap()
+        };
+        let (plain, encrypted) = (render(None), render(Some(both())));
+        let (plain_path, encrypted_path) = (
+            out_dir.join(format!("{name}.tagged.plain.pdf")),
+            out_dir.join(format!("{name}.tagged.pdf")),
+        );
+        fs::write(&plain_path, &plain).unwrap();
+        fs::write(&encrypted_path, &encrypted).unwrap();
+        let o = qpdf(&["--check", &format!("--password={USER}")], &encrypted_path);
+        assert!(
+            o.status.success(),
+            "{name}: {}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+        let xref = String::from_utf8(
+            qpdf(
+                &["--show-xref", &format!("--password={USER}")],
+                &encrypted_path,
+            )
+            .stdout,
+        )
+        .unwrap();
+        assert!(xref.contains("compressed"), "{name}: no object streams");
+        assert_decrypts_to(&encrypted_path, &plain_path, name);
     }
 }
 

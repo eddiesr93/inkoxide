@@ -42,6 +42,30 @@ pub(crate) fn transparency(img: &DecodedImage, profile: Profile) -> Option<&'sta
     }
 }
 
+/// Writes SVG `img` with its parts tagged, once for each `/StructParents`
+/// key of `keys` ([`super::svg::write_tagged_svg`]); `None` if it is not
+/// an SVG with parts.
+pub(crate) fn write_tagged_svg(
+    w: &mut Writer,
+    img: &DecodedImage,
+    profile: Profile,
+    fonts: Option<super::svg::TextResources<'_, '_>>,
+    (outer, keys): (&'static [u8], &[i32]),
+) -> Result<Option<(Vec<Ref>, super::svg::FormTags)>, crate::InkoxideError> {
+    let ImageBody::Svg {
+        tree,
+        probed,
+        parts: Some(parts),
+        ..
+    } = &img.body
+    else {
+        return Ok(None);
+    };
+    let size = probed.as_ref().map_or(tree.size(), |p| p.size);
+    let text = probed.as_deref().zip(fonts);
+    super::svg::write_tagged_svg(w, (tree, size), profile, text, (parts, outer, keys)).map(Some)
+}
+
 /// Writes `img`; `fonts` draw the text of a render's copy of an SVG.
 pub(crate) fn write_image(
     w: &mut Writer,
@@ -55,7 +79,9 @@ pub(crate) fn write_image(
         let text = probed.as_deref().zip(fonts);
         return super::svg::write_svg(w, (tree, size), profile, text);
     }
-    let Writer { pdf, alloc, out } = w;
+    let Writer {
+        pdf, alloc, out, ..
+    } = w;
     let id = alloc.next();
     let (w, h) = (img.width as i32, img.height as i32);
     match &img.body {

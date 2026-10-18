@@ -55,7 +55,13 @@ import { renderToInstances } from '../reconciler/render.ts';
 import { classStyle, defaultFamily, isUnsupportedClass } from '../tailwind.ts';
 import { textFieldFormat } from './formats.ts';
 import { ImageTable, type ImageTableOptions, type PendingImage } from './images.ts';
-import { documentConformance, documentEncryption, type OutputOptions, outputOptions } from './output.ts';
+import {
+  documentConformance,
+  documentEncryption,
+  documentPdfUa,
+  type OutputOptions,
+  outputOptions,
+} from './output.ts';
 import { PRESET_NAMES, presetSize } from './page-sizes.ts';
 import {
   BLOCK_ONLY,
@@ -103,7 +109,7 @@ export interface BuildOptions {
  * Render options a `<Document>` sets that are not part of the document tree, for the caller to
  * pass to the engine.
  */
-export type { EncryptionOptions, OutputOptions, PdfALevel } from './output.ts';
+export type { EncryptionOptions, OutputOptions, PdfALevel, PdfUaPart } from './output.ts';
 
 export interface BuildResult {
   document: Document;
@@ -416,7 +422,8 @@ class Builder {
     const fail = (message: string): never => this.fail(root, message);
     if (p.conformance !== undefined) this.output.pdfA = documentConformance(p.conformance, fail);
     if (p.tagged === true) this.output.tagged = true;
-    if (p.pdfUA === true) this.output.pdfUA = true;
+    const pdfUA = documentPdfUa(p.pdfUA, fail);
+    if (pdfUA !== undefined) this.output.pdfUA = pdfUA;
     if (p.flattenAlpha === true) this.output.flattenAlpha = true;
     const encryption = documentEncryption(p, fail);
     if (encryption) this.output.encryption = encryption;

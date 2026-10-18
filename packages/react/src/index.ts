@@ -36,7 +36,7 @@ export {
   weightOf as fontWeightValue,
 } from './tree/style.ts';
 export { familyKey } from './fonts/registry.ts';
-export type { EncryptionOptions, OutputOptions, PdfALevel } from './tree/build.ts';
+export type { EncryptionOptions, OutputOptions, PdfALevel, PdfUaPart } from './tree/build.ts';
 export { type SchemaProblem, validateTree } from './tree/validate.ts';
 
 export interface TreeOptions {

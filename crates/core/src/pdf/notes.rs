@@ -28,7 +28,9 @@ pub(super) fn write_icons(
     mut tags: Option<&mut AnnotTags>,
     profile: Profile,
 ) -> Result<(), InkoxideError> {
-    let Writer { pdf, alloc, out } = w;
+    let Writer {
+        pdf, alloc, out, ..
+    } = w;
     for (i, page) in pages.iter().enumerate() {
         for icon in &page.icons {
             let r = alloc.next();

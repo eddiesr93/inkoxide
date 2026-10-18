@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use pdf_writer::types::{ActionType, AnnotationFlags, FieldFlags, FieldType, Quadding};
-use pdf_writer::writers::Field as FieldWriter;
+use pdf_writer::writers::{Annotation, Field as FieldWriter};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 
 use super::pdfa::limits::NAME as MAX_NAME;
@@ -89,7 +89,9 @@ pub(super) fn write_fields(
     annots: &mut [Vec<Ref>],
     mut tags: Option<&mut AnnotTags>,
 ) -> Result<Option<Form>, InkoxideError> {
-    let Writer { pdf, alloc, out } = w;
+    let Writer {
+        pdf, alloc, out, ..
+    } = w;
     let mut key = |r: Ref, page: usize, op: &FieldOp| {
         tags.as_deref_mut()
             .map(|t| t.add(r, page, op.owner, AnnotKind::Widget))
@@ -142,6 +144,7 @@ pub(super) fn write_fields(
             field_entries(&mut f, out, name, widgets, &states, ctx.profile.scripts());
             let mut annot = f.into_annotation();
             ctx.widget(&mut annot, widgets[0], &aps, states.on[0]);
+            widget_contents(&mut annot, out, first, ctx.profile);
             struct_parent(&mut annot, key(field_ref, widgets[0].0, first));
             annot.finish();
             annots[widgets[0].0].push(field_ref);
@@ -155,6 +158,7 @@ pub(super) fn write_fields(
             f.parent(field_ref);
             let mut annot = f.into_annotation();
             ctx.widget(&mut annot, (page, op), &aps, states.on[i]);
+            widget_contents(&mut annot, out, op, ctx.profile);
             struct_parent(&mut annot, key(kid, page, op));
             annot.finish();
             annots[page].push(kid);
@@ -239,6 +243,15 @@ fn on_states(widgets: &[(usize, &FieldOp)], hidden: bool) -> OnStates {
         names,
         positions,
         value: chosen,
+    }
+}
+
+/// PDF/UA-2: a widget says what it is for itself, in `/Contents`, as
+/// its field's `/TU` does (ISO 14289-2, 8.10.2.3): a widget of several is
+/// not the field.
+fn widget_contents(annot: &mut Annotation<'_>, out: &mut Out, op: &FieldOp, profile: Profile) {
+    if let Some(label) = op.field.label.as_deref().filter(|_| profile.pdf_2()) {
+        annot.pair(Name(b"Contents"), Str(&out.text(label)));
     }
 }
 

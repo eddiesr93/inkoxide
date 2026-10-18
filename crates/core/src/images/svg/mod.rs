@@ -26,14 +26,17 @@ use super::ContentKey;
 
 mod check;
 mod limits;
+mod parts;
 mod text;
 mod view_box;
 
 use check::check;
 pub(crate) use check::iri;
 use limits::{
-    too_complex, Meter, Reject, MAX_ENTITY_TEXT, MAX_NESTING, MAX_SIDE, MAX_XML_NODES, MIN_SIDE,
+    too_complex, Meter, Reject, MAX_ENTITY_TEXT, MAX_NESTING, MAX_SIDE, MAX_XML_DEPTH,
+    MAX_XML_NODES, MIN_SIDE,
 };
+pub(crate) use parts::{Part, SvgParts};
 pub(crate) use text::*;
 pub(crate) use view_box::*;
 
@@ -51,7 +54,7 @@ pub(crate) fn is_svg(bytes: &[u8]) -> bool {
 /// Parses an SVG document into a `usvg` tree without its text, with its
 /// root `viewBox`.
 pub(crate) fn parse(bytes: &[u8]) -> Result<(usvg::Tree, Option<ViewBox>), String> {
-    let (tree, view_box, _) = parse_text(bytes)?;
+    let (tree, view_box, ..) = parse_text(bytes)?;
     Ok((tree, view_box))
 }
 
@@ -95,7 +98,14 @@ fn parse_xml(bytes: &[u8]) -> Result<Document<'_>, Reject> {
     let text =
         std::str::from_utf8(bytes).map_err(|_| Reject::Invalid("SVG is not valid UTF-8".into()))?;
     let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
-    check_entities(text)?;
+    // The XML parser recurses per element, an entity's elements too: a
+    // deep document would overflow the stack before `check` sees it.
+    let depth = tag_depth(text).saturating_add(check_entities(text)?);
+    if depth > MAX_XML_DEPTH {
+        return Err(Reject::Limit(format!(
+            "SVG nests deeper than {MAX_XML_DEPTH} levels"
+        )));
+    }
     let opts = roxmltree::ParsingOptions {
         allow_dtd: true,
         nodes_limit: MAX_XML_NODES,
@@ -104,14 +114,67 @@ fn parse_xml(bytes: &[u8]) -> Result<Document<'_>, Reject> {
     Document::parse_with_options(text, opts).map_err(|e| Reject::Invalid(format!("SVG: {e}")))
 }
 
+/// The deepest tags of `text` nest, or more: a start tag that never ends
+/// counts as open, and so do the tags inside a declaration's values.
+fn tag_depth(text: &str) -> usize {
+    let b = text.as_bytes();
+    let skip = |from: usize, end: &[u8]| {
+        b[from..]
+            .windows(end.len())
+            .position(|w| w == end)
+            .map_or(b.len(), |p| from + p + end.len())
+    };
+    let (mut depth, mut peak, mut i) = (0usize, 0usize, 0usize);
+    while let Some(p) = b[i..].iter().position(|&c| c == b'<') {
+        i += p;
+        let rest = &b[i..];
+        if rest.starts_with(b"<!--") {
+            i = skip(i + 4, b"-->");
+        } else if rest.starts_with(b"<![CDATA[") {
+            i = skip(i + 9, b"]]>");
+        } else if rest.starts_with(b"<?") {
+            i = skip(i + 2, b"?>");
+        } else if rest.starts_with(b"</") {
+            depth = depth.saturating_sub(1);
+            i += 2;
+        } else if rest.starts_with(b"<!") {
+            // A declaration: what its values hold is counted as it comes.
+            i += 2;
+        } else {
+            // A start tag: its end, past quoted values; `/>` closes it.
+            let mut quote = None;
+            let mut end = rest.len();
+            for (k, &c) in rest.iter().enumerate().skip(1) {
+                match (quote, c) {
+                    (Some(q), c) if c == q => quote = None,
+                    (None, b'"' | b'\'') => quote = Some(c),
+                    (None, b'>') => {
+                        end = k;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+            if end == rest.len() || rest[end - 1] != b'/' {
+                depth += 1;
+                peak = peak.max(depth);
+            }
+            i += end.min(rest.len() - 1) + 1;
+        }
+    }
+    peak
+}
+
 /// Refuses entities that expand to more than [`MAX_ENTITY_TEXT`] in all,
 /// before the XML parser expands them. Entities may not refer to other
 /// entities, so each reference expands to its own value; the short
-/// namespace entities of drawing programs pass.
-fn check_entities(text: &str) -> Result<(), Reject> {
+/// namespace entities of drawing programs pass. The deepest the tags of
+/// a value nest: a reference puts them that much deeper.
+fn check_entities(text: &str) -> Result<usize, Reject> {
     if !text.contains("<!ENTITY") {
-        return Ok(());
+        return Ok(0);
     }
+    let mut deepest = 0;
     let mut values: HashMap<&str, usize> = HashMap::new();
     for decl in text.split("<!ENTITY").skip(1) {
         let decl = decl.trim_start();
@@ -134,6 +197,7 @@ fn check_entities(text: &str) -> Result<(), Reject> {
             return Err(too_complex("an entity refers to other entities"));
         }
         values.insert(name, value.len());
+        deepest = deepest.max(tag_depth(value));
     }
     let mut total = 0usize;
     for r in text.split('&').skip(1) {
@@ -150,15 +214,50 @@ fn check_entities(text: &str) -> Result<(), Reject> {
             }
         }
     }
-    Ok(())
+    Ok(deepest)
 }
 
-/// A parsed SVG: its tree, its root `viewBox`, and what converting its
-/// text needs, when it or a nested SVG has text.
-pub(crate) type Parsed = (usvg::Tree, Option<ViewBox>, Option<TextSource>);
+/// A parsed SVG: its tree, its root `viewBox`, what converting its text
+/// needs, when it or a nested SVG has text, and its parts, when it has any
+/// (the outermost SVG only).
+pub(crate) type Parsed = (
+    usvg::Tree,
+    Option<ViewBox>,
+    Option<TextSource>,
+    Option<SvgParts>,
+);
 
 fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<Parsed, Reject> {
+    parse_with_parts(bytes, at, None)
+}
+
+/// [`parse_nested`], with the parts of `bytes` when they are known: those
+/// of the SVG it was made from, with `id`s given.
+fn parse_with_parts(
+    bytes: &[u8],
+    at: Nesting<'_>,
+    known: Option<SvgParts>,
+) -> Result<Parsed, Reject> {
     let doc = parse_xml(bytes)?;
+    // The parts of the SVG an image is: the elements of those without an
+    // `id` get one, and the SVG is parsed again.
+    let parts = match (known, at.level, at.rewrites) {
+        (Some(known), ..) => Some(known),
+        (None, 0, None) => match parts::find(&doc) {
+            Some((found, ids)) if !ids.is_empty() => {
+                let named = parts::named(doc.input_text(), &ids);
+                match parse_with_parts(named.as_bytes(), at, Some(found.clone())) {
+                    // Should the `id`s break it, without those parts.
+                    Err(Reject::Invalid(_)) => {
+                        Some(found.without(&ids)).filter(|p| !p.by_id.is_empty())
+                    }
+                    parsed => return parsed,
+                }
+            }
+            found => found.map(|(p, _)| p),
+        },
+        _ => None,
+    };
     let checked = check(&doc, at.level, at.depth)?;
     if !checked.text.texts.is_empty() {
         check_placeholders(bytes, &checked.text, at)?;
@@ -207,7 +306,7 @@ fn parse_nested(bytes: &[u8], at: Nesting<'_>) -> Result<Parsed, Reject> {
         }
     }
     let text = TextSource::new(Arc::new(bytes.to_vec()), checked);
-    Ok((tree, view_box, text))
+    Ok((tree, view_box, text, parts))
 }
 
 /// What a decoded `data:` URL holds, as the resolver reads it.

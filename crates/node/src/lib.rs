@@ -19,7 +19,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{LazyLock, RwLock};
 
 use inkoxide::{FontStore, HyphenationStore, ImageStore, InputFormat};
-use inkoxide_binding::{Failure, PdfA};
+use inkoxide_binding::{Failure, PdfA, PdfUa};
 use napi::bindgen_prelude::{AsyncTask, Buffer, Either, Uint8Array};
 use napi::{Env, Error, Result, Task};
 use napi_derive::napi;
@@ -86,9 +86,10 @@ pub struct RenderOptions {
     pub encryption: Option<EncryptionOptions>,
     /// Write tagged PDF (default `false`).
     pub tagged: Option<bool>,
-    /// Write PDF/UA-1 (default `false`).
+    /// Write PDF/UA (default `false`): `true` or a part, `"1"` or `"2"`;
+    /// `true` is `"1"`.
     #[napi(js_name = "pdfUA")]
-    pub pdf_ua: Option<bool>,
+    pub pdf_ua: Option<Either<bool, String>>,
     /// At PDF/A-1b, draw images with partial alpha on white instead of
     /// refusing them (default `false`).
     pub flatten_alpha: Option<bool>,
@@ -185,7 +186,10 @@ fn engine_options(
                 entropy: e.entropy.map(|b| b.to_vec()),
             }),
             tagged: o.tagged,
-            pdf_ua: o.pdf_ua,
+            pdf_ua: o.pdf_ua.map(|p| match p {
+                Either::A(on) => PdfUa::On(on),
+                Either::B(part) => PdfUa::Part(part),
+            }),
             flatten_alpha: o.flatten_alpha,
         };
         if let Some(map) = o.images {

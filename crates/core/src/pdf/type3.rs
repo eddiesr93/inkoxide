@@ -42,7 +42,9 @@ pub(super) fn write_type3(
     t: &Type3<'_, '_>,
     profile: Profile,
 ) -> Result<Ref, InkoxideError> {
-    let Writer { pdf, alloc, out } = w;
+    let Writer {
+        pdf, alloc, out, ..
+    } = w;
     let font_ref = alloc.next();
     let descriptor = alloc.next();
     let cmap_ref = alloc.next();

@@ -119,6 +119,9 @@ export type ErrorCode =
 /** A PDF/A part and conformance level (mirrors Rust `PdfALevel`). */
 export type PdfALevel = '1b' | '2b' | '2a' | '3b' | '3a';
 
+/** A part of PDF/UA (mirrors Rust `PdfUaPart`). */
+export type PdfUaPart = '1' | '2';
+
 /**
  * Mirrors Rust `RenderOptions` (camelCase), plus the per-render inputs. Leave an option out with
  * `undefined`; `null` or a value of another type is `INVALID_ARGUMENT` at its path
@@ -165,12 +168,13 @@ export interface RenderOptions {
    */
   tagged?: boolean;
   /**
-   * Write PDF/UA-1 (ISO 14289-1): tagged, with the metadata it asks for. A document without a
-   * title, a language, `alt` on its images and figures or `label` on its fields, with headings
-   * that skip a level, or with a `listItem` outside a `list` (a `listBody` outside a
-   * `listItem`), fails with `UA_CONFLICT`. Default `false`.
+   * Write PDF/UA (ISO 14289): tagged, with the metadata it asks for. `true` or `'1'` writes
+   * PDF/UA-1, on PDF 1.7; `'2'` writes PDF/UA-2, on PDF 2.0, which does not combine with
+   * `pdfA`. A document without a title, a language, `alt` on its images and figures or `label`
+   * on its fields, with headings that skip a level, or with a `listItem` outside a `list` (a
+   * `listBody` outside a `listItem`), fails with `UA_CONFLICT`. Default `false`.
    */
-  pdfUA?: boolean;
+  pdfUA?: boolean | PdfUaPart;
   /**
    * At PDF/A-1b, which forbids transparency, draw images whose alpha is partial (neither only
    * clear nor only opaque) on white instead of failing with `PDFA_CONFLICT`. Other levels keep

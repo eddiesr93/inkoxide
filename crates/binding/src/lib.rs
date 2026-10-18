@@ -11,7 +11,8 @@
 use std::fmt::Write as _;
 
 use inkoxide::{
-    Encryption, HyphenationStore, InkoxideError, InputFormat, PdfALevel, Permissions, Printing,
+    Encryption, HyphenationStore, InkoxideError, InputFormat, PdfALevel, PdfUaPart, Permissions,
+    Printing,
 };
 
 /// A failure to report to JavaScript.
@@ -138,6 +139,13 @@ pub enum PdfA {
     Level(String),
 }
 
+/// `options.pdfUA`: `true` (PDF/UA-1), `false` or a part, `"1"` or `"2"`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PdfUa {
+    On(bool),
+    Part(String),
+}
+
 /// The render options JavaScript passes, except the images, which each
 /// binding reads its own way. Numbers are JavaScript numbers, checked
 /// here, not converted by the binding.
@@ -152,7 +160,7 @@ pub struct Options {
     pub pdf_a: Option<PdfA>,
     pub encryption: Option<EncryptionOptions>,
     pub tagged: Option<bool>,
-    pub pdf_ua: Option<bool>,
+    pub pdf_ua: Option<PdfUa>,
     pub flatten_alpha: Option<bool>,
 }
 
@@ -212,7 +220,19 @@ impl Options {
             core = core.with_encryption(encryption(e)?);
         }
         core.tagged = self.tagged.unwrap_or(false);
-        core.pdf_ua = self.pdf_ua.unwrap_or(false);
+        match self.pdf_ua {
+            None | Some(PdfUa::On(false)) => {}
+            Some(PdfUa::On(true)) => core.pdf_ua = true,
+            Some(PdfUa::Part(part)) => {
+                let part = part.parse::<PdfUaPart>().map_err(|e| {
+                    Failure::invalid_arg(
+                        "options.pdfUA",
+                        &format!("{e}; pdfUA also takes true or false"),
+                    )
+                })?;
+                core = core.with_pdf_ua_part(part);
+            }
+        }
         core.flatten_alpha = self.flatten_alpha.unwrap_or(false);
         Ok((format, core))
     }
@@ -300,6 +320,18 @@ mod tests {
             ..Options::default()
         };
         assert_eq!(path(level, 256), "options.pdfA");
+        let part = Options {
+            pdf_ua: Some(PdfUa::Part("3".into())),
+            ..Options::default()
+        };
+        assert_eq!(path(part, 256), "options.pdfUA");
+        let (_, two) = Options {
+            pdf_ua: Some(PdfUa::Part("2".into())),
+            ..Options::default()
+        }
+        .into_core(HyphenationStore::default(), 256)
+        .unwrap();
+        assert!(two.pdf_ua && two.pdf_ua_part == PdfUaPart::Ua2);
         let printing = Options {
             encryption: Some(EncryptionOptions {
                 user_password: Some("u".into()),

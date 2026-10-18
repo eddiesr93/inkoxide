@@ -70,6 +70,31 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   `<Document tagged pdfUA>` and `conformance="PDF/A-2a"`. The CLI takes `--tagged` and
   `--pdf-ua`. Untagged output is unchanged.
 
+- PDF/UA-2 (ISO 14289-2:2024), on PDF 2.0. `RenderOptions::with_pdf_ua_part(PdfUaPart::Ua2)`
+  (Rust), `pdfUA: '2'` (Node, WASM and `@inkoxide/render`; `true` and `'1'` are still PDF/UA-1;
+  the type `PdfUaPart` is exported), `<Document pdfUA="2">` and `--pdf-ua=2` write the structure
+  elements in PDF 2.0's namespace and link to structure destinations. The checks for a title,
+  a language, alternative text, labels, headings and lists are those of PDF/UA-1 (`UA_CONFLICT`).
+  PDF/A-1, -2 and -3 are older than PDF 2.0, so PDF/UA-2 does not combine with PDF/A: that is
+  refused (`INVALID_ARGUMENT` at `options.pdfUA` in JavaScript). veraPDF checks the output.
+
+- Structure elements in object streams. In tagged output with compression on, other than at
+  PDF/A-1b, the structure elements and the parent tree are packed into object streams (up to 128
+  objects each) and the file ends with a cross-reference stream instead of a table: a tagged
+  100-page report goes from 1.31 MB to 0.65 MB. Encrypted files encrypt the streams as a whole.
+  Untagged and uncompressed output is unchanged.
+
+- Tagging the parts of SVG images. In tagged output, an element of an SVG image (a group, `use`,
+  shape, `image`, `text` or `a`) with `aria-label`, or else a `<title>` child, is a figure of
+  its own with that text as its alternative text, inside the image's figure (and inside the
+  figure of a part that contains it); an element with `aria-hidden="true"` is decoration.
+  Only the outermost SVG counts, and only elements that are drawn: not those inside `defs`,
+  `symbol`, `clipPath`, `mask`, `marker`, a pattern, a gradient or a filter. Each placement of
+  such an image is a form XObject of its own. An image that is no figure of its own (inside a
+  paragraph's box, say) keeps its alternative text as before and its parts are not tagged.
+  An element with an empty `id`, or from an entity, is no part. Untagged output draws the
+  same. veraPDF checks PDF/UA-1, PDF/UA-2 and PDF/A-2a.
+
 - File attachments. A document's `attachments` are files the PDF carries (from the render
   option `attachments`, or base64 `data`), listed in the viewer's attachments panel; `attachment`
   nodes and runs show an icon (a push pin, a paper clip, a chart or a tag) that opens one, and
@@ -206,6 +231,8 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ### Fixed
 
+- An SVG whose tags nest more than 256 levels deep is refused (`IMAGE_ERROR`)
+  before its XML is parsed.
 - A class for which Tailwind writes CSS that does not parse is an unknown class in
   `@inkoxide/tailwind`, instead of an error from postcss.
 - A run's `verticalAlign` or a table column's `width` of the wrong type (`true`, an object) is

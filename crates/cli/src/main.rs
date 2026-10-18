@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use clap::{Args, Parser, Subcommand};
 use inkoxide::{
     AttachmentStore, FontStore, HyphenationStore, ImageStore, InkoxideError, InputFormat,
-    PdfALevel, RenderOptions, ValidationError,
+    PdfALevel, PdfUaPart, RenderOptions, ValidationError,
 };
 
 #[derive(Parser)]
@@ -73,9 +73,11 @@ struct Checked {
     /// writes PDF/A-2b.
     #[arg(long, value_name = "LEVEL", num_args = 0..=1, require_equals = true, default_missing_value = "2b", value_parser = str::parse::<PdfALevel>)]
     pdf_a: Option<PdfALevel>,
-    /// Write PDF/UA-1 (tagged, with the metadata it requires).
-    #[arg(long)]
-    pdf_ua: bool,
+    /// Write PDF/UA (tagged, with what it requires), part PART: 1 (the
+    /// default, PDF 1.7) or 2 (PDF 2.0). The part follows an equals sign
+    /// (`--pdf-ua=2`).
+    #[arg(long, value_name = "PART", num_args = 0..=1, require_equals = true, default_missing_value = "1", value_parser = str::parse::<PdfUaPart>)]
+    pdf_ua: Option<PdfUaPart>,
     /// At PDF/A-1b, draw images with partial alpha on white instead of
     /// refusing them.
     #[arg(long)]
@@ -90,11 +92,13 @@ impl Checked {
     /// The render options these set.
     fn options(&self) -> Result<RenderOptions, String> {
         let mut options = RenderOptions::default()
-            .with_pdf_ua(self.pdf_ua)
             .with_flatten_alpha(self.flatten_alpha)
             .with_attachments(load_attachments(&self.attachments)?);
         if let Some(level) = self.pdf_a {
             options = options.with_pdf_a_level(level);
+        }
+        if let Some(part) = self.pdf_ua {
+            options = options.with_pdf_ua_part(part);
         }
         Ok(options)
     }
@@ -102,7 +106,10 @@ impl Checked {
     /// Whether any is set: `validate` then checks what a render with them
     /// would refuse.
     fn any(&self) -> bool {
-        self.pdf_a.is_some() || self.pdf_ua || self.flatten_alpha || !self.attachments.is_empty()
+        self.pdf_a.is_some()
+            || self.pdf_ua.is_some()
+            || self.flatten_alpha
+            || !self.attachments.is_empty()
     }
 }
 
@@ -546,5 +553,24 @@ mod tests {
         assert!(level(&["--pdf-a=2u"])
             .unwrap_err()
             .contains("unsupported PDF/A level `2u` (expected one of 1b, 2b, 2a, 3b, 3a)"));
+    }
+
+    #[test]
+    fn pdf_ua_takes_an_optional_part() {
+        let part = |args: &[&str]| {
+            let cli = Cli::try_parse_from(["inkoxide", "render", "d.json"].iter().chain(args))
+                .map_err(|e| e.to_string())?;
+            let Cmd::Render { checked, .. } = cli.command else {
+                unreachable!()
+            };
+            Ok::<_, String>(checked.pdf_ua)
+        };
+        assert_eq!(part(&[]), Ok(None));
+        assert_eq!(part(&["--pdf-ua"]), Ok(Some(PdfUaPart::Ua1)));
+        assert_eq!(part(&["--pdf-ua=2"]), Ok(Some(PdfUaPart::Ua2)));
+        assert_eq!(part(&["--pdf-ua", "--tagged"]), Ok(Some(PdfUaPart::Ua1)));
+        assert!(part(&["--pdf-ua=3"])
+            .unwrap_err()
+            .contains("unsupported PDF/UA part `3` (expected 1 or 2)"));
     }
 }

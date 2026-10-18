@@ -173,6 +173,67 @@ impl std::fmt::Display for ParsePdfALevelError {
 
 impl std::error::Error for ParsePdfALevelError {}
 
+/// The part of PDF/UA (ISO 14289) [`RenderOptions::pdf_ua`] writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
+pub enum PdfUaPart {
+    /// PDF/UA-1 (ISO 14289-1), on PDF 1.7: it combines with PDF/A.
+    #[default]
+    Ua1,
+    /// PDF/UA-2 (ISO 14289-2:2024), on PDF 2.0: structure elements in
+    /// PDF 2.0's namespace and links to structure destinations. PDF/A-1,
+    /// -2 and -3 are older than PDF 2.0, so it does not combine with
+    /// them.
+    Ua2,
+}
+
+impl PdfUaPart {
+    /// The part's short name, as the Node binding and the CLI take it:
+    /// `"1"` or `"2"`.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ua1 => "1",
+            Self::Ua2 => "2",
+        }
+    }
+
+    /// The part named `s` ([`as_str`](Self::as_str)).
+    #[must_use]
+    pub fn from_name(s: &str) -> Option<Self> {
+        [Self::Ua1, Self::Ua2].into_iter().find(|p| p.as_str() == s)
+    }
+}
+
+/// Parses a part's short name, `"1"` or `"2"`, with an error that lists
+/// them.
+///
+/// ```
+/// use inkoxide::PdfUaPart;
+/// assert_eq!("2".parse(), Ok(PdfUaPart::Ua2));
+/// let err = "3".parse::<PdfUaPart>().unwrap_err();
+/// assert_eq!(err.to_string(), "unsupported PDF/UA part `3` (expected 1 or 2)");
+/// ```
+impl std::str::FromStr for PdfUaPart {
+    type Err = ParsePdfUaPartError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::from_name(s).ok_or_else(|| ParsePdfUaPartError(s.to_string()))
+    }
+}
+
+/// A name that is not a PDF/UA part, from [`PdfUaPart`]'s `FromStr`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsePdfUaPartError(String);
+
+impl std::fmt::Display for ParsePdfUaPartError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unsupported PDF/UA part `{}` (expected 1 or 2)", self.0)
+    }
+}
+
+impl std::error::Error for ParsePdfUaPartError {}
+
 /// Output settings for [`render`]; the document describes content only.
 ///
 /// Fields are public to read and assign; the type is `#[non_exhaustive]`, so
@@ -240,10 +301,14 @@ pub struct RenderOptions {
     /// extraction. The PDF/A "a" levels and [`pdf_ua`](Self::pdf_ua) imply
     /// it.
     pub tagged: bool,
-    /// Write PDF/UA-1 (ISO 14289-1, default `false`): tagged, with the
-    /// metadata, title, language and alternative texts it requires; a
-    /// document without them fails with `UA_CONFLICT`.
+    /// Write PDF/UA (ISO 14289, default `false`), of part
+    /// [`pdf_ua_part`](Self::pdf_ua_part): tagged, with the metadata,
+    /// title, language and alternative texts it requires; a document
+    /// without them fails with `UA_CONFLICT`.
     pub pdf_ua: bool,
+    /// The part of PDF/UA written when [`pdf_ua`](Self::pdf_ua) is set
+    /// (default [`PdfUaPart::Ua1`]).
+    pub pdf_ua_part: PdfUaPart,
     /// Files that the document's `attachments` name by `src` (default:
     /// none). Validation cannot see them: a `src` missing from here is
     /// reported by [`render`] (`ATTACHMENT_NOT_REGISTERED`).
@@ -267,6 +332,7 @@ impl Default for RenderOptions {
             attachments: AttachmentStore::new(),
             tagged: false,
             pdf_ua: false,
+            pdf_ua_part: PdfUaPart::default(),
         }
     }
 }
@@ -359,6 +425,15 @@ impl RenderOptions {
         self
     }
 
+    /// Writes PDF/UA of part `part`: sets
+    /// [`pdf_ua_part`](Self::pdf_ua_part) and [`pdf_ua`](Self::pdf_ua).
+    #[must_use]
+    pub fn with_pdf_ua_part(mut self, part: PdfUaPart) -> Self {
+        self.pdf_ua = true;
+        self.pdf_ua_part = part;
+        self
+    }
+
     /// Whether the output is tagged: [`tagged`](Self::tagged), PDF/UA or
     /// an accessible PDF/A level.
     fn is_tagged(&self) -> bool {
@@ -368,13 +443,13 @@ impl RenderOptions {
     /// What the writer is asked to conform to.
     fn profile(&self) -> Profile {
         Profile::new(self.pdf_a.then_some(self.pdf_a_level))
-            .with_ua(self.pdf_ua)
+            .with_ua(self.pdf_ua.then_some(self.pdf_ua_part))
             .with_flatten_alpha(self.flatten_alpha)
     }
 
     /// The options' own problems, as [`render`] reports them: a
-    /// `creation_date` that is not RFC 3339, and encryption that is not
-    /// valid or that PDF/A or PDF/UA does not allow. Otherwise the
+    /// `creation_date` that is not RFC 3339, PDF/UA-2 with PDF/A, and
+    /// encryption that is not valid or that PDF/A or PDF/UA does not allow. Otherwise the
     /// creation date and the encryption parameters.
     fn checked(
         &self,
@@ -393,6 +468,12 @@ impl RenderOptions {
             })?),
             None => None,
         };
+        if self.pdf_ua && self.pdf_ua_part == PdfUaPart::Ua2 && self.pdf_a {
+            return Err(invalid(
+                "options.pdfUA",
+                "PDF/UA-2 is PDF 2.0, which PDF/A-1, -2 and -3 are older than".into(),
+            ));
+        }
         let encryption = match &self.encryption {
             None => None,
             Some(_) if self.pdf_a => {
@@ -632,7 +713,9 @@ fn render_inner(
         encryption,
         parallel,
     };
-    let plan = options.is_tagged().then(|| tag::Plan::new(&document));
+    let plan = options
+        .is_tagged()
+        .then(|| tag::Plan::new(&document, options.profile().pdf_2()).with_parted(&image_set));
     let laid_out = pipeline::run(
         &document,
         &font_set,

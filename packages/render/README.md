@@ -1015,7 +1015,7 @@ renderToFile(<Form {...sample} />, 'form.pdf');
 | Document | Contents |
 |---|---|
 | [Guide](GUIDE.md) | Components, styling, fonts, images, pagination, tables, links, drawing and forms |
-| [Accessibility](GUIDE.md#accessibility) | Tagged PDF and PDF/UA-1: `tagged`, `pdfUA`, roles and alternate text |
+| [Accessibility](GUIDE.md#accessibility) | Tagged PDF, PDF/UA-1 and 2: `tagged`, `pdfUA`, roles and alternate text |
 | [Attachments](GUIDE.md#attachments) | Files embedded in the PDF, `<Attachment>`, and Factur-X invoices |
 | [API](GUIDE.md#api) | `renderToBuffer`, `renderToFile`, `renderToStream` and their options, `Font.register`, `init`, health checks, concurrency |
 | [Errors](GUIDE.md#errors) | Error codes and what they mean |

@@ -106,7 +106,6 @@ const OPTION_TYPES = {
   threads: 'number',
   subsetFonts: 'boolean',
   tagged: 'boolean',
-  pdfUA: 'boolean',
   flattenAlpha: 'boolean',
 };
 
@@ -138,9 +137,12 @@ function checkOptions(options) {
   if (options === undefined || options === null) return;
   checkObject(options, 'options');
   checkTypes(options, OPTION_TYPES, 'options');
-  const { pdfA, images, encryption } = options;
-  if (pdfA !== undefined && typeof pdfA !== 'boolean' && typeof pdfA !== 'string') {
-    throw engineError('INVALID_ARGUMENT', 'options.pdfA', 'must be a boolean or a string');
+  const { images, encryption } = options;
+  for (const key of ['pdfA', 'pdfUA']) {
+    const v = options[key];
+    if (v !== undefined && typeof v !== 'boolean' && typeof v !== 'string') {
+      throw engineError('INVALID_ARGUMENT', `options.${key}`, 'must be a boolean or a string');
+    }
   }
   if (images !== undefined) {
     checkObject(images, 'options.images');

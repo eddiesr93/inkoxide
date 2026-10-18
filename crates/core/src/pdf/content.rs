@@ -1,7 +1,7 @@
 //! Content streams: a page's display list as PDF operators, and what the
 //! writer needs to know of the page besides.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use pdf_writer::types::{LineCapStyle, TextRenderingMode};
 use pdf_writer::{Content, Name, Str};
@@ -13,10 +13,12 @@ use crate::paint::{
     FillRule, InvisibleGlyph, Op, PageBand, PageContent, PathSeg, TextGlyph, TextOp,
 };
 use crate::schema::Color;
-use crate::tag::{Plan, StructId};
+use crate::tag::{Kind, Plan, StructId};
 use crate::InkoxideError;
 
-use super::{content_bytes, deflate, out, round_pt, round_to, EncodedPage, LinkArea, Profile};
+use super::{
+    content_bytes, deflate, out, round_pt, round_to, EncodedPage, LinkArea, Placement, Profile,
+};
 
 /// A glyph closer than this (points) to where the previous glyph's advance
 /// puts it needs no `TJ` adjustment.
@@ -124,7 +126,19 @@ pub(super) fn encode_page(
             _ => {}
         }
     }
-    let (raw, mcids) = marked_content_stream(page, fonts, profile, plan)?;
+    let (raw, mcids, placements) = marked_content_stream(page, fonts, profile, plan)?;
+    // An SVG drawn only with its parts tagged needs no form of its own.
+    for key in placements.iter().map(|p| p.key).collect::<BTreeSet<_>>() {
+        let placed = placements.iter().filter(|p| p.key == key).count();
+        let drawn = page
+            .ops
+            .iter()
+            .filter(|op| matches!(op, Op::Image { key: k, .. } if *k == key))
+            .count();
+        if placed == drawn {
+            images.remove(&key);
+        }
+    }
     let stream = match compression {
         Some(level) => deflate(&raw, level)?,
         None => raw,
@@ -142,6 +156,7 @@ pub(super) fn encode_page(
         icons,
         mcids: plan.map(|_| mcids),
         figures,
+        placements,
         type3,
         type3_text,
     })
@@ -251,6 +266,26 @@ impl Marker<'_> {
         }
     }
 
+    /// The element an SVG with parts drawn now is placed in, when its
+    /// parts are tagged: its own form, whose content is all in sequences of
+    /// that element and its parts, is drawn outside the page's sequences.
+    fn placed(&self, key: ImageKey) -> Option<StructId> {
+        if !self.figure() || !self.plan.parted.contains(&key) {
+            return None;
+        }
+        self.tag.map(|(id, _)| id)
+    }
+
+    /// Whether what is drawn now, outside spans, is a `Figure`'s, whose
+    /// `/Alt` reads for an image in it: the parts of an SVG in anything
+    /// else are not tagged, as its alternative text is in a span.
+    fn figure(&self) -> bool {
+        self.spans == 0
+            && self
+                .tag
+                .is_some_and(|(id, _)| self.plan.elems[id as usize].kind == Kind::Figure)
+    }
+
     /// Before a `q` or a `Q`: a sequence never crosses one (ISO 32000-1,
     /// 14.6: marked content and save levels nest). What the element draws
     /// after it goes in a sequence of its own.
@@ -293,6 +328,11 @@ pub(super) fn gs_name(key: u16) -> String {
 
 pub(super) fn image_name(key: ImageKey) -> String {
     format!("Im{key}")
+}
+
+/// The name of the `n`th SVG placed with its parts tagged on a page.
+pub(super) fn placement_name(n: usize) -> String {
+    format!("Ip{n}")
 }
 
 pub(super) fn font_name(key: FontKey) -> String {
@@ -457,16 +497,52 @@ pub(crate) fn content_stream(
     fonts: &FontSet<'_>,
     profile: Profile,
 ) -> Result<Vec<u8>, InkoxideError> {
-    marked_content_stream(page, fonts, profile, None).map(|(bytes, _)| bytes)
+    marked_content_stream(page, fonts, profile, None).map(|(bytes, ..)| bytes)
 }
 
-/// [`content_stream`], tagged with `plan`, with the owner of each MCID.
+/// Whether the span that starts at `ops[start]` holds an SVG with parts
+/// tagged: then the span is left out, and so is what it holds besides the
+/// image (its alternative text as invisible text), by index in `skip`.
+/// The image's parts are read in its own form, which a span around it
+/// would hide, and its `Figure` has the text as `/Alt`.
+fn unspan(ops: &[Op], start: usize, plan: &Plan, skip: &mut HashSet<usize>) -> bool {
+    let mut depth = 0usize;
+    let mut parted = false;
+    let mut texts = Vec::new();
+    for (i, op) in ops.iter().enumerate().skip(start) {
+        match op {
+            Op::Span { .. } => depth += 1,
+            Op::EndSpan => {
+                depth -= 1;
+                if depth == 0 {
+                    if parted {
+                        skip.extend(texts);
+                        skip.insert(i);
+                    }
+                    return parted;
+                }
+            }
+            Op::Image { key, .. } if depth == 1 && plan.parted.contains(key) => parted = true,
+            Op::InvisibleText(_) if depth == 1 => texts.push(i),
+            _ => {}
+        }
+    }
+    false
+}
+
+/// A page's content stream, the owner of each MCID and the SVGs placed
+/// with their parts tagged.
+type MarkedContent = (Vec<u8>, Vec<StructId>, Vec<Placement>);
+
+/// [`content_stream`], tagged with `plan`, with the owner of each MCID and
+/// the SVGs placed with their parts tagged ([`EncodedPage::placements`]).
 pub(crate) fn marked_content_stream(
     page: &PageContent,
     fonts: &FontSet<'_>,
     profile: Profile,
     plan: Option<&Plan>,
-) -> Result<(Vec<u8>, Vec<StructId>), InkoxideError> {
+) -> Result<MarkedContent, InkoxideError> {
+    let mut placements = Vec::new();
     let mut c = Content::new();
     let mut marker = plan.map(|plan| Marker {
         plan,
@@ -479,9 +555,28 @@ pub(crate) fn marked_content_stream(
     });
     // Flip to a top-left origin once; everything below is in layout space.
     c.transform([1.0, 0.0, 0.0, -1.0, 0.0, round_pt(page.height)]);
-    for op in &page.ops {
+    let mut unspanned = HashSet::new();
+    for (i, op) in page.ops.iter().enumerate() {
+        if unspanned.contains(&i) {
+            continue;
+        }
+        if let (Op::Span { .. }, Some(m)) = (op, &marker) {
+            if m.figure() && unspan(&page.ops, i, m.plan, &mut unspanned) {
+                continue;
+            }
+        }
+        let placed = match (op, &marker) {
+            (Op::Image { key, .. }, Some(m)) => m.placed(*key).map(|owner| Placement {
+                key: *key,
+                owner,
+                after: m.mcids.len() as i32,
+            }),
+            _ => None,
+        };
         if let Some(m) = &mut marker {
             match op {
+                // Its own form marks all it draws.
+                Op::Image { .. } if placed.is_some() => m.save_level(&mut c),
                 Op::Tag(id) => m.tag(&mut c, *id),
                 Op::EndTag => m.end_tag(&mut c),
                 Op::Decoration => m.decoration(&mut c),
@@ -583,9 +678,16 @@ pub(crate) fn marked_content_stream(
             }
             Op::Text(t) => show_text(&mut c, t, fonts, profile.skips_notdef(), plan.is_some()),
             Op::Image { key, matrix } => {
+                let name = match placed {
+                    Some(p) => {
+                        placements.push(p);
+                        placement_name(placements.len() - 1)
+                    }
+                    None => image_name(*key),
+                };
                 c.save_state();
                 c.transform(matrix.map(round_pt));
-                c.x_object(Name(image_name(*key).as_bytes()));
+                c.x_object(Name(name.as_bytes()));
                 c.restore_state();
             }
             Op::Span { actual_text } => {
@@ -616,7 +718,7 @@ pub(crate) fn marked_content_stream(
         }
         None => Vec::new(),
     };
-    Ok((content_bytes(c, profile)?, mcids))
+    Ok((content_bytes(c, profile)?, mcids, placements))
 }
 
 /// An invisible glyph (`3 Tr`) in the font named `name`, horizontally

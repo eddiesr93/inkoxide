@@ -1164,10 +1164,13 @@ or after a space, with the word after it. There it takes `backgroundColor` and n
 
 `tagged` writes **tagged PDF**: a structure tree that tells screen readers, reflowing viewers
 and text extraction what each part of the page is, in reading order. `pdfUA` writes
-**PDF/UA-1** (ISO 14289-1), the standard for accessible PDF, which is tagged and also needs a
+**PDF/UA** (ISO 14289), the standard for accessible PDF, which is tagged and also needs a
 `title`, a `lang`, alternative text on every image that is not decoration, a `label` on every
 field (in a `Header` or `fixed` too), headings in order and lists made of items: without one, the
-render fails with `ENGINE_REJECTED` (`engineCode` `UA_CONFLICT`) and the component that lacks it. `conformance="PDF/A-2a"` or `"PDF/A-3a"` is PDF/A, tagged. The render
+render fails with `ENGINE_REJECTED` (`engineCode` `UA_CONFLICT`) and the component that lacks it. `pdfUA` and
+`pdfUA="1"` write part 1, on PDF 1.7; `pdfUA="2"` writes **PDF/UA-2** (ISO 14289-2), on PDF 2.0, with
+the same requirements. PDF/A-1, -2 and -3 are older than PDF 2.0, so `pdfUA="2"` with
+`conformance` fails the render, naming `options.pdfUA`. `conformance="PDF/A-2a"` or `"PDF/A-3a"` is PDF/A, tagged. The render
 options `tagged` and `pdfUA` do the same and win over the props.
 
 - **What is what.** A `Text` is a paragraph, an `Image`, `Svg` or `Canvas` a figure with its
@@ -1180,6 +1183,12 @@ options `tagged` and `pdfUA` do the same and win over the props.
   figure, with `alt`), `'list'`, `'listItem'`, `'label'` and `'listBody'` for lists, or
   `'artifact'` for decoration that screen readers skip. A `'listItem'` belongs in a `'list'` and a
   `'listBody'` in a `'listItem'`; the list's numbering is read from its labels (`1.`, `a)`, `•`).
+- **Parts of an SVG file.** In an SVG file given to `<Image src>`, an element (a group, `use`,
+  shape, `image`, `text` or `a`) with `aria-label`, or else a `<title>` child, is a figure of its
+  own with that text as its alternative text, inside the image's; an element with
+  `aria-hidden="true"` is decoration. Only elements that are drawn count, not those in `defs`,
+  `symbol`, `clipPath`, `mask`, `marker`, patterns, gradients or filters, and not nested SVG
+  images. The image's own `alt` is still its figure's.
 - **Decoration.** `alt=""` makes an image decoration. Backgrounds, borders, rules, `Header`s,
   `Footer`s and `fixed` elements (painted on every page), and repeated table header rows are
   decoration too.
@@ -1296,7 +1305,7 @@ All three take the same options:
 | `imageTimeoutMs` | `10000` | How long a function or promise `<Image src>` may take to settle; `Infinity` waits without a limit |
 | `pdfA` | `false` | Write PDF/A, for archiving: `true` or `'2b'`, `'3b'`, `'1b'`, `'2a'` or `'3a'` (see [PDF/A](#pdfa)). Wins over `<Document conformance>`. |
 | `tagged` | `false` | Write tagged PDF (see [Accessibility](#accessibility)). Wins over `<Document tagged>`. |
-| `pdfUA` | `false` | Write PDF/UA-1 (see [Accessibility](#accessibility)). Wins over `<Document pdfUA>`. |
+| `pdfUA` | `false` | Write PDF/UA: `true` or `'1'` for part 1, `'2'` for part 2 (see [Accessibility](#accessibility)). Wins over `<Document pdfUA>`. |
 | `flattenAlpha` | `false` | At PDF/A-1b, draw images with partial alpha on white instead of failing (see [PDF/A](#pdfa)). Wins over `<Document flattenAlpha>`. |
 | `attachments` | none | The bytes of the files a document written as JSON names in `src`, by id (see [Attachments](#attachments)). `<Document attachments>` carries its files itself. |
 | `encryption` | none | `{ userPassword, ownerPassword, permissions, entropy }`: encrypt the PDF (see [Passwords and permissions](#passwords-and-permissions)). Replaces the `<Document>` props of the same names. |

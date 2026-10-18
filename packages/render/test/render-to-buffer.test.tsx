@@ -786,6 +786,14 @@ describe('renderToBuffer', () => {
     expect(ua(await pdf({ pdfUA: true }, { pdfUA: false }))).toBe(false);
     const both = await pdf({}, { pdfUA: true });
     expect([tagged(both), ua(both)]).toEqual([true, true]);
+    const two = await pdf({ pdfUA: '2' });
+    expect([two.startsWith('%PDF-2.0'), two.includes('<pdfuaid:part>2</pdfuaid:part>')]).toEqual([
+      true,
+      true,
+    ]);
+    expect((await pdf({ pdfUA: '2' }, { pdfUA: '1' })).startsWith('%PDF-1.7')).toBe(true);
+    const bad = await renderToBuffer(<Document />, { pdfUA: 3 as unknown as '1' }).catch((e: unknown) => e);
+    expect(bad).toMatchObject({ code: 'ENGINE_REJECTED', path: 'options.pdfUA' });
   });
 
   it('names the component PDF/UA-1 rejects for what it lacks', async () => {
