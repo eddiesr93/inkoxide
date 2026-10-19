@@ -7,10 +7,10 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use pdf_writer::{Dict, Finish, Name, Ref, Str};
+use pdf_writer::{Array, Dict, Finish, Name, Ref, Str};
 
 use super::svg::{FormTags, Owner};
-use super::{annot_rect, EncodedPage, Writer};
+use super::{annot_rect, EncodedPage, Profile, Writer};
 use crate::geom::Rect;
 use crate::tag::{Elem, Kind, Plan, Scope, StructId};
 
@@ -208,10 +208,10 @@ const NS_PDF_2: &str = "http://iso.org/pdf2/ssn";
 const NS_PDF_1_7: &str = "http://iso.org/pdf/ssn";
 
 /// Writes the structure tree of `pages` (each with its tags) and `annots`
-/// with root `root`. Elements without content are left out, unless a link
-/// goes to them. For PDF 2.0 (`pdf_2`), every element is in a namespace:
-/// PDF 2.0's, but for `BlockQuote`, which only PDF 1.7's has, mapped to
-/// PDF 2.0's `Div` there.
+/// with root `root`, within the limits of `profile`. Elements without
+/// content are left out, unless a link goes to them. For PDF 2.0, every
+/// element is in a namespace: PDF 2.0's, but for `BlockQuote`, which only
+/// PDF 1.7's has, mapped to PDF 2.0's `Div` there.
 pub(super) fn write_tree(
     w: &mut Writer,
     plan: &Plan,
@@ -219,7 +219,7 @@ pub(super) fn write_tree(
     pages: &[EncodedPage],
     page_refs: &[Ref],
     annots: &AnnotTags,
-    pdf_2: bool,
+    profile: Profile,
 ) {
     let mut tree = Tree {
         elems: plan.elems.iter().map(std::borrow::Cow::Borrowed).collect(),
@@ -334,6 +334,7 @@ pub(super) fn write_tree(
         })
         .collect();
     let parent_tree = w.alloc.next();
+    let pdf_2 = profile.pdf_2();
     let namespaces = pdf_2.then(|| {
         let quotes = tree
             .elems
@@ -377,13 +378,20 @@ pub(super) fn write_tree(
         }
     }
 
-    // The parent tree: per page, the element of each MCID; per
-    // annotation, its element.
-    w.packable(parent_tree, |o| {
-        let mut d = o.dict();
-        let mut nums = d.insert(Name(b"Nums")).array();
-        for (i, page) in pages.iter().enumerate() {
-            nums.item(i as i32);
+    // The parent tree: per page, the element of each MCID; per form, the
+    // element of each of its MCIDs; per annotation, its element. Keys
+    // ascend in that order.
+    let forms = pages.len();
+    let entries = forms + annots.forms.len();
+    let n = entries + annots.entries.len();
+    let key = |i: usize| match i {
+        _ if i < forms => i32::try_from(i).unwrap_or(i32::MAX),
+        _ if i < entries => annots.forms[i - forms].key,
+        _ => annots.entries[i - entries].key,
+    };
+    let put = |nums: &mut Array<'_>, i: usize| {
+        nums.item(key(i));
+        if let Some(page) = pages.get(i) {
             let mut arr = nums.push().array();
             if let Some(mcids) = &page.mcids {
                 // An MCID's place is its index: one without an element
@@ -395,19 +403,48 @@ pub(super) fn write_tree(
                     };
                 }
             }
-            arr.finish();
+        } else if i < entries {
+            nums.push().array().items(
+                elem_of_mcid[i - forms]
+                    .iter()
+                    .map(|&e| refs[e].unwrap_or(doc)),
+            );
+        } else {
+            nums.item(refs[elem_of_annot[i - entries]].unwrap_or(doc));
         }
-        for (f, elems) in annots.forms.iter().zip(&elem_of_mcid) {
-            nums.item(f.key);
-            nums.push()
+    };
+    // Where arrays are limited (PDF/A-1), a tree whose `/Nums` would be
+    // longer is split into leaves, each with the keys it holds (ISO
+    // 32000-1, 7.9.7); one `/Kids` array of them holds 4095 times as many.
+    let per_leaf = profile.max_array().map_or(n, |m| m / 2).max(1);
+    if n <= per_leaf {
+        w.packable(parent_tree, |o| {
+            let mut d = o.dict();
+            let mut nums = d.insert(Name(b"Nums")).array();
+            (0..n).for_each(|i| put(&mut nums, i));
+        });
+    } else {
+        let leaves: Vec<_> = (0..n)
+            .step_by(per_leaf)
+            .map(|start| (start, (start + per_leaf).min(n), w.alloc.next()))
+            .collect();
+        w.packable(parent_tree, |o| {
+            o.dict()
+                .insert(Name(b"Kids"))
                 .array()
-                .items(elems.iter().map(|&e| refs[e].unwrap_or(doc)));
+                .items(leaves.iter().map(|l| l.2));
+        });
+        for &(start, end, r) in &leaves {
+            w.packable(r, |o| {
+                let mut d = o.dict();
+                d.insert(Name(b"Limits"))
+                    .array()
+                    .items([key(start), key(end - 1)]);
+                let mut nums = d.insert(Name(b"Nums")).array();
+                (start..end).for_each(|i| put(&mut nums, i));
+            });
         }
-        for (a, &into) in annots.entries.iter().zip(&elem_of_annot) {
-            nums.item(a.key);
-            nums.item(refs[into].unwrap_or(doc));
-        }
-    });
+    }
 
     // Where each figure is, on each page it is on.
     let mut areas: HashMap<(StructId, usize), Rect> = HashMap::new();

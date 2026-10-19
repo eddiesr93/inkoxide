@@ -85,6 +85,7 @@ impl<B> Hash for ContentKey<B> {
 pub(crate) struct ImageData {
     pub bytes: Arc<[u8]>,
     pub hash: u64,
+    probed: OnceLock<Result<probe::ImageInfo, ProbeError>>,
     decoded: OnceLock<Result<Arc<DecodedImage>, String>>,
 }
 
@@ -94,6 +95,7 @@ impl ImageData {
         Self {
             bytes,
             hash,
+            probed: OnceLock::new(),
             decoded: OnceLock::new(),
         }
     }
@@ -101,6 +103,13 @@ impl ImageData {
     /// The key of these bytes in maps of image content.
     pub fn key(&self) -> ContentKey<Arc<[u8]>> {
         ContentKey::with_hash(self.bytes.clone(), self.hash)
+    }
+
+    /// Probes once ([`probe`]); every other use of this image, in this
+    /// render or a later one, reuses the result. An SVG has no header:
+    /// probing it parses it.
+    pub fn probed(&self) -> Result<probe::ImageInfo, ProbeError> {
+        self.probed.get_or_init(|| probe(&self.bytes)).clone()
     }
 
     /// Decodes once; later renders reuse the result, as do other stores
@@ -201,6 +210,7 @@ impl ImageStore {
         let data = ImageData {
             bytes: bytes.into(),
             hash,
+            probed: OnceLock::new(),
             decoded: OnceLock::new(),
         };
         self.images.insert(id.into(), Arc::new(data));

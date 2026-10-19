@@ -55,7 +55,7 @@ impl Checker<'_> {
             Some(id) => format!("image `{id}`: {e}"),
             None => e.to_string(),
         };
-        if let Err(e) = crate::images::probe(&data.bytes) {
+        if let Err(e) = data.probed() {
             self.err(probe_code(&e), Some(field), message(&e));
             return;
         }
