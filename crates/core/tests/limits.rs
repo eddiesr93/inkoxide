@@ -964,29 +964,29 @@ fn text_paths_are_read_once_and_bounded() {
 /// path, and so does the render, before anything is written.
 #[test]
 fn path_segments_drawn_are_bounded_when_the_svg_is_decoded() {
-    // `copies` × 10 000 circles so large that each draws 26 segments, for
-    // its fill and again for its stroke.
+    // `copies` × 10 000 segments: a square drawn with its fill and its
+    // stroke (8), clipped by a path of 9 992 (`usvg` converts the clip
+    // path once, and every copy draws it).
     let svg = |copies: usize| {
-        let circles = r#"<circle r="9000000" stroke="red"/>"#.repeat(100);
-        let uses = r##"<use href="#a"/>"##.repeat(100);
+        let steps = "h1v1".repeat(4995);
         format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><defs><g id="a">{circles}</g><g id="b">{uses}</g></defs>{}</svg>"#,
-            r##"<use href="#b"/>"##.repeat(copies)
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><defs><clipPath id="c"><path d="M0 0{steps}Z"/></clipPath><path id="a" d="M0 0H1V1Z" stroke="red" clip-path="url(#c)"/></defs>{}</svg>"#,
+            r##"<use href="#a"/>"##.repeat(copies)
         )
     };
     let validate = |copies: usize| {
         let (doc, images) = svg_doc("", &svg(copies));
         inkoxide::validate(doc.as_bytes(), InputFormat::Json, &fonts(), &images)
     };
-    // 4 680 000 segments.
-    let errors = validate(9);
+    // 5 000 000 segments.
+    let errors = validate(500);
     assert!(errors.is_empty(), "{errors:?}");
-    // 5 200 000.
-    let errors = validate(10);
+    // 5 010 000.
+    let errors = validate(501);
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert_eq!(errors[0].code.as_str(), "INVALID_IMAGE", "{errors:?}");
     assert_eq!(errors[0].path, "pages[0].children[0].src", "{errors:?}");
-    let err = render_svg("", &svg(10)).unwrap_err();
+    let err = render_svg("", &svg(501)).unwrap_err();
     assert_eq!(err.code(), "INVALID_IMAGE", "{err}");
     assert!(
         err.to_string().contains("more than 5000000 path segments"),
