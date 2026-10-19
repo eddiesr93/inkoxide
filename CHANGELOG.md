@@ -282,6 +282,12 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ### Fixed
 
+- A tagged PDF/A-1b document with more than 4095 pages and annotations in all renders: its
+  parent tree (the element of each piece of content) is split into leaves of at most 8191
+  entries, the most PDF/A-1 allows in an array, where the render failed. Other output is the
+  same.
+- An image used several times in a document is checked once: an SVG was parsed again for each
+  use, and for each render.
 - `@inkoxide/react`: a page background with opacity (`bg-transparent`, `bg-black/5`) is drawn on
   white. The engine paints a page background opaque, so it was the colour without its opacity:
   solid black for `bg-transparent`.

@@ -134,7 +134,7 @@ impl PdfWriterSink {
                 doc.pages,
                 &page_refs,
                 tags,
-                self.profile.pdf_2(),
+                self.profile,
             );
         }
 

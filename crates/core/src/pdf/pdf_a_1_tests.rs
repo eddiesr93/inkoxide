@@ -58,3 +58,32 @@ fn pdf_a_1b_fails_past_its_limits() {
     )
     .unwrap();
 }
+
+#[test]
+fn pdf_a_1b_splits_a_long_parent_tree() {
+    // A key and a value per page: past 8191 entries, so the tree is
+    // split into leaves of 4095 pages.
+    let page = r#"{"size":{"width":300,"height":300},"children":[]}"#;
+    let pages = vec![page; 4200].join(",");
+    let doc = format!(r#"{{"version":1,"pages":[{pages}]}}"#);
+    let render = |level| {
+        let options = RenderOptions::default()
+            .with_pdf_a_level(level)
+            .with_tagged(true)
+            .with_compress(false);
+        crate::render(
+            doc.as_bytes(),
+            InputFormat::Json,
+            &options,
+            &FontStore::new(),
+            &ImageStore::new(),
+        )
+        .unwrap()
+    };
+    let pdf = String::from_utf8_lossy(&render(PdfALevel::A1b)).into_owned();
+    assert!(pdf.contains("/Limits [0 4094]"), "first leaf");
+    assert!(pdf.contains("/Limits [4095 4199]"), "last leaf");
+    // Without the limit, one array.
+    let pdf = String::from_utf8_lossy(&render(PdfALevel::A2b)).into_owned();
+    assert!(!pdf.contains("/Limits"));
+}
