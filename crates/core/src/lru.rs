@@ -1,5 +1,5 @@
 //! A small size-bounded LRU map for the process-wide caches (decoded
-//! images, font subsets). Entries are few (tens to hundreds), so eviction
+//! images, font subsets, converted SVGs and CMYK JPEGs). Entries are few (tens to hundreds), so eviction
 //! scans for the oldest instead of keeping an ordered list.
 //!
 //! WebAssembly memory grows but never shrinks, so there the process-wide

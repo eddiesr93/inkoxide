@@ -3,10 +3,22 @@
 //! PDF/A output has an sRGB output intent only, so CMYK JPEGs are
 //! converted to RGB samples there.
 
+use std::sync::Arc;
+
 use pdf_writer::{Filter, Ref};
 
 use super::{Profile, Writer};
-use crate::images::{DecodedImage, ImageBody, JpegColor, RawColor};
+use crate::images::{ContentKey, DecodedImage, ImageBody, JpegColor, RawColor};
+use crate::lru::SharedLru;
+
+/// Bytes of RGB samples kept across renders: converting a CMYK JPEG is
+/// most of the cost of writing it to PDF/A.
+const RGB_BUDGET: usize = 32 << 20;
+
+/// The compressed RGB samples of CMYK JPEGs written to PDF/A, by the
+/// JPEG's bytes.
+pub(crate) static CMYK_AS_RGB: SharedLru<ContentKey<Arc<[u8]>>, Arc<[u8]>> =
+    SharedLru::new(RGB_BUDGET);
 
 /// What needs transparency in an image whose alpha is neither clear nor
 /// opaque in places.
@@ -86,10 +98,20 @@ pub(crate) fn write_image(
     let (w, h) = (img.width as i32, img.height as i32);
     match &img.body {
         ImageBody::Jpeg {
+            bytes,
             color: JpegColor::Cmyk { .. },
-            ..
         } if profile.is_pdf_a() => {
-            let samples = super::deflate(&img.cmyk_to_rgb()?, crate::flate::LEVEL)?;
+            // Converted once, for this render and later ones.
+            let key = ContentKey::new(bytes.clone());
+            let samples = match CMYK_AS_RGB.get(&key) {
+                Some(samples) => samples,
+                None => {
+                    let samples: Arc<[u8]> =
+                        super::deflate(&img.cmyk_to_rgb()?, crate::flate::LEVEL)?.into();
+                    CMYK_AS_RGB.insert(key, samples.clone(), samples.len());
+                    samples
+                }
+            };
             out.image_xobject(pdf, id, &samples, |x| {
                 x.width(w).height(h).bits_per_component(8);
                 x.filter(Filter::FlateDecode);

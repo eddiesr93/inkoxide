@@ -35,7 +35,7 @@ versions; removing or renaming any of them is a major version.
 | Render | `render(doc, format, &options, &fonts, &images) -> Result<Vec<u8>, InkoxideError>` | `render(doc, options?): Promise<Uint8Array>` (libuv pool) |
 | Render, blocking | (same `render`) | `renderSync(doc, options?): Uint8Array` |
 | Input format | `InputFormat::Json` (default), `InputFormat::MessagePack` (cargo feature `msgpack`, on by default; without it, `PARSE_ERROR`) | `options.format` / `format`: `'json'` (default) or `'msgpack'` |
-| Empty the caches renders share (decoded images, font subsets, SVG with its text) | `clear_caches()` | (not available) |
+| Empty the caches renders share (decoded images, font subsets, SVG with its text, CMYK JPEGs converted for PDF/A) | `clear_caches()` | (not available) |
 | Version | `ENGINE_VERSION`, `SCHEMA_VERSION` | `version(): { engine, schema, gitSha }` |
 | Error | `InkoxideError` (`.code()`), `ValidationError { code, path, message }` | `InkoxideError extends Error { code, path, message }` |
 
@@ -52,7 +52,7 @@ of the Node package, and four more:
 | `init(source?, { hyphenation?, threads?, trapChannel? }): Promise<void>` | Compiles and instantiates the module once: from a URL (default: `inkoxide.wasm` next to the package), a `Response`, its bytes or a compiled `WebAssembly.Module`, of either module. Every other function throws `NOT_LOADED` until it resolves, and a module that cannot be fetched or compiled rejects it with `NOT_LOADED`. `hyphenation` is the folder of the built-in hyphenation patterns (default: the package's `hyphenation/`). `threads` above 1 (at most 256) loads `inkoxide-threads.wasm` and starts a pool of that many workers, where memory can be shared; `trapChannel` names the `BroadcastChannel` a pool thread reports a bug on |
 | `threadCount(): number` | The threads renders use: the pool's size, or 1 |
 | `loadHyphenation(langs): Promise<void>` | Fetches the built-in hyphenation patterns of BCP-47 tags, for `renderSync` |
-| `clearCaches(): void` | Rust `clear_caches()`: empties the caches renders share (decoded images, font subsets, SVG with its text). The memory stays with the instance. |
+| `clearCaches(): void` | Rust `clear_caches()`: empties the caches renders share (decoded images, font subsets, SVG with its text, CMYK JPEGs converted for PDF/A). The memory stays with the instance. |
 
 How it differs from the Node package:
 

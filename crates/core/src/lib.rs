@@ -600,7 +600,8 @@ pub fn validate_with_options(
 }
 
 /// Empties the process-wide caches renders share: decoded images, font
-/// subsets, and SVG converted with its text. Later renders fill them
+/// subsets, SVG converted with its text, and CMYK JPEGs converted to RGB
+/// for PDF/A. Later renders fill them
 /// again, with the same output. In WebAssembly the memory goes back to the
 /// instance for reuse, not to the host.
 pub fn clear_caches() {
@@ -608,6 +609,7 @@ pub fn clear_caches() {
     images::CACHE.clear();
     images::svg::TEXT_TREES.clear();
     pdf::SUBSETS.clear();
+    pdf::CMYK_AS_RGB.clear();
 }
 
 /// Validates and renders a document to PDF bytes. Never renders a partial
