@@ -31,6 +31,7 @@ use crate::schema::Meta;
 use crate::text::UnicodeMap;
 use crate::InkoxideError;
 pub(crate) use font::SUBSETS;
+pub(crate) use image::CMYK_AS_RGB;
 
 use content::{
     alpha_key, bounds, clip, fill, font_name, gs_name, image_name, invisible_glyph, key_alpha,

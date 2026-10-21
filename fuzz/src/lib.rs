@@ -274,6 +274,10 @@ pub fn check(doc: &[u8]) {
 /// renders of those take longer than the fuzzer's timeout.
 const RERENDER_LIMIT: usize = 8 << 20;
 
+/// How the engine's error for content repeated on every page past its
+/// bound begins (`pipeline/estimate.rs`).
+const REPEATED_LIMIT: &str = "the headers, footers and fixed elements repeated on every page";
+
 /// The oracle of [`check`], with the given stores, PDF/A level and
 /// tagging ([`tagging`]): validates and renders the JSON `doc`, encrypted
 /// too when `pdf_a` is `None`, and as `MessagePack` (both only up to
@@ -885,7 +889,9 @@ fn render_with(
     }
     // Tagging changes what is written, not what renders: some inputs
     // render tagged too ([`tagging`], at any PDF/A level), and both render
-    // or fail alike; as PDF/UA, only `UA_CONFLICT` may refuse more.
+    // or fail alike; as PDF/UA, only `UA_CONFLICT` may refuse more. The
+    // bound on content repeated on every page counts what tagging writes,
+    // so a tagged render may pass it where the untagged one did not.
     if let Some(ua) = tagged {
         let with_tags = options.clone().with_tagged(true).with_pdf_ua(ua);
         let other = inkoxide::render(doc, format, &with_tags, fonts, images);
@@ -893,6 +899,7 @@ fn render_with(
             (Ok(_), Ok(pdf)) => check_pdf(pdf, pdf_a.is_some()),
             (_, Err(InkoxideError::Validation(e)))
                 if ua && e.code == ValidationCode::UaConflict => {}
+            (Ok(_), Err(InkoxideError::Layout(m))) if m.starts_with(REPEATED_LIMIT) => {}
             (Err(a), Err(b)) => assert_eq!(a.code(), b.code(), "tagged: {b}; untagged: {a}"),
             (a, b) => panic!(
                 "untagged {:?}, tagged {:?}",

@@ -282,6 +282,8 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
 
 ### Fixed
 
+- A CMYK JPEG in PDF/A output is converted to RGB once and kept across renders, as other images
+  are, where every render decoded and compressed it again. `clear_caches` empties this cache too.
 - A tagged PDF/A-1b document with more than 4095 pages and annotations in all renders: its
   parent tree (the element of each piece of content) is split into leaves of at most 8191
   entries, the most PDF/A-1 allows in an array, where the render failed. Other output is the
