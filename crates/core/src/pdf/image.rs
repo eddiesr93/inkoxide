@@ -103,14 +103,13 @@ pub(crate) fn write_image(
         } if profile.is_pdf_a() => {
             // Converted once, for this render and later ones.
             let key = ContentKey::new(bytes.clone());
-            let samples = match CMYK_AS_RGB.get(&key) {
-                Some(samples) => samples,
-                None => {
-                    let samples: Arc<[u8]> =
-                        super::deflate(&img.cmyk_to_rgb()?, crate::flate::LEVEL)?.into();
-                    CMYK_AS_RGB.insert(key, samples.clone(), samples.len());
-                    samples
-                }
+            let samples = if let Some(samples) = CMYK_AS_RGB.get(&key) {
+                samples
+            } else {
+                let samples: Arc<[u8]> =
+                    super::deflate(&img.cmyk_to_rgb()?, crate::flate::LEVEL)?.into();
+                CMYK_AS_RGB.insert(key, samples.clone(), samples.len());
+                samples
             };
             out.image_xobject(pdf, id, &samples, |x| {
                 x.width(w).height(h).bits_per_component(8);
