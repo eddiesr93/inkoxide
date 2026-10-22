@@ -1,6 +1,6 @@
 {
   "name": "@inkoxide/wasm",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "private": true,
   "description": "The Inkoxide PDF engine as WebAssembly, for browsers: declarative document tree in, PDF bytes out.",
   "license": "MIT",
