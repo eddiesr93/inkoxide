@@ -366,7 +366,7 @@ dependencies = [
 
 [[package]]
 name = "inkoxide"
-version = "0.9.1"
+version = "0.10.0"
 dependencies = [
  "aes",
  "data-url",
