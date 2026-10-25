@@ -75,3 +75,19 @@ export function dedupe(names: Iterable<string>): string[] {
   for (const n of names) if (out[out.length - 1] !== n) out.push(n);
   return out;
 }
+
+/**
+ * Text as JSX would give it, for front ends whose templates keep the white space around content
+ * (Vue, Svelte, Angular): strings that are only the indentation of the template (white space
+ * with a line break) are dropped, and white space at the start and the end of an element's
+ * content is trimmed. Empty strings go too.
+ */
+export function trimTemplateText(nodes: Node[]): Node[] {
+  const out = nodes.filter((n) => n.kind === 'element' || (n.text !== '' && !/^\s*\n\s*$/.test(n.text)));
+  const first = out[0];
+  if (first?.kind === 'text') first.text = first.text.trimStart();
+  const last = out[out.length - 1];
+  if (last?.kind === 'text') last.text = last.text.trimEnd();
+  for (const n of out) if (n.kind === 'element') n.children = trimTemplateText(n.children);
+  return out.filter((n) => n.kind === 'element' || n.text !== '');
+}

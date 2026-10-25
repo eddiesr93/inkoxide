@@ -1,9 +1,9 @@
-import type { BrowserRenderOptions } from '@inkoxide/render/browser';
 /**
  * React helpers of the browser entry: a hook that renders a document to a PDF blob and its URL,
  * a link that downloads it, a frame that shows it in the browser's own viewer, and a component
  * that hands the render's state to a function.
  */
+import type { BrowserRenderOptions } from '@inkoxide/render/browser';
 import {
   type AnchorHTMLAttributes,
   type IframeHTMLAttributes,

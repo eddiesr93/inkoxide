@@ -31,6 +31,7 @@ export {
   type Node,
   type TextInstance,
   type Trace,
+  trimTemplateText,
 } from './nodes.ts';
 export {
   checkElement,

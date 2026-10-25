@@ -1,0 +1,18 @@
+{
+  "name": "@inkoxide/conformance",
+  "private": true,
+  "type": "module",
+  "description": "The same documents written with each front end (React, Vue, Svelte, Angular): each must build the same document tree and the same PDF.",
+  "devDependencies": {
+    "@inkoxide/react": "workspace:*",
+    "@inkoxide/render": "workspace:*",
+    "@inkoxide/schema": "workspace:*",
+    "@inkoxide/tailwind": "workspace:*",
+    "@inkoxide/tree": "workspace:*",
+    "@inkoxide/vue": "workspace:*",
+    "@types/react": "19.3.0",
+    "@vitejs/plugin-vue": "6.0.10",
+    "react": "19.3.0",
+    "vue": "3.5.44"
+  }
+}

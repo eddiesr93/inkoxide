@@ -1,0 +1,63 @@
+/**
+ * The examples of examples/, written again with each front end: each must build the document
+ * React builds, and the same PDF.
+ */
+import { createHash } from 'node:crypto';
+
+import { renderTemplate as reactTree } from '@inkoxide/react';
+import { init, renderDocument } from '@inkoxide/render';
+import { setTailwindStrict } from '@inkoxide/tailwind';
+import { loadTailwind } from '@inkoxide/tree';
+import { renderTemplate as vueTree } from '@inkoxide/vue';
+import { createElement } from 'react';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { h } from 'vue';
+
+import ReactCertificate, { sample as certificate } from '../../../examples/certificate.tsx';
+import ReactForm, { sample as form } from '../../../examples/form.tsx';
+import ReactInvoice, { sample as invoice } from '../../../examples/invoice.tsx';
+import ReactLetter, { sample as letter } from '../../../examples/letter.tsx';
+import ReactReceipt, { sample as receipt } from '../../../examples/receipt.tsx';
+import ReactReport, { sample as report } from '../../../examples/report.tsx';
+import VueCertificate from '../vue/Certificate.vue';
+import VueForm from '../vue/Form.vue';
+import VueInvoice from '../vue/Invoice.vue';
+import VueLetter from '../vue/Letter.vue';
+import VueReceipt from '../vue/Receipt.vue';
+import VueReport from '../vue/Report.vue';
+
+const EXAMPLES = [
+  { name: 'receipt', react: ReactReceipt, data: receipt, vue: VueReceipt },
+  { name: 'invoice', react: ReactInvoice, data: invoice, vue: VueInvoice },
+  { name: 'letter', react: ReactLetter, data: letter, vue: VueLetter },
+  { name: 'form', react: ReactForm, data: form, vue: VueForm },
+  { name: 'certificate', react: ReactCertificate, data: certificate, vue: VueCertificate },
+  { name: 'report', react: ReactReport, data: report, vue: VueReport },
+] as const;
+
+const OPTS = { creationDate: '2026-10-25T00:00:00Z' };
+const sha = (pdf: Uint8Array) => createHash('sha256').update(pdf).digest('hex');
+
+beforeAll(async () => {
+  await init();
+  await loadTailwind();
+  setTailwindStrict(true);
+});
+
+describe.each(EXAMPLES)('$name', ({ react, data, vue }) => {
+  const expected = () => reactTree(createElement(react as never, data as never));
+
+  it('Vue builds the document React builds', () => {
+    expect(vueTree(h(vue as never, data as never)).document).toEqual(expected().document);
+  });
+
+  it('Vue renders the PDF React renders', async () => {
+    const a = expected();
+    const b = vueTree(h(vue as never, data as never));
+    const [pa, pb] = await Promise.all([
+      renderDocument(a.document, a.images, OPTS),
+      renderDocument(b.document, b.images, OPTS),
+    ]);
+    expect(sha(pb.pdf)).toBe(sha(pa.pdf));
+  });
+});

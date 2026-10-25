@@ -1151,3 +1151,29 @@ export const FIELD_KINDS = {
   Select: 'select',
   List: 'list',
 } as const satisfies Record<string, FieldProps['kind']>;
+
+/**
+ * The props that take `true`: a template language that writes a bare attribute (`<Text
+ * hyphenate>`) as an empty string gives them `true` instead.
+ */
+export const BOOLEAN_PROPS: ReadonlySet<string> = new Set([
+  'break',
+  'checked',
+  'edit',
+  'debug',
+  'fixed',
+  'flattenAlpha',
+  'header',
+  'hyphenate',
+  'multiline',
+  'multiSelect',
+  'noSpell',
+  'open',
+  'password',
+  'pdfUA',
+  'readOnly',
+  'required',
+  'sort',
+  'tagged',
+  'wrap',
+]);
