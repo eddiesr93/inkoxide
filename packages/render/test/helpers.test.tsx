@@ -1,15 +1,16 @@
 /**
  * @vitest-environment happy-dom
  *
- * `usePdf`, the hook of `PdfDownloadLink` and `PdfViewer`, with a render the test settles itself:
- * which render's PDF it shows, and when it stops renders and revokes the object URLs it made.
+ * `usePdf`, the hook of `PdfDownloadLink`, `PdfViewer` and `BlobProvider`, with a render the test
+ * settles itself: which render's PDF it shows, and when it stops renders and revokes the object
+ * URLs it made. Then the components: when they render again, and what they show.
  */
 import { Activity, act, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 
 import type { BrowserRenderOptions } from '../src/browser-api.ts';
-import { usePdf, type UsePdfResult } from '../src/helpers.tsx';
+import { BlobProvider, PdfViewer, usePdf, type UsePdfResult } from '../src/helpers.tsx';
 
 interface Started {
   opts: BrowserRenderOptions;
@@ -39,6 +40,7 @@ function Probe({ element }: { element?: ReactElement }) {
 
 const doc = <span />;
 let root: Root;
+let host: HTMLElement;
 let revoked: MockInstance<typeof URL.revokeObjectURL>;
 
 beforeEach(() => {
@@ -47,7 +49,8 @@ beforeEach(() => {
   let made = 0;
   vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:pdf-${++made}`);
   revoked = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-  root = createRoot(document.createElement('div'));
+  host = document.createElement('div');
+  root = createRoot(host);
 });
 
 afterEach(async () => {
@@ -121,5 +124,52 @@ describe('usePdf', () => {
     expect(last()).toMatchObject({ url: null, loading: true });
     await act(async () => started(1).resolve(new Blob(['again'])));
     expect(last().url).toBe('blob:pdf-2');
+  });
+});
+
+function Invoice({ total }: { total: number; note?: string }) {
+  return <span>{total}</span>;
+}
+
+describe('the components', () => {
+  it('render again when the document changes, and not for an equal one', async () => {
+    const view = (total: number, note?: string) => (
+      <PdfViewer document={<Invoice total={total} note={note} />} />
+    );
+    await act(async () => root.render(view(1)));
+    await act(async () => started(0).resolve(new Blob(['one'])));
+    // Made again with the same props: the same document.
+    await act(async () => root.render(view(1)));
+    expect(renders).toHaveLength(1);
+    await act(async () => root.render(view(2)));
+    expect(renders).toHaveLength(2);
+    // The last PDF stays until the next one is ready.
+    expect(host.querySelector('iframe')?.getAttribute('src')).toBe('blob:pdf-1');
+    await act(async () => root.render(view(2, 'paid')));
+    expect(renders).toHaveLength(3);
+    expect(started(1).opts.signal?.aborted).toBe(true);
+    await act(async () => started(2).resolve(new Blob(['two'])));
+    expect(host.querySelector('iframe')?.getAttribute('src')).toBe('blob:pdf-2');
+  });
+
+  it('hides the toolbar with showToolbar={false}', async () => {
+    await act(async () => root.render(<PdfViewer document={doc} showToolbar={false} fallback="…" />));
+    expect(host.textContent).toBe('…');
+    await act(async () => started(0).resolve(new Blob(['pdf'])));
+    expect(host.querySelector('iframe')?.getAttribute('src')).toBe('blob:pdf-1#toolbar=0');
+  });
+
+  it('BlobProvider shows what its function makes of the render', async () => {
+    const view = (total: number) => (
+      <BlobProvider document={<Invoice total={total} />}>
+        {({ url, loading }) => (loading ? 'rendering' : url)}
+      </BlobProvider>
+    );
+    await act(async () => root.render(view(1)));
+    expect(host.textContent).toBe('rendering');
+    await act(async () => started(0).resolve(new Blob(['pdf'])));
+    expect(host.textContent).toBe('blob:pdf-1');
+    await act(async () => root.render(view(2)));
+    expect(host.textContent).toBe('rendering');
   });
 });

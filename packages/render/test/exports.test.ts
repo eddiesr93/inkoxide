@@ -172,6 +172,7 @@ const TEMPLATES_TYPES = [
  */
 const BROWSER_VALUES = [
   ...MAIN_VALUES.filter((n) => n !== 'renderToFile'),
+  'BlobProvider',
   'clearCaches',
   'generate',
   'PdfDownloadLink',
@@ -181,6 +182,7 @@ const BROWSER_VALUES = [
 ];
 const BROWSER_TYPES = [
   ...MAIN_TYPES.filter((n) => n !== 'LocalImageOptions'),
+  'BlobProviderProps',
   'BrowserOptions',
   'BrowserRenderOptions',
   'GenerateOptions',
