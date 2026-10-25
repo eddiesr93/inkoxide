@@ -1,6 +1,6 @@
 // The invoice, written as Vue single-file components, in the browser's PDF viewer and behind a
 // download link, rendered in the engine's Web Worker.
-import { PdfDownloadLink, PdfViewer, renderToBuffer } from '@inkoxide/vue/browser';
+import { engineStatus, PdfDownloadLink, PdfViewer, renderToBuffer } from '@inkoxide/vue/browser';
 import { createApp, h } from 'vue';
 
 import Invoice from '../../../packages/conformance/vue/Invoice.vue';
@@ -8,7 +8,7 @@ import { expose, OPTIONS } from './hooks.ts';
 import { sample } from './sample.ts';
 
 const invoice = () => h(Invoice, sample);
-expose(() => renderToBuffer(invoice(), OPTIONS));
+expose(() => renderToBuffer(invoice(), OPTIONS), engineStatus);
 
 createApp({
   render: () => [

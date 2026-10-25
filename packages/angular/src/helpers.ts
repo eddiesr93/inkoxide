@@ -12,7 +12,7 @@ import {
   untracked,
 } from '@angular/core';
 import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
-import { type BrowserRenderOptions, PdfRun, type PdfSnapshot, sameProps } from '@inkoxide/render/browser';
+import { type BrowserRenderOptions, PdfRun, type PdfSnapshot } from '@inkoxide/render/browser';
 
 import { browserRenderer } from './browser-render.ts';
 import type { Renderable } from './template.ts';
@@ -30,13 +30,6 @@ export interface InjectPdfResult {
   error: Signal<unknown>;
   /** Renders again: `document` when given, otherwise the last one. */
   update(document?: Renderable): void;
-}
-
-/** Whether two documents render the same: the same component with the same input values. */
-function sameDocument(a: Renderable, b: Renderable): boolean {
-  if (a === b) return true;
-  if (typeof a === 'function' || typeof b === 'function' || a.component !== b.component) return false;
-  return sameProps(a.inputs, b.inputs);
 }
 
 /**
@@ -68,9 +61,7 @@ export function injectPdf(
   effect(() => {
     const next = read();
     untracked(() => {
-      const last = run.document;
-      if (next === undefined || (last !== undefined && sameDocument(last, next))) return;
-      run.update(next);
+      run.follow(next);
     });
   });
   inject(DestroyRef).onDestroy(() => run.stop());

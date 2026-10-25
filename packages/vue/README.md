@@ -76,12 +76,12 @@ errors. Load the data first and pass it in as props. Listeners (`@click`) and Va
 
 ### Single-file components on a server
 
-A server build (Nuxt's server routes, Vite's SSR, Vitest in Node) compiles `.vue` files to render
-HTML strings, which Inkoxide cannot use: it renders the components itself. Compile the PDF
+A server build (Vite's SSR, Vitest in Node, a Nuxt app's server bundle) compiles `.vue` files to
+render HTML strings, which Inkoxide cannot use: it renders the components itself. Compile the PDF
 templates for the client with `@inkoxide/vue/vite`:
 
 ```ts
-// vite.config.ts (or nuxt.config.ts: vite.plugins)
+// vite.config.ts (or nuxt.config.ts: vite.plugins, for the app's code)
 import vue from '@vitejs/plugin-vue';
 import { pdfTemplates } from '@inkoxide/vue/vite';
 
@@ -90,7 +90,8 @@ export default defineConfig({ plugins: [pdfTemplates(vue(), /\/pdf\//)] });
 
 The second argument picks the template files (here, those in a `pdf` folder); without it, every
 `.vue` file is compiled for the client. Templates written as render functions (`h()`) or JSX need
-nothing.
+nothing. Nuxt's server routes (`server/`) are built by Nitro, not Vite, and Nitro does not compile
+`.vue` files: write the templates they render as render functions.
 
 ## In the browser
 

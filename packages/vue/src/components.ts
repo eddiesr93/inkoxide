@@ -1,50 +1,4 @@
-import {
-  type AttachmentProps,
-  type CanvasProps,
-  type CellProps,
-  type CheckboxProps,
-  type CircleProps,
-  type ClipPathProps,
-  type DefsProps,
-  type DocumentProps,
-  type EllipseProps,
-  FIELD_KINDS,
-  type FieldProps,
-  type FieldSetProps,
-  type FooterProps,
-  type GradientProps,
-  type HeaderProps,
-  HOST,
-  HOST_NAME,
-  type HostType,
-  type ImageBackgroundProps,
-  type ImageProps,
-  type LineProps,
-  type LinkProps,
-  type ListProps,
-  type MarkerProps,
-  type NoteProps,
-  type PageBreakProps,
-  type PageInfo,
-  type PageProps,
-  type PathProps,
-  type PolyProps,
-  type RadioProps,
-  type RectProps,
-  type RowProps,
-  type SelectProps,
-  type SpacerProps,
-  type StopProps,
-  type SvgElementProps,
-  type SvgProps,
-  type SvgTextProps,
-  type TableProps,
-  type TextFieldProps,
-  type TextPathProps,
-  type TextProps,
-  type TspanProps,
-  type ViewProps,
-} from '@inkoxide/tree';
+import { FIELD_KINDS, HOST, type PageInfo, type PropsByComponent } from '@inkoxide/tree';
 import {
   defineComponent,
   type DefineSetupFnComponent,
@@ -71,11 +25,15 @@ export type InkComponent<P> = DefineSetupFnComponent<
 >;
 
 /**
- * The component for a host type: its attributes go to the host element as props (kebab-case
- * names are camelized, `class` is `className`), its default slot is its content, and a `render`
- * slot becomes the `render` prop, called for each page.
+ * The component of that name, which renders its host element (a field component, such as
+ * `TextField`, a `Field` of its kind): its attributes go to the element as props (kebab-case names
+ * are camelized, `class` is `className`), its default slot is its content, and a `render` slot
+ * becomes the `render` prop, called for each page.
  */
-function host<P>(type: HostType, name = HOST_NAME[type], fixed?: Record<string, unknown>): InkComponent<P> {
+function host<N extends keyof PropsByComponent>(name: N): InkComponent<PropsByComponent[N]> {
+  const kind = FIELD_KINDS[name as keyof typeof FIELD_KINDS];
+  const type = kind ? HOST.Field : HOST[name as keyof typeof HOST];
+  const fixed = kind && { kind };
   return defineComponent({
     name,
     inheritAttrs: false,
@@ -88,76 +46,75 @@ function host<P>(type: HostType, name = HOST_NAME[type], fixed?: Record<string, 
         return h(type, props, slots.default?.());
       };
     },
-  }) as unknown as InkComponent<P>;
+  }) as unknown as InkComponent<PropsByComponent[N]>;
 }
 
-export const Document = host<DocumentProps>(HOST.Document);
-export const Page = host<PageProps>(HOST.Page);
-export const Header = host<HeaderProps>(HOST.Header);
-export const Footer = host<FooterProps>(HOST.Footer);
-export const View = host<ViewProps>(HOST.View);
+export const Document = host('Document');
+export const Page = host('Page');
+export const Header = host('Header');
+export const Footer = host('Footer');
+export const View = host('View');
 /** A paragraph, or a run inside one; inside an `<Svg>`, SVG text (`SvgTextProps`). */
-export const Text = host<TextProps | SvgTextProps>(HOST.Text);
+export const Text = host('Text');
 /**
  * A link to `href` (`https://…`, `mailto:…` or `#id`; `src` is the same). Inside a `Text` it is
  * an inline run; elsewhere a box, like a `View` with `href`. It adds no colour or underline.
  */
-export const Link = host<LinkProps>(HOST.Link);
-export const Image = host<ImageProps>(HOST.Image);
+export const Link = host('Link');
+export const Image = host('Image');
 /** A `View` with an image behind its children, in its padding box. */
-export const ImageBackground = host<ImageBackgroundProps>(HOST.ImageBackground);
-export const Table = host<TableProps>(HOST.Table);
-export const Row = host<RowProps>(HOST.Row);
-export const Cell = host<CellProps>(HOST.Cell);
+export const ImageBackground = host('ImageBackground');
+export const Table = host('Table');
+export const Row = host('Row');
+export const Cell = host('Cell');
 /** The current page number. Only inside `Text`. */
-export const PageNumber = host<Record<string, never>>(HOST.PageNumber);
+export const PageNumber = host('PageNumber');
 /** The total page count. Only inside `Text`. */
-export const TotalPages = host<Record<string, never>>(HOST.TotalPages);
+export const TotalPages = host('TotalPages');
 /** Starts a new page when content follows it. */
-export const PageBreak = host<PageBreakProps>(HOST.PageBreak);
-export const Spacer = host<SpacerProps>(HOST.Spacer);
+export const PageBreak = host('PageBreak');
+export const Spacer = host('Spacer');
 /** An interactive form field (AcroForm). */
-export const Field = host<FieldProps>(HOST.Field);
+export const Field = host('Field');
 /** A group of form fields, whose `name` goes in front of the name of every field inside it. */
-export const FieldSet = host<FieldSetProps>(HOST.FieldSet);
+export const FieldSet = host('FieldSet');
 /** A text note: a sticky-note icon that viewers open to show its text. */
-export const Note = host<NoteProps>(HOST.Note);
+export const Note = host('Note');
 /** An icon that opens a file of `<Document :attachments>`. */
-export const Attachment = host<AttachmentProps>(HOST.Attachment);
+export const Attachment = host('Attachment');
 /** A vector drawing; becomes an SVG image. Use the SVG primitives (`Path`, `Rect`, …) inside. */
-export const Svg = host<SvgProps>(HOST.Svg);
-export const G = host<SvgElementProps>(HOST.G);
-export const Path = host<PathProps>(HOST.Path);
-export const Rect = host<RectProps>(HOST.Rect);
-export const Circle = host<CircleProps>(HOST.Circle);
-export const Ellipse = host<EllipseProps>(HOST.Ellipse);
-export const Line = host<LineProps>(HOST.Line);
-export const Polyline = host<PolyProps>(HOST.Polyline);
-export const Polygon = host<PolyProps>(HOST.Polygon);
-export const Defs = host<DefsProps>(HOST.Defs);
-export const ClipPath = host<ClipPathProps>(HOST.ClipPath);
+export const Svg = host('Svg');
+export const G = host('G');
+export const Path = host('Path');
+export const Rect = host('Rect');
+export const Circle = host('Circle');
+export const Ellipse = host('Ellipse');
+export const Line = host('Line');
+export const Polyline = host('Polyline');
+export const Polygon = host('Polygon');
+export const Defs = host('Defs');
+export const ClipPath = host('ClipPath');
 /** A shape drawn at the vertices of paths that reference it, defined once in `Defs`. */
-export const Marker = host<MarkerProps>(HOST.Marker);
+export const Marker = host('Marker');
 /** A span of SVG text, inside a `Text` in an `<Svg>`. */
-export const Tspan = host<TspanProps>(HOST.Tspan);
+export const Tspan = host('Tspan');
 /** Text along a path or shape (`href="#curve"`), directly inside a `Text` in an `<Svg>`. */
-export const TextPath = host<TextPathProps>(HOST.TextPath);
-export const LinearGradient = host<GradientProps>(HOST.LinearGradient);
-export const RadialGradient = host<GradientProps>(HOST.RadialGradient);
-export const Stop = host<StopProps>(HOST.Stop);
+export const TextPath = host('TextPath');
+export const LinearGradient = host('LinearGradient');
+export const RadialGradient = host('RadialGradient');
+export const Stop = host('Stop');
 /** Imperative drawing with a painter (`:paint="(p, w, h) => p.circle(w / 2, h / 2, 20).fill('red')"`). */
-export const Canvas = host<CanvasProps>(HOST.Canvas);
+export const Canvas = host('Canvas');
 
-const field = <P>(name: keyof typeof FIELD_KINDS) => host<P>(HOST.Field, name, { kind: FIELD_KINDS[name] });
 /** A text field. */
-export const TextField = field<TextFieldProps>('TextField');
+export const TextField = host('TextField');
 /** The same as `TextField`. */
-export const TextInput = field<TextFieldProps>('TextInput');
+export const TextInput = host('TextInput');
 /** A checkbox. */
-export const Checkbox = field<CheckboxProps>('Checkbox');
+export const Checkbox = host('Checkbox');
 /** One button of a radio group (buttons share `name`). */
-export const Radio = field<RadioProps>('Radio');
+export const Radio = host('Radio');
 /** A drop-down list. */
-export const Select = field<SelectProps>('Select');
+export const Select = host('Select');
 /** A list box: several options in view, one or several selected. */
-export const List = field<ListProps>('List');
+export const List = host('List');

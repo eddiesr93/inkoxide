@@ -1,17 +1,23 @@
-import * as i0 from '@angular/core';
-import { effect, ElementRef, inject, input, Renderer2, TemplateRef, ViewContainerRef } from '@angular/core';
 // The Angular directives of the browser entry: a frame that shows a document in the browser's own
 // PDF viewer, a link that downloads it, and a template that gets the render's state.
 //
-// They are declared as Angular's partial compilation writes a library (`ɵɵngDeclareDirective`):
-// the application's build links them like those of any library, and a template compiled just in
-// time compiles them too. So this package needs no Angular compiler of its own.
+// They are declared as Angular's partial compilation writes a library (`ɵɵngDeclareDirective`),
+// with the types it writes in the declaration files: the application's build reads them and links
+// the directives like those of any library, and a template compiled just in time compiles them
+// too. So this package needs no Angular compiler of its own; the conformance tests compile an
+// application with one (packages/conformance/test/angular-aot.test.ts).
+
+import * as i0 from '@angular/core';
+import { effect, ElementRef, inject, input, Renderer2, TemplateRef, ViewContainerRef } from '@angular/core';
 import type { BrowserRenderOptions } from '@inkoxide/render/browser';
 
 import { injectPdf, type InjectPdfResult } from './helpers.ts';
 import type { Renderable } from './template.ts';
 
 // The declarations as the linker reads them; Angular's types leave out `minVersion`, which it needs.
+// The fields' types are those Angular's compiler writes in a library's declaration files, which an
+// application's build reads, as written (selector, inputs, `exportAs`): without them, it does not
+// see a directive.
 type FactoryDeclaration = Parameters<typeof i0.ɵɵngDeclareFactory>[0];
 type DirectiveDeclaration = Parameters<typeof i0.ɵɵngDeclareDirective>[0];
 
@@ -41,16 +47,30 @@ export class InkPdfViewer {
     });
   }
 
-  static ɵfac = i0.ɵɵngDeclareFactory({
+  static ɵfac: i0.ɵɵFactoryDeclaration<InkPdfViewer, never> = i0.ɵɵngDeclareFactory({
     minVersion: '12.0.0',
     version: '21.0.0',
     ngImport: i0,
     type: InkPdfViewer,
     deps: [],
     target: i0.ɵɵFactoryTarget.Directive,
-  } as FactoryDeclaration);
+  } as FactoryDeclaration) as never;
 
-  static ɵdir = i0.ɵɵngDeclareDirective({
+  static ɵdir: i0.ɵɵDirectiveDeclaration<
+    InkPdfViewer,
+    'iframe[inkPdfViewer]',
+    never,
+    {
+      document: { alias: 'inkPdfViewer'; required: true; isSignal: true };
+      options: { alias: 'inkPdfViewerOptions'; required: false; isSignal: true };
+      toolbar: { alias: 'inkPdfViewerToolbar'; required: false; isSignal: true };
+    },
+    {},
+    never,
+    never,
+    true,
+    never
+  > = i0.ɵɵngDeclareDirective({
     minVersion: '17.1.0',
     version: '21.0.0',
     type: InkPdfViewer,
@@ -81,7 +101,7 @@ export class InkPdfViewer {
     },
     exportAs: ['inkPdfViewer'],
     ngImport: i0,
-  } as DirectiveDeclaration);
+  } as DirectiveDeclaration) as never;
 }
 
 /**
@@ -111,16 +131,30 @@ export class InkPdfDownload {
     });
   }
 
-  static ɵfac = i0.ɵɵngDeclareFactory({
+  static ɵfac: i0.ɵɵFactoryDeclaration<InkPdfDownload, never> = i0.ɵɵngDeclareFactory({
     minVersion: '12.0.0',
     version: '21.0.0',
     ngImport: i0,
     type: InkPdfDownload,
     deps: [],
     target: i0.ɵɵFactoryTarget.Directive,
-  } as FactoryDeclaration);
+  } as FactoryDeclaration) as never;
 
-  static ɵdir = i0.ɵɵngDeclareDirective({
+  static ɵdir: i0.ɵɵDirectiveDeclaration<
+    InkPdfDownload,
+    'a[inkPdfDownload]',
+    ['inkPdfDownload'],
+    {
+      document: { alias: 'inkPdfDownload'; required: true; isSignal: true };
+      fileName: { alias: 'inkPdfDownloadFile'; required: false; isSignal: true };
+      options: { alias: 'inkPdfDownloadOptions'; required: false; isSignal: true };
+    },
+    {},
+    never,
+    never,
+    true,
+    never
+  > = i0.ɵɵngDeclareDirective({
     minVersion: '17.1.0',
     version: '21.0.0',
     type: InkPdfDownload,
@@ -151,7 +185,7 @@ export class InkPdfDownload {
     },
     exportAs: ['inkPdfDownload'],
     ngImport: i0,
-  } as DirectiveDeclaration);
+  } as DirectiveDeclaration) as never;
 }
 
 /** The context of `*inkBlobProvider`: the render's state. */
@@ -181,16 +215,29 @@ export class InkBlobProvider {
     return true;
   }
 
-  static ɵfac = i0.ɵɵngDeclareFactory({
+  static ɵfac: i0.ɵɵFactoryDeclaration<InkBlobProvider, never> = i0.ɵɵngDeclareFactory({
     minVersion: '12.0.0',
     version: '21.0.0',
     ngImport: i0,
     type: InkBlobProvider,
     deps: [],
     target: i0.ɵɵFactoryTarget.Directive,
-  } as FactoryDeclaration);
+  } as FactoryDeclaration) as never;
 
-  static ɵdir = i0.ɵɵngDeclareDirective({
+  static ɵdir: i0.ɵɵDirectiveDeclaration<
+    InkBlobProvider,
+    '[inkBlobProvider]',
+    never,
+    {
+      document: { alias: 'inkBlobProvider'; required: true; isSignal: true };
+      options: { alias: 'inkBlobProviderOptions'; required: false; isSignal: true };
+    },
+    {},
+    never,
+    never,
+    true,
+    never
+  > = i0.ɵɵngDeclareDirective({
     minVersion: '17.1.0',
     version: '21.0.0',
     type: InkBlobProvider,
@@ -213,5 +260,5 @@ export class InkBlobProvider {
       },
     },
     ngImport: i0,
-  } as DirectiveDeclaration);
+  } as DirectiveDeclaration) as never;
 }

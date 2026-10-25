@@ -88,10 +88,21 @@ they do.
 ## Errors
 
 A problem in a template is a `TemplateError` (a `RenderError` with the code `TEMPLATE_ERROR` from
-the render functions), whose `componentStack` names the components from the element at fault
-outwards: an element in the wrong place, from the renderer of each component; what a template
-throws, from the error's trace (each template is a function named after its component) where the
-code keeps its names. Listeners (`(click)`) are errors: nothing happens in a PDF.
+the render functions), whose `componentStack` names the elements and components from the
+element at fault outwards, as React's does:
+
+```text
+<View> cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <Link>, …
+    in View
+    in Address
+    in Page
+    in Document
+    in Invoice
+```
+
+What a template throws names the components of the error's trace (each template is a function
+named after its component), where the code keeps its names, then the elements around the
+innermost. Listeners (`(click)`) are errors: nothing happens in a PDF.
 
 ## On a server
 
@@ -145,6 +156,36 @@ Policy are in the React guide's
 [In the browser](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#in-the-browser);
 an application compiled ahead of time needs no `'unsafe-eval'`.
 
+### Tailwind in an Angular CLI build
+
+In a browser, `@inkoxide/tailwind` loads Tailwind's compiler (about 90 KB with brotli) unless the
+build replaces it with a table of the classes the sources use: its esbuild plugin,
+`inkoxideTailwindEsbuild`, does that ([`@inkoxide/tailwind`](https://www.npmjs.com/package/@inkoxide/tailwind)).
+The Angular CLI's `application` builder takes no esbuild plugins of its own;
+[`@angular-builders/custom-esbuild`](https://www.npmjs.com/package/@angular-builders/custom-esbuild)
+(of your Angular major version) adds them:
+
+```jsonc
+// angular.json, the build target of the application
+"builder": "@angular-builders/custom-esbuild:application",
+"options": {
+  "plugins": ["./esbuild/inkoxide-tailwind.ts"]
+  // … the application builder's own options, as before
+}
+```
+
+```ts
+// esbuild/inkoxide-tailwind.ts
+import { inkoxideTailwindEsbuild } from '@inkoxide/tailwind/plugin';
+
+// The templates' classes, in the components' inline templates and .html files.
+export default inkoxideTailwindEsbuild({ sources: ['src'] });
+```
+
+The plugin acts on the browser bundles and leaves the server's (`ng build` with SSR) alone, which
+keeps the compiler. Without it, the templates get the same classes, with the compiler loaded in
+the browser.
+
 ## Serving templates
 
 `@inkoxide/angular/templates` is the React guide's
@@ -157,7 +198,7 @@ component with the input `data`.
 | Name | What it does |
 |---|---|
 | `renderToBuffer(input, options?)`, `renderToFile(input, path, options?)`, `renderToStream(input, options?)` | A component (with its inputs) to a PDF (Node). |
-| `renderTemplate(input, options?)`, `renderToTree(input)` | A template to its document tree, without the engine. |
+| `renderTemplate(input, options?)`, `renderToTree(input)` | A template to its document tree, without the engine; the tree's `dispose()` releases what the template rendered. |
 | `injectPage()`, `INK_PAGE` | The page, in a `render` template. |
 | `Font`, `init`, `countPages`, `version`, `engineStatus`, `RenderError`, `TemplateError` | As in the React guide. |
 | `@inkoxide/angular/browser` | The above without what needs Node, with `injectPdf`, `InkPdfViewer`, `InkPdfDownload`, `InkBlobProvider`, `renderToBlob`, `generate`. |

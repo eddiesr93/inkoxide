@@ -1202,3 +1202,56 @@ export const TAGS: ReadonlyMap<string, { type: HostType; kind?: FieldProps['kind
  * and the field components'. The front ends' tests check that each has them all.
  */
 export const COMPONENTS: readonly string[] = [...Object.keys(HOST), ...Object.keys(FIELD_KINDS)];
+
+/**
+ * The props of each component, by its name in `COMPONENTS` (`PropsByComponent['View']` is
+ * `ViewProps`): the one list the components of every front end are typed from, each writing
+ * `children` and `render` its own way.
+ */
+export interface PropsByComponent {
+  Document: DocumentProps;
+  Page: PageProps;
+  Header: HeaderProps;
+  Footer: FooterProps;
+  View: ViewProps;
+  /** A paragraph, or a run inside one; inside an `<Svg>`, SVG text. */
+  Text: TextProps | SvgTextProps;
+  Link: LinkProps;
+  Image: ImageProps;
+  ImageBackground: ImageBackgroundProps;
+  Table: TableProps;
+  Row: RowProps;
+  Cell: CellProps;
+  PageNumber: Record<string, never>;
+  TotalPages: Record<string, never>;
+  PageBreak: PageBreakProps;
+  Spacer: SpacerProps;
+  Field: FieldProps;
+  FieldSet: FieldSetProps;
+  Note: NoteProps;
+  Attachment: AttachmentProps;
+  Canvas: CanvasProps;
+  Svg: SvgProps;
+  G: SvgElementProps;
+  Path: PathProps;
+  Rect: RectProps;
+  Circle: CircleProps;
+  Ellipse: EllipseProps;
+  Line: LineProps;
+  Polyline: PolyProps;
+  Polygon: PolyProps;
+  Defs: DefsProps;
+  ClipPath: ClipPathProps;
+  Marker: MarkerProps;
+  Tspan: TspanProps;
+  TextPath: TextPathProps;
+  LinearGradient: GradientProps;
+  RadialGradient: GradientProps;
+  Stop: StopProps;
+  TextField: TextFieldProps;
+  TextInput: TextFieldProps;
+  Checkbox: CheckboxProps;
+  Radio: RadioProps;
+  Select: SelectProps;
+  List: ListProps;
+}

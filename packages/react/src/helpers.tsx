@@ -3,7 +3,7 @@
  * a link that downloads it, a frame that shows it in the browser's own viewer, and a component
  * that hands the render's state to a function.
  */
-import { type BrowserRenderOptions, PdfRun, type PdfSnapshot, sameProps } from '@inkoxide/render/browser';
+import { type BrowserRenderOptions, PdfRun, type PdfSnapshot } from '@inkoxide/render/browser';
 import {
   type AnchorHTMLAttributes,
   type IframeHTMLAttributes,
@@ -43,6 +43,18 @@ export interface UsePdfResult {
  * ```
  */
 export function usePdf(element?: ReactElement, opts: BrowserRenderOptions = {}): UsePdfResult {
+  return usePdfRun(element, opts)[0];
+}
+
+/**
+ * The render of `element` a component keeps: rendered when the component mounts (and shows again
+ * after `<Activity>` hid it), stopped when it unmounts or hides. Gives `usePdf`'s result, and
+ * `follow`, which renders a document when it is another one than the last (`PdfRun.follow`).
+ */
+function usePdfRun(
+  element: ReactElement | undefined,
+  opts: BrowserRenderOptions = {},
+): [UsePdfResult, follow: (next: ReactElement) => void] {
   const [state, setState] = useState<PdfSnapshot>({
     blob: null,
     url: null,
@@ -58,6 +70,7 @@ export function usePdf(element?: ReactElement, opts: BrowserRenderOptions = {}):
   run.current ??= new PdfRun(browserRenderer.renderToBlob, setState, () => latest.current.opts);
 
   const update = useCallback((next?: ReactElement) => run.current?.update(next), []);
+  const follow = useCallback((next: ReactElement) => run.current?.follow(next), []);
 
   useEffect(() => {
     const pdf = run.current;
@@ -67,17 +80,7 @@ export function usePdf(element?: ReactElement, opts: BrowserRenderOptions = {}):
     return () => pdf?.stop();
   }, []);
 
-  return { ...state, update };
-}
-
-/**
- * Whether `next` renders as `prev` did: the same element, or one of the same type and key whose
- * props are the same values (`<Invoice invoice={invoice} />` made again with the same `invoice`).
- */
-function sameElement(prev: ReactElement, next: ReactElement): boolean {
-  if (prev === next) return true;
-  if (prev.type !== next.type || prev.key !== next.key) return false;
-  return sameProps(prev.props as Record<string, unknown>, next.props as Record<string, unknown>);
+  return [{ ...state, update }, follow];
 }
 
 /**
@@ -86,14 +89,8 @@ function sameElement(prev: ReactElement, next: ReactElement): boolean {
  * the ones the hook's own state causes as well.
  */
 function useDocumentPdf(document: ReactElement, options?: BrowserRenderOptions): UsePdfResult {
-  const pdf = usePdf(document, options);
-  const shown = useRef(document);
-  const { update } = pdf;
-  useEffect(() => {
-    if (sameElement(shown.current, document)) return;
-    shown.current = document;
-    update(document);
-  }, [document, update]);
+  const [pdf, follow] = usePdfRun(document, options);
+  useEffect(() => follow(document), [document, follow]);
   return pdf;
 }
 

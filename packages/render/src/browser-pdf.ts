@@ -48,6 +48,15 @@ export class PdfRun<Input> {
     return this.last;
   }
 
+  /**
+   * Renders `input` when it is another document than the last one (`sameDocument`): what the
+   * helpers do when the document they are given changes.
+   */
+  follow(input: Input | undefined): void {
+    if (input === undefined || (this.last !== undefined && sameDocument(this.last, input))) return;
+    this.update(input);
+  }
+
   update(input?: Input): void {
     if (input !== undefined) this.last = input;
     if (this.last === undefined) return;
@@ -83,14 +92,30 @@ export class PdfRun<Input> {
 }
 
 /**
- * Whether two sets of props are the same values: a document made again with the same props
- * renders the same PDF, so the helpers do not render it again.
+ * Whether two documents render the same PDF, so that a helper given one again does not render it
+ * again: the same value; a component with the same props or inputs (`{ component, props }` in
+ * Svelte, `{ component, inputs }` in Angular); or an element of the same type and key whose props
+ * are the same values (a React element or a Vue VNode made again with the same props).
  */
-export function sameProps(
-  a: Readonly<Record<string, unknown>> = {},
-  b: Readonly<Record<string, unknown>> = {},
-): boolean {
+export function sameDocument(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  const keys = Object.keys(a);
-  return keys.length === Object.keys(b).length && keys.every((k) => Object.is(a[k], b[k]));
+  if (!isObject(a) || !isObject(b)) return false;
+  if ('component' in a || 'component' in b) {
+    return a.component === b.component && sameProps(a.props, b.props) && sameProps(a.inputs, b.inputs);
+  }
+  return 'type' in a && a.type === b.type && a.key === b.key && sameProps(a.props, b.props);
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+/** Whether two sets of props are the same values (none and `{}` are). */
+function sameProps(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  const x = isObject(a) ? a : {};
+  const y = isObject(b) ? b : {};
+  const keys = Object.keys(x);
+  return (
+    keys.length === Object.keys(y).length && keys.every((k) => Object.hasOwn(y, k) && Object.is(x[k], y[k]))
+  );
 }

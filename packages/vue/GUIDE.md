@@ -106,12 +106,12 @@ A template renders once, synchronously, so these are errors too:
 ## On a server
 
 `renderToBuffer`, `renderToFile` and `renderToStream` take a VNode (`h(Invoice, { invoice })`) or a
-component. A server build (Nuxt's server routes, Vite's SSR, Vitest in Node) compiles `.vue` files
-to render HTML strings, which Inkoxide cannot use; `@inkoxide/vue/vite` compiles the templates for
-the client in it:
+component. A server build (Vite's SSR, Vitest in Node, a Nuxt app's server bundle) compiles `.vue`
+files to render HTML strings, which Inkoxide cannot use; `@inkoxide/vue/vite` compiles the
+templates for the client in it:
 
 ```ts
-// vite.config.ts, or nuxt.config.ts's vite.plugins
+// vite.config.ts, or nuxt.config.ts's vite.plugins for the app's code
 import vue from '@vitejs/plugin-vue';
 import { pdfTemplates } from '@inkoxide/vue/vite';
 
@@ -119,7 +119,9 @@ export default defineConfig({ plugins: [pdfTemplates(vue(), /\/pdf\//)] });
 ```
 
 The second argument picks the template files; without it, every `.vue` file is compiled for the
-client. Templates written as render functions or JSX need nothing.
+client. Templates written as render functions or JSX need nothing. Nuxt's server routes
+(`server/`) are built by Nitro, which does not compile `.vue` files: the templates they render are
+render functions.
 
 ## In the browser
 
@@ -166,7 +168,7 @@ const { pdf } = await generate(invoice, { number: '2026-001', total: 120 });
 | Name | What it does |
 |---|---|
 | `renderToBuffer(input, options?)`, `renderToFile(input, path, options?)`, `renderToStream(input, options?)` | A VNode or a component to a PDF (Node). |
-| `renderTemplate(input, options?)`, `renderToTree(input)` | A template to its document tree, without the engine. |
+| `renderTemplate(input, options?)`, `renderToTree(input)` | A template to its document tree, without the engine; the tree's `dispose()` releases what the template rendered. |
 | `usePage()` | The page, in a `render` slot. |
 | `Font`, `init`, `countPages`, `version`, `engineStatus`, `RenderError`, `TemplateError` | As in the React guide. |
 | `@inkoxide/vue/browser` | The above without what needs Node, with `usePdf`, `PdfViewer`, `PdfDownloadLink`, `BlobProvider`, `renderToBlob`, `generate`. |

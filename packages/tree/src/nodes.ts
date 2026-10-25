@@ -32,6 +32,12 @@ export interface Container {
   children: Node[];
   /** Host type the content is rendered into, for nested roots (`render` props). */
   parent?: HostType;
+  /**
+   * Releases what the front end rendered into the container (unmounts its app, destroys its
+   * component), with its effects and subscriptions. The nodes stay, but may lose their component
+   * stacks.
+   */
+  dispose?(): void;
 }
 
 /** True for the host types of the components; false for `div` and other elements. */

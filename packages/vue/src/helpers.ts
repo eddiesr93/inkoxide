@@ -3,11 +3,10 @@
  * URL, a link that downloads it, a frame that shows it in the browser's own viewer, and a
  * component that hands the render's state to its slot.
  */
-import { type BrowserRenderOptions, PdfRun, sameProps } from '@inkoxide/render/browser';
+import { type BrowserRenderOptions, PdfRun } from '@inkoxide/render/browser';
 import {
   defineComponent,
   h,
-  isVNode,
   type MaybeRefOrGetter,
   onScopeDispose,
   type PropType,
@@ -32,16 +31,6 @@ export interface UsePdfResult {
   error: Ref<unknown>;
   /** Renders again: `document` when given, otherwise the last one. */
   update(document?: Renderable): void;
-}
-
-/**
- * Whether `next` renders as `prev` did: the same document, or a VNode of the same type and key
- * whose props are the same values (`h(Invoice, { invoice })` made again with the same `invoice`).
- */
-function sameDocument(prev: Renderable, next: Renderable): boolean {
-  if (prev === next) return true;
-  if (!isVNode(prev) || !isVNode(next) || prev.type !== next.type || prev.key !== next.key) return false;
-  return sameProps(prev.props ?? {}, next.props ?? {});
 }
 
 /**
@@ -71,11 +60,7 @@ export function usePdf(
 
   watch(
     () => toValue(document),
-    (next) => {
-      const last = run.document;
-      if (next === undefined || (last !== undefined && sameDocument(last, next))) return;
-      run.update(next);
-    },
+    (next) => run.follow(next),
     { immediate: true },
   );
   onScopeDispose(() => run.stop());

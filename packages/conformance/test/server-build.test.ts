@@ -1,6 +1,7 @@
 /**
- * The templates in a server build, as Nuxt's server routes and SvelteKit's endpoints have them:
- * Vite builds the code for Node (single-file components compiled for the client through
+ * The templates in a server build, as a Nuxt app's server bundle and SvelteKit's endpoints have
+ * them (Nuxt's server routes are Nitro's, which takes Vue templates as render functions): Vite
+ * builds the code for Node (single-file components compiled for the client through
  * `@inkoxide/vue/vite`, Svelte's for the server), and the built module renders the PDF React
  * renders.
  */

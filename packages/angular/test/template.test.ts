@@ -92,7 +92,9 @@ describe('templates', () => {
     class Outer {}
     const e = thrown(() => renderTemplate(Outer, { fonts }));
     expect(e.message).toMatch(/^<View> cannot be inside <Text>/);
-    expect(e.componentStack).toBe('\n    in View\n    in Inner\n    in Outer');
+    expect(e.componentStack).toBe(
+      '\n    in View\n    in Inner\n    in Text\n    in Page\n    in Document\n    in Outer',
+    );
   });
 
   it('refuses an element that is not a component of Inkoxide', () => {
@@ -149,7 +151,24 @@ describe('templates', () => {
     class Holder {}
     const e = thrown(() => renderTemplate(Holder, { fonts }));
     expect(e.message).toBe('The template threw: boom');
-    expect(e.componentStack).toBe('\n    in Throws\n    in Holder');
+    expect(e.componentStack).toBe(
+      '\n    in Throws\n    in Text\n    in Page\n    in Document\n    in Holder',
+    );
+  });
+
+  it('names the element a render template is for, and the components around it', () => {
+    @Component({
+      selector: 'app-footer-view',
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      template:
+        '<ink-document><ink-page><ink-footer><ink-text [render]="t" /><ng-template #t><ink-view /></ng-template></ink-footer></ink-page></ink-document>',
+    })
+    class FooterView {}
+    const e = thrown(() => renderTemplate(FooterView, { fonts }));
+    expect(e.message).toMatch(/^<View> cannot be inside <Text>/);
+    expect(e.componentStack).toBe(
+      '\n    in View\n    in Text\n    in Footer\n    in Page\n    in Document\n    in FooterView',
+    );
   });
 
   it('refuses a listener', () => {
@@ -165,7 +184,7 @@ describe('templates', () => {
     expect(e.message).toBe(
       '<View> takes no listener (click): nothing happens in a PDF. Remove the (click) binding.',
     );
-    expect(e.componentStack).toBe('\n    in View\n    in Clicks');
+    expect(e.componentStack).toBe('\n    in View\n    in Page\n    in Document\n    in Clicks');
   });
 });
 

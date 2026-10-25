@@ -20,22 +20,30 @@ templates change.
   as attributes (`class`, kebab-case names), their content in the default slot and the per-page
   content in a `render` slot; `usePage()` injects the page. `@inkoxide/vue/browser` has `usePdf`,
   `<PdfViewer>`, `<PdfDownloadLink>` and `<BlobProvider>`; `@inkoxide/vue/vite` compiles
-  single-file templates for the client in a server build (Nuxt, Vite's SSR). Listeners, async
-  components, `<Suspense>` and Vapor components are template errors.
-- `@inkoxide/svelte`: Svelte 5.16+ templates. The per-page content is a `render` snippet;
+  single-file templates for the client in a server build (Vite's SSR, a Nuxt app's server
+  bundle). Nuxt's server routes, which Nitro builds without compiling `.vue` files, take
+  templates written as render functions. Listeners, async components, `<Suspense>` and Vapor
+  components are template errors.
+- `@inkoxide/svelte`: Svelte 5.39+ templates. The per-page content is a `render` snippet;
   `@inkoxide/svelte/browser` has `createPdf`, `<PdfViewer>`, `<PdfDownloadLink>` and
   `<BlobProvider>`.
 - `@inkoxide/angular`: templates of Angular 21 and 22 components, with the `ink-*` elements
   (`<ink-view>`, `<ink-text>`, `<ink-path>`, `<ink-text-field>`) and `CUSTOM_ELEMENTS_SCHEMA`. The
   per-page content is an `ng-template` given to `[render]`; `injectPage()` gives the page.
   `@inkoxide/angular/browser` has `injectPdf`, the render's state as signals, and the directives
-  `inkPdfViewer`, `inkPdfDownload` and `inkBlobProvider`.
+  `inkPdfViewer`, `inkPdfDownload` and `inkBlobProvider`, which an application's Angular build
+  links as those of any library. Component stacks name the elements and components around the
+  element at fault, as React's do.
 - Each front end has a guide (`GUIDE.md`) of how it writes a document.
 - `@inkoxide/tree`: what the front ends share, for writing one: the components' props
-  (`@inkoxide/tree/props`), where each may go, host nodes, `buildDocument` and
-  `templateFunctions`.
+  (`@inkoxide/tree/props`, and `PropsByComponent`, by component name), where each may go, host
+  nodes, `buildDocument` and `templateFunctions`.
 - `@inkoxide/render`'s `createRenderer(frontEnd)`: the functions a front end exports; and, in its
-  browser entry, `PdfRun`, the state the browser helpers of every front end keep.
+  browser entry, `PdfRun`, the state the browser helpers of every front end keep, and
+  `sameDocument`, which tells them a document made again with the same props from another one.
+- The render functions release what a template rendered (Vue's app, Angular's component, React's
+  root, and the roots of per-page content), with its effects and subscriptions, once the PDF is
+  made. A tree of `renderTemplate` or `renderTree` has `dispose()` for that.
 - `renderTemplate` and `renderToTree` (a template to its document tree, without the engine) and
   `TemplateError` are exported by every front end.
 
@@ -44,7 +52,9 @@ templates change.
 - **Breaking:** React templates import from `@inkoxide/react` (and `@inkoxide/react/browser`,
   `@inkoxide/react/templates`) instead of `@inkoxide/render`. `@inkoxide/render` no longer
   depends on React: it renders documents (`renderDocument`) and gives front ends their functions.
-- **Breaking:** `timings.reactMs` of `generate` is `timings.templateMs`.
+- `timings.templateMs` of `generate` is the time of the template's render, in every front end.
+  `timings.reactMs`, its name before, is a deprecated alias of it, which a spread or JSON leaves
+  out.
 - The SVG markup of an `<Svg>` writes its attributes by name, whatever order they were set in.
 
 ## 0.10.1 - 2026-10-25

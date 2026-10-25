@@ -1,7 +1,7 @@
 import { type PageInfo, TemplateError } from '@inkoxide/tree';
 import { getContext } from 'svelte';
 
-import { PAGE } from './capture.ts';
+import { PAGE } from './table.ts';
 
 /**
  * The page number and page count, in a component inside a `render` snippet. Elsewhere the page is

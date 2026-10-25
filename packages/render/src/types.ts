@@ -131,6 +131,8 @@ export interface Timings {
   fetchMs: number;
   /** Everything, data validation included. */
   totalMs: number;
+  /** @deprecated `templateMs`, by its name before 1.0, when templates were React's only. */
+  readonly reactMs: number;
 }
 
 export interface RenderResult {

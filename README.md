@@ -126,7 +126,7 @@ The same document, written with the components of your framework:
 | Framework | Package | How a template looks |
 |---|---|---|
 | Vue 3.5+ | [`@inkoxide/vue`](packages/vue) | `<Text class="text-lg font-bold">Receipt</Text>` in a single-file component or a render function |
-| Svelte 5 | [`@inkoxide/svelte`](packages/svelte) | `<Text class="text-lg font-bold">Receipt</Text>` in a component |
+| Svelte 5.39+ | [`@inkoxide/svelte`](packages/svelte) | `<Text class="text-lg font-bold">Receipt</Text>` in a component |
 | Angular 21, 22 | [`@inkoxide/angular`](packages/angular) | `<ink-text class="text-lg font-bold">Receipt</ink-text>` in a component's template |
 
 Each package has the same functions (`renderToBuffer`, `renderToFile`, `renderToStream`, a

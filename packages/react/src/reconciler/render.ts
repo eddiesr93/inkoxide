@@ -115,7 +115,8 @@ function suspension(
 /**
  * Renders a React element into plain host instances, synchronously: one sync update, flushed,
  * then the container is read. Hooks and context work; a render that suspends is an error, and
- * effects must not be relied on (their state updates never reach the document).
+ * effects must not be relied on (their state updates never reach the document). The container's
+ * `dispose` unmounts the root; a render that fails is unmounted at once.
  */
 export function renderToInstances(element: ReactNode, parent?: HostType): Container {
   const container: Container = parent === undefined ? { children: [] } : { children: [], parent };
@@ -137,16 +138,20 @@ export function renderToInstances(element: ReactNode, parent?: HostType): Contai
     noop,
     null,
   );
+  const unmount = () => {
+    reconciler.updateContainerSync(null, root, null, null);
+    reconciler.flushSyncWork();
+  };
   reconciler.updateContainerSync(element, root, null, null);
   reconciler.flushSyncWork();
   const suspended = captured ? undefined : suspension(root as unknown as FiberRoot, element, parent);
   if (suspended) {
     // Unmounted, so React does not render the template again when the promise settles.
-    reconciler.updateContainerSync(null, root, null, null);
-    reconciler.flushSyncWork();
+    unmount();
     throw suspended;
   }
   if (captured) {
+    unmount();
     const { error, componentStack } = captured;
     if (error instanceof TemplateError) {
       error.componentStack ??= componentStack;
@@ -159,5 +164,6 @@ export function renderToInstances(element: ReactNode, parent?: HostType): Contai
       cause: error,
     });
   }
+  container.dispose = unmount;
   return container;
 }

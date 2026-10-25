@@ -18,8 +18,9 @@ dist-cdn/
 /packages/wasm/inkoxide-threads.wasm
 /packages/wasm/hyphenation/
 
-# Server builds of the conformance tests
+# Server builds and ahead-of-time Angular builds of the conformance tests
 /packages/conformance/.server-build-*/
+/packages/conformance/.angular-aot-*/
 
 # Playwright, in examples/browser and examples/frameworks
 /examples/browser/test-results/

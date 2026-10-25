@@ -38,8 +38,11 @@ export type GenerateOptions = BrowserRenderOptions;
 /** The size of the chunks of `renderToStream`'s stream. */
 const CHUNK = 64 * 1024;
 
-/** The functions a front end exports in a browser, for what its users render (`Input`). */
-export interface BrowserRenderer<Input, C> {
+/**
+ * The functions a front end exports in a browser, for what its users render (`Input`). The front
+ * ends export them as they are, so their documentation is this.
+ */
+export interface BrowserRenderer<Input, Component> {
   /**
    * A document to PDF bytes, rendered in a Web Worker. A `signal` that aborts, or `timeoutMs`
    * that passes, ends the worker (the next render starts a new one) and rejects with the signal's
@@ -55,16 +58,21 @@ export interface BrowserRenderer<Input, C> {
    * that fails rejects the promise instead of erroring the stream.
    */
   renderToStream(input: Input, opts?: BrowserRenderOptions): Promise<ReadableStream<Uint8Array>>;
-  /** Checks `data` against the template's schema and renders it, in a Web Worker. */
+  /**
+   * Checks `data` against the template's schema and renders it, in a Web Worker: the templates
+   * entry's `generate`, with options that stop it as `renderToBuffer`'s do.
+   */
   generate<S extends z.ZodType>(
-    t: TemplateLike<S, C>,
+    t: TemplateLike<S, Component>,
     data: unknown,
     opts?: GenerateOptions,
   ): Promise<RenderResult>;
 }
 
 /** The browser functions of the front end `fe`: `@inkoxide/react/browser` exports React's, and so on. */
-export function createRenderer<Input, C>(fe: FrontEnd<Input, C>): BrowserRenderer<Input, C> {
+export function createRenderer<Input, Component>(
+  fe: FrontEnd<Input, Component>,
+): BrowserRenderer<Input, Component> {
   const toBuffer = (input: Input, opts: BrowserRenderOptions = {}) => render(fe, input, opts);
   return {
     renderToBuffer: toBuffer,

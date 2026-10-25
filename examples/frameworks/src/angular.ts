@@ -4,14 +4,14 @@
 import '@angular/compiler';
 import { Component, provideZonelessChangeDetection } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
-import { InkPdfDownload, InkPdfViewer, renderToBuffer } from '@inkoxide/angular/browser';
+import { engineStatus, InkPdfDownload, InkPdfViewer, renderToBuffer } from '@inkoxide/angular/browser';
 
 import { Invoice } from '../../../packages/conformance/angular/examples.ts';
 import { expose, OPTIONS } from './hooks.ts';
 import { sample } from './sample.ts';
 
 const invoice = { component: Invoice, inputs: sample };
-expose(() => renderToBuffer(invoice, OPTIONS));
+expose(() => renderToBuffer(invoice, OPTIONS), engineStatus);
 
 class App {
   readonly invoice = invoice;

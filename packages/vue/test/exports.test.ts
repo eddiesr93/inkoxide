@@ -2,6 +2,8 @@
  * The public API: every name @inkoxide/vue exports, from each entry. A name added here is API under
  * semver, so it needs its place in the package's README or GUIDE.md first.
  */
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import { declared, sorted } from '../../tree/test/entries.ts';
@@ -9,6 +11,7 @@ import pkg from '../package.json' with { type: 'json' };
 import * as browser from '../src/browser.ts';
 import * as main from '../src/index.ts';
 import * as templates from '../src/templates.ts';
+import * as vite from '../src/vite.ts';
 
 const SRC = new URL('../src/', import.meta.url);
 /** The props and style types, which every front end exports from `@inkoxide/tree/props`. */
@@ -220,6 +223,9 @@ const TEMPLATES_TYPES = [
   'TreeResult',
 ];
 
+const VITE_VALUES = ['pdfTemplates'];
+const VITE_TYPES = ['TemplateFilter', 'VuePluginLike'];
+
 describe('exports', () => {
   it('@inkoxide/vue exports exactly the documented names', () => {
     expect(sorted(Object.keys(main))).toEqual(sorted(MAIN_VALUES));
@@ -234,6 +240,17 @@ describe('exports', () => {
   it('@inkoxide/vue/templates exports the template pipeline', () => {
     expect(sorted(Object.keys(templates))).toEqual(sorted(TEMPLATES_VALUES));
     expect(declared(SRC, 'templates.ts')).toEqual(sorted([...TEMPLATES_VALUES, ...TEMPLATES_TYPES]));
+  });
+
+  it('@inkoxide/vue/vite exports the plugin and its types', () => {
+    expect(sorted(Object.keys(vite))).toEqual(VITE_VALUES);
+    // The entry declares them: the names it exports, as written.
+    const code = readFileSync(new URL('vite.ts', SRC), 'utf8');
+    const names = [...code.matchAll(/^export (?:interface|type|function|const) (\w+)/gm)].map(
+      (m) => m[1] ?? '',
+    );
+    expect(sorted(names)).toEqual(sorted([...VITE_VALUES, ...VITE_TYPES]));
+    expect(code).not.toMatch(/^export (?:\{|\*|default)/m);
   });
 
   it('has an entry in package.json for each', () => {

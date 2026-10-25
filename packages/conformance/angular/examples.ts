@@ -1,6 +1,9 @@
 // The examples of examples/ as Angular template components, compiled just in time: decorated
 // inputs, since signal inputs need the AOT compiler.
-import { Component, CUSTOM_ELEMENTS_SCHEMA, Input } from '@angular/core';
+import { Component, CUSTOM_ELEMENTS_SCHEMA, DestroyRef, inject, Input } from '@angular/core';
+import { injectPage } from '@inkoxide/angular';
+
+import { live } from '../live.ts';
 
 const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 const percent = (n: number) => n.toLocaleString('en-US', { style: 'percent', maximumFractionDigits: 2 });
@@ -660,3 +663,64 @@ export class Features {
   template: '<ink-document><ink-page><ink-text>Hi <ink-view /></ink-text></ink-page></ink-document>',
 })
 export class Misplaced {}
+
+@Component({
+  selector: 'app-inner',
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: '<ink-view />',
+})
+export class Inner {}
+
+@Component({
+  selector: 'app-misplaced-inner',
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  imports: [Inner],
+  template: '<ink-document><ink-page><ink-text>Hi <app-inner /></ink-text></ink-page></ink-document>',
+})
+export class MisplacedInner {}
+
+/** Counts itself in `live` while it is alive. */
+function counted(): void {
+  live.created++;
+  inject(DestroyRef).onDestroy(() => live.released++);
+}
+
+@Component({
+  selector: 'app-counted',
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: '<ink-text>Body</ink-text>',
+})
+export class Counted {
+  constructor() {
+    counted();
+  }
+}
+
+@Component({
+  selector: 'app-page-label',
+  template: 'Page {{ page.pageNumber }} of {{ page.totalPages }}',
+})
+export class PageLabel {
+  readonly page = injectPage();
+  constructor() {
+    counted();
+  }
+}
+
+@Component({
+  selector: 'app-paged',
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  imports: [Counted, PageLabel],
+  template: `
+    <ink-document>
+      <ink-page size="A6">
+        <ink-text [render]="label" />
+        <ng-template #label><app-page-label /></ng-template>
+        <app-counted />
+        <ink-page-break />
+        <ink-text>More</ink-text>
+      </ink-page>
+    </ink-document>
+  `,
+})
+export class Paged {}

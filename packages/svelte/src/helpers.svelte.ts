@@ -3,7 +3,7 @@
  * its URL, again whenever the document changes. `PdfViewer`, `PdfDownloadLink` and
  * `BlobProvider` are built on it.
  */
-import { type BrowserRenderOptions, PdfRun, type PdfSnapshot, sameProps } from '@inkoxide/render/browser';
+import { type BrowserRenderOptions, PdfRun, type PdfSnapshot } from '@inkoxide/render/browser';
 import { onDestroy, untrack } from 'svelte';
 
 import { browserRenderer } from './browser-render.ts';
@@ -20,13 +20,6 @@ export interface PdfState {
   readonly error: unknown;
   /** Renders again: `document` when given, otherwise the last one. */
   update(document?: Renderable): void;
-}
-
-/** Whether two documents render the same: the same component with the same prop values. */
-function sameDocument(a: Renderable, b: Renderable): boolean {
-  if (a === b) return true;
-  if (typeof a === 'function' || typeof b === 'function' || a.component !== b.component) return false;
-  return sameProps(a.props, b.props);
 }
 
 /**
@@ -49,9 +42,7 @@ export function createPdf(
   $effect.pre(() => {
     const next = document();
     untrack(() => {
-      const last = run.document;
-      if (next === undefined || (last !== undefined && sameDocument(last, next))) return;
-      run.update(next);
+      run.follow(next);
     });
   });
   onDestroy(() => run.stop());

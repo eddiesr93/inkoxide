@@ -153,19 +153,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The oldest versions the front ends support (their peer ranges); the workspace pins the
-        # newest, which the other jobs test.
+        # The oldest versions the front ends support (their peer ranges), and Vue's next minor; the
+        # workspace pins the newest releases, which the other jobs test.
         include:
           - name: Angular 21
             packages: packages/angular packages/conformance
             add: >-
               pnpm --filter @inkoxide/angular --filter @inkoxide/conformance add -D
               @angular/core@21 @angular/common@21 @angular/compiler@21 @angular/platform-browser@21
-          - name: Svelte 5.16
+              @angular/compiler-cli@21
+          - name: Svelte 5.39
             packages: packages/svelte packages/conformance
             add: >-
               pnpm --workspace-root --filter @inkoxide/svelte --filter @inkoxide/conformance add -D
-              svelte@5.16.0
+              svelte@5.39.0
+          # Vue's next minor, whose Vapor components @inkoxide/vue refuses.
+          - name: Vue 3.6
+            packages: packages/vue packages/conformance
+            add: >-
+              pnpm --workspace-root --filter @inkoxide/vue --filter @inkoxide/conformance add -D
+              vue@rc
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

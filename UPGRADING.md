@@ -29,6 +29,8 @@ so code that imports `Font` from either sees the same registry.
 ### `timings.reactMs` is `timings.templateMs`
 
 `generate` reports the time the template took to render as `templateMs`, whatever the framework.
+`reactMs` still reads it, deprecated, but a spread or `JSON.stringify` of the timings leaves it
+out: read `templateMs`.
 
 ### `@inkoxide/react` keeps its other names
 

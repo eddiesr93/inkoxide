@@ -2,13 +2,14 @@
 // instead of DOM nodes. Templates render once and synchronously, so the update paths exist only
 // for completeness.
 import {
-  BOOLEAN_PROPS,
+  assignProp,
   finishTemplate,
   componentNames,
   type Container,
   dedupe,
   formatStack,
   hostName,
+  nodeLinks,
   type HostType,
   type Instance,
   type Node,
@@ -47,18 +48,7 @@ export const OWNER = '__inkOwner';
 /** The provide key of the page a `render` slot renders for. */
 export const PAGE = Symbol('inkoxide page');
 
-const parents = new WeakMap<HostNode, Parent>();
-
-const childrenOf = (p: Parent): HostNode[] => p.children as HostNode[];
-
-function detach(node: HostNode): void {
-  const p = parents.get(node);
-  if (!p) return;
-  const list = childrenOf(p);
-  const i = list.indexOf(node);
-  if (i >= 0) list.splice(i, 1);
-  parents.delete(node);
-}
+const links = nodeLinks<HostNode, Parent>();
 
 /** The name Vue gives a component: its `name`, else the one the SFC compiler infers from the file. */
 function nameOf(i: ComponentInternalInstance): string | undefined {
@@ -88,11 +78,7 @@ const vueNames: Trace = (origin) => {
 const textNames: Trace = (parent) => (parent ? componentNames(parent as Instance) : []);
 
 function insert(child: HostNode, parent: Parent, anchor?: HostNode | null): void {
-  detach(child);
-  const list = childrenOf(parent);
-  const at = anchor ? list.indexOf(anchor) : -1;
-  list.splice(at < 0 ? list.length : at, 0, child);
-  parents.set(child, parent);
+  links.insert(child, parent, anchor);
   // A string's stack is that of the element it is in.
   if (child.kind === 'text') child.origin = 'kind' in parent ? parent : undefined;
 }
@@ -113,19 +99,13 @@ const { createApp } = createRenderer<HostNode, Parent>({
   },
   setElementText(el, text) {
     if (!('kind' in el)) return;
-    for (const child of childrenOf(el)) parents.delete(child);
-    el.children = [];
+    for (const child of [...el.children] as HostNode[]) links.remove(child);
     if (text) insert({ kind: 'text', text, origin: undefined, trace: textNames }, el);
   },
   insert,
-  remove: detach,
-  parentNode: (node) => parents.get(node) ?? null,
-  nextSibling(node) {
-    const p = parents.get(node);
-    if (!p) return null;
-    const list = childrenOf(p);
-    return list[list.indexOf(node) + 1] ?? null;
-  },
+  remove: links.remove,
+  parentNode: links.parent,
+  nextSibling: links.next,
   patchProp(el, key, _prev, next, _namespace, parentComponent) {
     if (!('kind' in el)) return;
     if (key === OWNER) {
@@ -139,9 +119,7 @@ const { createApp } = createRenderer<HostNode, Parent>({
         { kind: 'props', componentStack: formatStack(dedupe(stack)) },
       );
     }
-    const name = key === 'class' ? 'className' : camelize(key);
-    if (next === undefined || next === null) delete el.props[name];
-    else el.props[name] = next === '' && BOOLEAN_PROPS.has(name) ? true : next;
+    assignProp(el.props, key === 'class' ? key : camelize(key), next);
   },
 });
 
@@ -178,6 +156,46 @@ interface VNodeLike {
   children: unknown;
   suspense?: unknown;
 }
+
+/** The error of a Vapor component, which renders without VNodes, so through no renderer of ours. */
+function vaporError(
+  type: { name?: string; __name?: string },
+  parent?: ComponentInternalInstance | null,
+): TemplateError {
+  const name = type.name ?? type.__name ?? 'A component';
+  return new TemplateError(
+    `${name} is a Vapor component, which renders without VNodes, so Inkoxide's renderer never sees it. Write PDF templates as ordinary components (no <script setup vapor>).`,
+    { kind: 'render', componentStack: formatStack(dedupe([name, ...(parent ? vueNames(parent) : [])])) },
+  );
+}
+
+/**
+ * Where Vue 3.6 mounts a Vapor component found in a VNode tree (`app._context.vapor`, which its
+ * interop plugin would set): each way in is the error, so that Vue 3.6 says so instead of failing
+ * on the missing interop. Vue 3.5 renders a Vapor component as an ordinary one, and `suspension`
+ * refuses it after.
+ */
+const NO_VAPOR = {
+  mount(
+    vnode: { type: object },
+    _container: unknown,
+    _anchor: unknown,
+    parent: ComponentInternalInstance | null,
+  ) {
+    throw vaporError(vnode.type, parent);
+  },
+  activate(
+    vnode: { type: object },
+    _container: unknown,
+    _anchor: unknown,
+    parent: ComponentInternalInstance | null,
+  ) {
+    throw vaporError(vnode.type, parent);
+  },
+  update(_old: unknown, vnode: { type: object }) {
+    throw vaporError(vnode.type);
+  },
+};
 
 const advice =
   'Suspense, async setup() and async components are not supported: a template renders once, synchronously. Load the data first and pass it in as props.';
@@ -239,27 +257,42 @@ function suspension(
 /**
  * Renders a component (or a function that returns VNodes) into host nodes, synchronously: one
  * mount, then the container is read and checked. `parent` is the host type a `render` slot
- * renders into. Throws a TemplateError with the component stack.
+ * renders into. Throws a TemplateError with the component stack. The container's `dispose`
+ * unmounts the app; a render that fails is unmounted at once.
  */
 export function mount(root: object, parent?: HostType): Container {
   const container: Container = { children: [] };
   let captured: { error: unknown; instance: ComponentInternalInstance | null } | undefined;
   const app = createApp(root);
+  (app._context as { vapor?: unknown }).vapor = NO_VAPOR;
   app.config.errorHandler = (error: unknown, instance: ComponentPublicInstance | null) => {
     captured ??= { error, instance: instance?.$ ?? null };
   };
   app.config.warnHandler = () => {};
+  let mounted = false;
+  const unmount = () => {
+    if (mounted) app.unmount();
+    mounted = false;
+  };
   try {
     app.mount(container);
+    mounted = true;
   } catch (error) {
     captured ??= { error, instance: null };
   }
   if (captured) {
     const { error, instance } = captured;
-    throw templateError(error, instance ? formatStack(vueNames(instance)) : undefined);
+    // The stack first: unmounting ends the instances it is read from.
+    const stack = instance ? formatStack(vueNames(instance)) : undefined;
+    unmount();
+    throw templateError(error, stack);
   }
   const top = (app as unknown as { _instance: ComponentInternalInstance | null })._instance;
   const suspended = suspension(top?.subTree as unknown as VNodeLike);
-  if (suspended) throw suspended;
-  return finishTemplate(uncomment(container.children), parent);
+  if (suspended) {
+    unmount();
+    throw suspended;
+  }
+  // A copy: unmounting takes the nodes out of the container.
+  return finishTemplate(uncomment([...container.children]), parent, unmount);
 }

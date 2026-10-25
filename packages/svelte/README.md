@@ -8,7 +8,7 @@ same document written for `@inkoxide/react`.
 The [guide](GUIDE.md) says how Svelte writes each part of a document, and the API.
 
 Part of [Inkoxide](https://github.com/eddiesr93/inkoxide). Requires Node.js 22 or later and
-Svelte 5.16 or later; ES modules only.
+Svelte 5.39 or later; ES modules only.
 
 ```sh
 npm install @inkoxide/svelte svelte

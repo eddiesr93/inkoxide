@@ -13,7 +13,7 @@ export {
   type GenerateOptions,
   init,
 } from './browser-api.ts';
-export { type BlobRender, PdfRun, type PdfSnapshot, sameProps } from './browser-pdf.ts';
+export { type BlobRender, PdfRun, type PdfSnapshot, sameDocument } from './browser-pdf.ts';
 export { countPages, type EngineStatus, type EngineVersion, engineStatus, version } from './engine.ts';
 export { Font, type FontRegistration, type FontSource, type FontSrc, type FontWeight } from './font.ts';
 export { type FrontEnd, renderDocument, type RenderToBufferOptions, type TemplateLike } from './pipeline.ts';

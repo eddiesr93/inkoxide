@@ -233,6 +233,9 @@ describe('generate', () => {
     expect(timings.treeMs).toBeGreaterThanOrEqual(30);
     const { templateMs, treeMs, validateMs, engineMs, fetchMs, totalMs } = timings;
     expect(templateMs + treeMs + validateMs + engineMs + fetchMs).toBeLessThanOrEqual(totalMs + 0.5);
+    // Its name before 1.0, read only: not in the timings a spread or JSON gives.
+    expect(timings.reactMs).toBe(templateMs);
+    expect(Object.keys(timings)).not.toContain('reactMs');
   });
 });
 

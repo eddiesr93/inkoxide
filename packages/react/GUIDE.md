@@ -1332,9 +1332,10 @@ renderToStream(element, options?): Promise<Readable>     // the PDF as a Node st
 ```
 
 `renderTemplate(element, options?)` builds the document tree without the engine, synchronously
-(`{ document, images, warnings, validate(), locate(path), … }`), and `renderToTree(element)`
-resolves to the document alone, after loading Tailwind; a problem in the template throws a
-`TemplateError`, with its `componentStack`.
+(`{ document, images, warnings, validate(), locate(path), dispose(), … }`; `dispose()` unmounts
+what the template rendered, when you are done with the tree), and `renderToTree(element)` resolves
+to the document alone, after loading Tailwind; a problem in the template throws a `TemplateError`,
+with its `componentStack`.
 
 `renderToStream` returns a stream to pipe into an HTTP response:
 `(await renderToStream(<Invoice />)).pipe(res)`. The stream starts once the PDF is ready, and a
@@ -1548,7 +1549,8 @@ options under the same id replaces the template's.
   `renderSettled(tree, images, options?)` renders it, and renders again with the page count
   while `render` props change it; `images` are more images by id (`{}` when there are none), and
   it resolves to `{ pdf, pages, passes, tree, images, fetchMs, treeMs }` (`treeMs`: the
-  rebuilds for the page count). Pass both the same options.
+  rebuilds for the page count). Pass both the same options. The tree keeps what the template
+  rendered (its effects and subscriptions too) until `tree.dispose()`: call it when done.
 - **`renderDocument(document, images?, options?)`** renders a document tree that is already
   built, such as a stored `result.document`, and resolves to `{ pdf, pages, engineMs }`. The
   document names its images by id, so pass their bytes in `images` or the `images` option

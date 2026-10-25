@@ -99,11 +99,11 @@ export interface BuildOptions {
    * own inside the element's host type, and gives the nodes it made. Without it a `render` prop is
    * an error.
    */
-  renderPage?: RenderPage;
+  renderPage?: PageContent;
 }
 
 /** See {@link BuildOptions.renderPage}. */
-export type RenderPage = (inst: Instance, page: PageInfo) => Node[];
+export type PageContent = (inst: Instance, page: PageInfo) => Node[];
 
 /**
  * Render options a `<Document>` sets that are not part of the document tree, for the caller to

@@ -17,7 +17,8 @@ import {
   type Type,
 } from '@angular/core';
 import {
-  BOOLEAN_PROPS,
+  assignProp,
+  componentNames,
   type Container,
   dedupe,
   finishTemplate,
@@ -30,8 +31,10 @@ import {
   type PageInfo,
   TAGS,
   TemplateError,
+  namesInTrace,
+  nodeLinks,
+  renderWithTrace,
   type TextInstance,
-  templateError,
   type Trace,
 } from '@inkoxide/tree';
 
@@ -44,9 +47,10 @@ interface Owner {
   host: AnyNode | undefined;
 }
 
-/** What a node keeps for its component stack. */
+/** What a node keeps for its component stack: the component whose template made it, and itself. */
 interface Origin {
   owner: Owner | undefined;
+  node?: AnyNode;
 }
 
 /** Where Angular renders nothing (`@if`, `@for`, `ng-container`), kept until the tree is read. */
@@ -63,40 +67,39 @@ interface Foreign extends Omit<Instance, 'type'> {
 type AnyNode = Instance | Foreign | TextInstance | Comment;
 type Parent = Instance | Foreign;
 
-const parents = new WeakMap<AnyNode, Parent>();
-/** The elements components are rendered in: their content replaces them in the tree. */
-const componentHosts = new WeakSet<AnyNode>();
+const links = nodeLinks<AnyNode, Parent>();
+/** The elements components are rendered in, and their components: their content replaces them in the tree. */
+const componentHosts = new WeakMap<AnyNode, Owner>();
+/** The root nodes of a `render` template's view, and the element whose template it is. */
+const pageHosts = new WeakMap<AnyNode, Instance>();
 
-/** The components above an owner, innermost first. */
-function ownerNames(owner: Owner | undefined): string[] {
+/**
+ * A node's stack, as React's names it: the elements around it, innermost first, by their host type
+ * (`Text`), and in place of a component's host element its component (`Invoice`). The stack of a
+ * `render` template's content goes on with the element whose template it is.
+ */
+const trace: Trace = (origin) => {
   const names: string[] = [];
-  for (let o = owner; o; o = (o.host?.origin as Origin | undefined)?.owner) if (o.name) names.push(o.name);
-  return names;
-}
-
-/** An element's stack: its component, then those above it. A string's: the element it is in. */
-const trace: Trace = (origin) => dedupe(ownerNames((origin as Origin | undefined)?.owner));
-const elementTrace =
-  (type: string): Trace =>
-  (origin) =>
-    dedupe([hostName(type), ...ownerNames((origin as Origin | undefined)?.owner)]);
-
-function detach(node: AnyNode): void {
-  const p = parents.get(node);
-  if (!p) return;
-  const i = p.children.indexOf(node as Node);
-  if (i >= 0) p.children.splice(i, 1);
-  parents.delete(node);
-}
+  let top: AnyNode | undefined;
+  for (let n = (origin as Origin | undefined)?.node ?? null; n; n = links.parent(n)) {
+    top = n;
+    if (n.kind !== 'element') continue;
+    const component = componentHosts.get(n);
+    if (!component) names.push(hostName(n.type));
+    else if (component.name) names.push(component.name);
+  }
+  const page = top && pageHosts.get(top);
+  if (page) names.push(...componentNames(page));
+  return dedupe(names);
+};
 
 const camel = (name: string): string => name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
 
-/** A prop from an attribute or a property: `class` is `className`, a bare boolean attribute `true`. */
+/**
+ * A prop from an attribute or a property, as every template front end reads it (`assignProp`);
+ * `render` takes an `ng-template`, and `inkStyle` styles past what `[style]` takes.
+ */
 function setProp(el: Parent, name: string, value: unknown): void {
-  if (name === 'class') {
-    el.props.className = value;
-    return;
-  }
   if (
     name === 'render' &&
     value &&
@@ -110,7 +113,7 @@ function setProp(el: Parent, name: string, value: unknown): void {
     el.props.style = el.props.style === undefined ? value : [el.props.style, value];
     return;
   }
-  el.props[name] = value === '' && BOOLEAN_PROPS.has(name) ? true : value;
+  assignProp(el.props, name, value);
 }
 
 class InkRenderer implements Renderer2 {
@@ -129,9 +132,10 @@ class InkRenderer implements Renderer2 {
       type,
       props: tag?.kind ? { kind: tag.kind } : {},
       children: [],
-      origin: { owner: this.owner } satisfies Origin,
-      trace: elementTrace(type),
+      origin: undefined,
+      trace,
     };
+    el.origin = { owner: this.owner, node: el } satisfies Origin;
     return el;
   }
 
@@ -140,7 +144,9 @@ class InkRenderer implements Renderer2 {
   }
 
   createText(value: string): AnyNode {
-    return { kind: 'text', text: value, origin: { owner: this.owner } satisfies Origin, trace };
+    const text: TextInstance = { kind: 'text', text: value, origin: undefined, trace };
+    text.origin = { owner: this.owner, node: text } satisfies Origin;
+    return text;
   }
 
   appendChild(parent: Parent, child: AnyNode): void {
@@ -148,15 +154,11 @@ class InkRenderer implements Renderer2 {
   }
 
   insertBefore(parent: Parent, child: AnyNode, ref: AnyNode | null): void {
-    if (!parent || !('children' in parent)) return;
-    detach(child);
-    const at = ref ? parent.children.indexOf(ref as Node) : -1;
-    parent.children.splice(at < 0 ? parent.children.length : at, 0, child as Node);
-    parents.set(child, parent);
+    if (parent && 'children' in parent) links.insert(child, parent, ref);
   }
 
   removeChild(_parent: Parent | null, old: AnyNode): void {
-    detach(old);
+    links.remove(old);
   }
 
   selectRootElement(selectorOrNode: unknown): AnyNode {
@@ -164,13 +166,11 @@ class InkRenderer implements Renderer2 {
   }
 
   parentNode(node: AnyNode): Parent | null {
-    return parents.get(node) ?? null;
+    return links.parent(node);
   }
 
   nextSibling(node: AnyNode): AnyNode | null {
-    const p = parents.get(node);
-    if (!p) return null;
-    return (p.children[p.children.indexOf(node as Node) + 1] as AnyNode | undefined) ?? null;
+    return links.next(node);
   }
 
   setAttribute(el: Parent, name: string, value: string): void {
@@ -224,7 +224,7 @@ class InkRenderer implements Renderer2 {
         componentStack:
           typeof target === 'string' || target.kind !== 'element'
             ? undefined
-            : formatStack(elementTrace(target.type)(target.origin)),
+            : formatStack(trace(target.origin)),
       },
     );
   }
@@ -237,9 +237,9 @@ const owners = new Map<string, Owner>();
 class InkRendererFactory implements RendererFactory2 {
   createRenderer(host: unknown, type: RendererType2 | null): Renderer2 {
     if (!type) return new InkRenderer(undefined);
-    if (host) componentHosts.add(host as AnyNode);
     const component = (type as { type?: { name?: string } }).type;
     const owner: Owner = { name: component?.name || undefined, host: (host as AnyNode | null) ?? undefined };
+    if (owner.host) componentHosts.set(owner.host, owner);
     if (owner.name) owners.set(owner.name, owner);
     return new InkRenderer(owner);
   }
@@ -279,77 +279,71 @@ function environmentInjector(): EnvironmentInjector {
   return environment;
 }
 
+/** A component in a trace: its template (`Invoice_Template`, `Invoice_For_3_Template`), constructor or method. */
+const FRAME = /\bat (?:new )?([A-Z][\w$]*?)(?:_[\w$]*)?(?:_Template|_Factory|\.[\w$]+)?\b(?= \(|$)/gm;
+/** Classes in a trace that are not components. */
+const NOT_COMPONENTS =
+  /^(?:Object|Array|Function|Promise|Reflect|R3Injector|ChainedInjector|NodeInjector|ComponentFactory|ViewRef|ApplicationRef|InkRenderer|InkRendererFactory|Module|ModuleJob|Error|TypeError)$/;
+
 /**
- * The components of an Angular error's stack trace, innermost first: each component's template is
- * a function named after it (`Invoice_Template`, `Invoice_For_3_Template`), and its constructor
- * and methods are its class's. The templates of a component's `ng-template`s run inside the
- * components they are given to, so each name keeps its outermost place. Empty when the code is
- * bundled without names.
+ * The stack of an error a template threw: the components its trace names (see `namesInTrace`),
+ * innermost first, then the elements and components around the innermost one's host element, as
+ * a placement error names them. A component's template runs from its parent's check, not from its
+ * parent's template, so the trace alone does not say where it is.
  */
 export function angularStack(error: unknown): string | undefined {
-  const trace = error instanceof Error ? error.stack : undefined;
-  if (!trace) return undefined;
-  const names = [
-    ...trace.matchAll(
-      /\bat (?:new )?([A-Z][\w$]*?)(?:_[\w$]*)?(?:_Template|_Factory|\.[\w$]+)?\b(?= \(|$)/gm,
-    ),
-  ]
-    .map((m) => m[1] as string)
-    .filter(
-      (name) =>
-        !/^(?:Object|Array|Function|Promise|Reflect|R3Injector|ChainedInjector|NodeInjector|ComponentFactory|ViewRef|ApplicationRef|InkRenderer|InkRendererFactory|Module|ModuleJob|Error|TypeError)$/.test(
-          name,
-        ),
-    );
-  const outermost = names.filter((name, i) => !names.includes(name, i + 1));
-  const [innermost] = outermost;
+  const named = namesInTrace(error, FRAME, (name) => !NOT_COMPONENTS.test(name));
+  const [innermost] = named;
   if (innermost === undefined) return undefined;
-  // A component's template runs from its parent's check, not from its parent's template: the
-  // components around it are those around the element it was rendered in.
-  const around = ownerNames(owners.get(innermost));
-  return formatStack(dedupe([...outermost, ...around.filter((n) => !outermost.includes(n))]));
+  const host = owners.get(innermost)?.host;
+  const around = host ? trace(host.origin) : [];
+  return formatStack(dedupe([...named.filter((n) => !around.includes(n)), ...around]));
 }
 
-/** Runs Angular, reading as many frames of what it throws as a stack needs. */
-function rendered<T>(run: () => T): T {
-  const limit = Error.stackTraceLimit;
-  Error.stackTraceLimit = Math.max(limit, 200);
+/**
+ * Reads a finished render: host elements of components replaced, then as every template front end
+ * does; `destroy` releases it.
+ */
+const finish = (nodes: readonly AnyNode[], parent: HostType | undefined, destroy: () => void): Container =>
+  finishTemplate(read(nodes), parent, destroy);
+
+/** Checks a view once; a view whose check fails is destroyed. */
+function checked<V extends { destroy(): void }>(view: V, check: () => void): V {
   try {
-    return run();
+    check();
   } catch (e) {
-    throw templateError(e, angularStack(e));
-  } finally {
-    Error.stackTraceLimit = limit;
+    view.destroy();
+    throw e;
   }
+  return view;
 }
-
-/** Reads a finished render: host elements of components replaced, then as every template front end does. */
-const finish = (nodes: readonly AnyNode[], parent?: HostType): Container =>
-  finishTemplate(read(nodes), parent);
 
 /**
  * Renders a component into host nodes, synchronously: created with `inputs`, checked once, then
- * read. Throws a TemplateError.
+ * read. Throws a TemplateError. The container's `dispose` destroys the component.
  */
 export function mount(component: Type<unknown>, inputs: Record<string, unknown> = {}): Container {
   const root: Foreign = { kind: 'element', type: 'root', props: {}, children: [], origin: undefined };
+  root.origin = { owner: undefined, node: root } satisfies Origin;
   owners.clear();
-  rendered(() => {
-    const ref = createComponent(component, {
+  const ref = renderWithTrace(() => {
+    const created = createComponent(component, {
       environmentInjector: environmentInjector(),
       hostElement: root as unknown as Element,
     });
-    for (const [name, value] of Object.entries(inputs)) ref.setInput(name, value);
-    ref.changeDetectorRef.detectChanges();
-  });
-  return finish(root.children as AnyNode[]);
+    return checked(created, () => {
+      for (const [name, value] of Object.entries(inputs)) created.setInput(name, value);
+      created.changeDetectorRef.detectChanges();
+    });
+  }, angularStack);
+  return finish(root.children as AnyNode[], undefined, () => ref.destroy());
 }
 
 /**
  * The content of an element's `render` template for one page: the template rendered with the page
  * as its context (`let-page`, `let-n="pageNumber"`) and `INK_PAGE`, inside the element.
  */
-export function renderPage(inst: Instance, page: PageInfo): Node[] {
+export function renderPage(inst: Instance, page: PageInfo): Container {
   const template = (inst.props.render as { template?: TemplateRef<unknown> }).template;
   if (!template) {
     throw new TemplateError(
@@ -359,11 +353,11 @@ export function renderPage(inst: Instance, page: PageInfo): Node[] {
       },
     );
   }
-  const nodes = rendered(() => {
+  const view = renderWithTrace(() => {
     const injector = Injector.create({ providers: [{ provide: INK_PAGE, useValue: page }] });
-    const view = template.createEmbeddedView({ $implicit: page, ...page }, injector);
-    view.detectChanges();
-    return view.rootNodes as AnyNode[];
-  });
-  return finish(nodes, inst.type).children;
+    const created = template.createEmbeddedView({ $implicit: page, ...page }, injector);
+    return checked(created, () => created.detectChanges());
+  }, angularStack);
+  for (const node of view.rootNodes as AnyNode[]) pageHosts.set(node, inst);
+  return finish(view.rootNodes as AnyNode[], inst.type, () => view.destroy());
 }

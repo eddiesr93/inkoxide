@@ -5,7 +5,8 @@
  * kept, for the placement check to name.
  */
 import {
-  BOOLEAN_PROPS,
+  assignProp,
+  componentNames,
   formatStack,
   hostName,
   type HostType,
@@ -16,71 +17,71 @@ import {
   type Trace,
 } from '@inkoxide/tree';
 
-import type { Capture } from './capture.ts';
+import { svelteNames } from './stack.ts';
+import type { PropsTable, TableEntry } from './table.ts';
 
-/** An element's stack: its component, then the elements around it. */
-const trace: Trace = (origin) => {
+/** What an element keeps for its stack: the element it is in, and its table entry. */
+interface Origin {
+  parent: Instance | undefined;
+  entry: TableEntry | undefined;
+}
+
+/** The Inkoxide components around an element, from the elements it is in. */
+function around(el: Instance | undefined): string[] {
   const names: string[] = [];
-  for (let el = origin as Instance | undefined; el; el = el.origin as Instance | undefined)
-    names.push(hostName(el.type));
+  for (let e = el; e; e = (e.origin as Origin).parent) names.push(hostName(e.type));
   return names;
+}
+
+/**
+ * An element's stack: the components its entry's trace names (the user's among them), else the
+ * Inkoxide components around it.
+ */
+const elementTrace: Trace = (origin) => {
+  const { parent, entry } = origin as Origin;
+  const named = entry ? svelteNames(entry.at) : [];
+  return named.length > 0 ? named : around(parent);
 };
 
 /** A string's stack: that of the element it is in. */
-const textTrace: Trace = (parent) => (parent ? trace(parent) : []);
+const textTrace: Trace = (parent) => (parent ? componentNames(parent as Instance) : []);
 
-/** `class` as Svelte takes it (a string, a list, an object of flags) to `className`. */
-function classNames(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (Array.isArray(value)) return value.map(classNames).filter(Boolean).join(' ');
-  if (value && typeof value === 'object') {
-    return Object.entries(value)
-      .filter(([, on]) => on)
-      .map(([name]) => name)
-      .join(' ');
-  }
-  return '';
-}
-
-/** The props of an element from what its component put in the table. */
-function propsOf(table: Capture, tag: string, id: string | null): Record<string, unknown> {
-  const item = id === null ? undefined : table.items[Number(id)];
+/** The props of an element from its entry in the table. */
+function propsOf(tag: string, entry: TableEntry | undefined): Record<string, unknown> {
   const props: Record<string, unknown> = {};
   const kind = TAGS.get(tag)?.kind;
   if (kind) props.kind = kind;
-  if (!item) return props;
-  for (const [name, value] of Object.entries(item.props)) {
-    if (value === undefined) continue;
-    if (name === 'class') props.className = classNames(value);
-    else props[name] = value === '' && BOOLEAN_PROPS.has(name) ? true : value;
-  }
-  if (item.render) {
+  if (!entry) return props;
+  for (const [name, value] of Object.entries(entry.props)) assignProp(props, name, value);
+  if (entry.render) {
     // The builder calls `render` for each page; `renderPage` renders the snippet it carries.
     props.render = Object.assign(() => undefined, {
-      snippet: item.render.snippet,
-      contexts: item.render.contexts,
+      snippet: entry.render.snippet,
+      contexts: entry.render.contexts,
     });
   }
   return props;
 }
 
 /** An element: a component's, with its props, or another, kept as it is. */
-function element(table: Capture, tag: string, id: string | null, parent: Instance | undefined): Instance {
+function element(table: PropsTable, tag: string, id: string | null, parent: Instance | undefined): Instance {
   const known = TAGS.get(tag);
-  if (known && (id === null || table.items[Number(id)]?.tag !== tag)) {
+  const entry = id === null ? undefined : table.entries[Number(id)];
+  if (known && entry?.tag !== tag) {
     // Not rendered by its component: written in the template, or in markup `{@html}` inserts.
     throw new TemplateError(
       `<${tag}> is rendered by the ${hostName(known.type)} component: write <${hostName(known.type)}>, not the element, and no Inkoxide markup in {@html}.`,
-      { kind: 'structure', componentStack: formatStack(trace(parent)) },
+      { kind: 'structure', componentStack: formatStack(around(parent)) },
     );
   }
+  const type = (known?.type ?? tag) as HostType;
   return {
     kind: 'element',
-    type: (known?.type ?? tag) as HostType,
-    props: known ? propsOf(table, tag, id) : {},
+    type,
+    props: known ? propsOf(tag, entry) : {},
     children: [],
-    origin: parent,
-    trace: (origin) => [hostName(known?.type ?? tag), ...trace(origin)],
+    origin: { parent, entry } satisfies Origin,
+    trace: known ? elementTrace : (origin) => [hostName(type), ...around((origin as Origin).parent)],
   };
 }
 
@@ -114,7 +115,7 @@ const VOID = new Set([
 ]);
 
 /** The nodes of the HTML `svelte/server` wrote. */
-export function readHtml(html: string, table: Capture): Node[] {
+export function readHtml(html: string, table: PropsTable): Node[] {
   const root: Node[] = [];
   const stack: { el: Instance | undefined; children: Node[]; tag: string }[] = [
     { el: undefined, children: root, tag: '' },
@@ -150,7 +151,7 @@ interface DomNode {
 }
 
 /** The nodes of the DOM `mount` built. */
-export function readDom(nodes: ArrayLike<DomNode>, table: Capture, parent?: Instance): Node[] {
+export function readDom(nodes: ArrayLike<DomNode>, table: PropsTable, parent?: Instance): Node[] {
   const out: Node[] = [];
   for (const n of Array.from(nodes)) {
     if (n.nodeType === 3)

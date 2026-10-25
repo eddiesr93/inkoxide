@@ -1,4 +1,5 @@
-// The invoice of examples/invoice.tsx, which each page renders with its front end.
+// The invoice of examples/invoice.tsx, which each page renders with its front end: a copy, since
+// that file runs Node's code when it loads. tests/render-node.tsx checks that they are the same.
 export const sample = {
   number: '2026-0142',
   issued: 'October 11, 2026',

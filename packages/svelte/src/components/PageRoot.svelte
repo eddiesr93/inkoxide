@@ -3,7 +3,7 @@
   import type { PageInfo } from '@inkoxide/tree';
   import { setContext, type Snippet } from 'svelte';
 
-  import { PAGE } from '../capture.ts';
+  import { PAGE } from '../table.ts';
 
   let { snippet, page }: { snippet: Snippet<[PageInfo]>; page: PageInfo } = $props();
   // A template renders once: the page does not change.

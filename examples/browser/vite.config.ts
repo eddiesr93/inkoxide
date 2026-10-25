@@ -24,20 +24,24 @@ export const CDN_PORT = 4181;
 const CDN = `http://localhost:${CDN_PORT}`;
 
 /**
- * The policy of the page whose scripts are another origin's: the engine's workers are then of the
- * page's origin, made from a `blob:` URL, and import their scripts from there.
+ * The policy of a page whose scripts are those of the origin `cdn`: the engine's workers are then
+ * of the page's origin, made from a `blob:` URL, and import their scripts from there.
  */
-export const CDN_CSP = [
-  "default-src 'self'",
-  `script-src 'self' ${CDN} 'wasm-unsafe-eval'`,
-  'worker-src blob:',
-  `connect-src 'self' ${CDN}`,
-  `style-src 'self' ${CDN}`,
-  "img-src 'self' blob:",
-  "frame-src 'self' blob:",
-  "object-src 'none'",
-  "base-uri 'none'",
-].join('; ');
+export const cdnCsp = (cdn: string): string =>
+  [
+    "default-src 'self'",
+    `script-src 'self' ${cdn} 'wasm-unsafe-eval'`,
+    'worker-src blob:',
+    `connect-src 'self' ${cdn}`,
+    `style-src 'self' ${cdn}`,
+    "img-src 'self' blob:",
+    "frame-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'none'",
+  ].join('; ');
+
+/** The policy of this page with INKOXIDE_CDN. */
+export const CDN_CSP = cdnCsp(CDN);
 
 /** The headers that make a page cross-origin isolated, which threads need. */
 export const ISOLATION = {
@@ -61,7 +65,7 @@ export const isolated = (): Plugin => ({
 });
 
 /** The headers a CDN serves its files with, for a page of another origin, isolated or not. */
-const cdn = (): Plugin => ({
+export const cdn = (): Plugin => ({
   name: 'cdn',
   configurePreviewServer(server) {
     server.middlewares.use((_req, res, next) => {

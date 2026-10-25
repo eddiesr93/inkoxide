@@ -41,7 +41,7 @@ const MAIN_TYPES = [
   'TemplateLike',
   'Timings',
 ];
-const BROWSER_VALUES = [...MAIN_VALUES, 'clearCaches', 'PdfRun', 'sameProps'];
+const BROWSER_VALUES = [...MAIN_VALUES, 'clearCaches', 'PdfRun', 'sameDocument'];
 const BROWSER_TYPES = [
   ...MAIN_TYPES.filter((n) => n !== 'LocalImageOptions' && n !== 'NodeRenderer'),
   'BlobRender',

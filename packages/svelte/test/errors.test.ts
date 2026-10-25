@@ -22,10 +22,12 @@ function thrown(fn: () => unknown): TemplateError {
 }
 
 describe('errors', () => {
-  it('refuses an element in the wrong place, with the elements above it', () => {
+  it('refuses an element in the wrong place, with the components above it', () => {
     const e = thrown(() => renderTemplate(Misplaced, { fonts }));
     expect(e.message).toMatch(/^<View> cannot be inside <Text>/);
-    expect(e.componentStack).toBe('\n    in View\n    in Text\n    in Page\n    in Document');
+    expect(e.componentStack).toBe(
+      '\n    in View\n    in Text\n    in Page\n    in Document\n    in Misplaced',
+    );
   });
 
   it('reports what a template throws, with the components it is in', () => {
