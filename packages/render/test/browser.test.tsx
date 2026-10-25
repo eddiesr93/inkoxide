@@ -293,6 +293,17 @@ describe.skipIf(!built)('@inkoxide/render/browser', () => {
     const timedOut = await browser.renderToBuffer(doc, { timeoutMs: 50 }).catch((e: unknown) => e);
     expect(timedOut).toBeInstanceOf(DOMException);
     expect(timedOut).toMatchObject({ name: 'TimeoutError' });
+    // 0 has passed already, however fast the render.
+    const now = await browser
+      .renderToBuffer(
+        <Document>
+          <Page />
+        </Document>,
+        { timeoutMs: 0 },
+      )
+      .catch((e: unknown) => e);
+    expect(now).toBeInstanceOf(DOMException);
+    expect(now).toMatchObject({ name: 'TimeoutError' });
     const reason = new Error('stop');
     const controller = new AbortController();
     setTimeout(() => controller.abort(reason), 50);
