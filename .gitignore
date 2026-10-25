@@ -18,9 +18,14 @@ dist-cdn/
 /packages/wasm/inkoxide-threads.wasm
 /packages/wasm/hyphenation/
 
-# Playwright, in examples/browser
+# Server builds of the conformance tests
+/packages/conformance/.server-build-*/
+
+# Playwright, in examples/browser and examples/frameworks
 /examples/browser/test-results/
 /examples/browser/playwright-report/
+/examples/frameworks/test-results/
+/examples/frameworks/playwright-report/
 
 # Fuzzing
 /fuzz/target/

@@ -5,6 +5,8 @@ Vue templates to PDF with the Inkoxide engine, in Node and in the browser. You w
 functions, style them with `style` or Tailwind classes, and get a PDF: the same PDF, byte for
 byte, as the same document written for `@inkoxide/react`.
 
+The [guide](GUIDE.md) says how Vue writes each part of a document, and the API.
+
 Part of [Inkoxide](https://github.com/eddiesr93/inkoxide). Requires Node.js 22 or later and Vue
 3.5 or later; ES modules only.
 
@@ -70,7 +72,7 @@ way:
 | A template for `generate` | `Template: ComponentType<{ data }>` | `Template`: a component with the prop `data` |
 
 A template renders once, synchronously: `<Suspense>`, `async setup()` and async components are
-errors. Load the data first and pass it in as props. Listeners (`@click`) are ignored.
+errors. Load the data first and pass it in as props. Listeners (`@click`) and Vapor components are errors.
 
 ### Single-file components on a server
 

@@ -43,9 +43,9 @@ const PACKAGES = [
   // Not side-effect free: its entries install the engine host of where they run.
   { name: 'render', assets: true },
   { name: 'react', extras: ['media', 'GUIDE.md'] },
-  { name: 'vue' },
-  { name: 'svelte', svelte: true },
-  { name: 'angular' },
+  { name: 'vue', extras: ['GUIDE.md'] },
+  { name: 'svelte', svelte: true, extras: ['GUIDE.md'] },
+  { name: 'angular', extras: ['GUIDE.md'] },
 ];
 
 /** Licence files that must ship with the fonts. */

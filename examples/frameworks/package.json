@@ -1,0 +1,35 @@
+{
+  "name": "@inkoxide/examples-frameworks",
+  "private": true,
+  "type": "module",
+  "description": "Pages that render PDFs in the browser with @inkoxide/vue, @inkoxide/svelte and @inkoxide/angular, and their Playwright tests.",
+  "scripts": {
+    "dev": "vite --configLoader runner",
+    "build": "vite build --configLoader runner",
+    "preview": "vite preview --configLoader runner",
+    "test": "playwright test"
+  },
+  "dependencies": {
+    "@angular/common": "22.2.3",
+    "@angular/compiler": "22.2.3",
+    "@angular/core": "22.2.3",
+    "@angular/platform-browser": "22.2.3",
+    "@inkoxide/angular": "workspace:*",
+    "@inkoxide/svelte": "workspace:*",
+    "@inkoxide/tailwind": "workspace:*",
+    "@inkoxide/vue": "workspace:*",
+    "@inkoxide/wasm": "workspace:*",
+    "rxjs": "7.8.2",
+    "svelte": "5.57.2",
+    "vue": "3.5.44"
+  },
+  "devDependencies": {
+    "@inkoxide/react": "workspace:*",
+    "@playwright/test": "1.63.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@vitejs/plugin-vue": "6.0.10",
+    "react": "19.3.0",
+    "tsx": "4.23.15",
+    "vite": "8.3.4"
+  }
+}

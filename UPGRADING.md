@@ -30,13 +30,11 @@ so code that imports `Font` from either sees the same registry.
 
 `generate` reports the time the template took to render as `templateMs`, whatever the framework.
 
-### Low-level functions moved to `@inkoxide/tree`
+### `@inkoxide/react` keeps its other names
 
-`@inkoxide/react` exported what the renderer shared with it: `fonts`, `FontRegistry`,
-`familyKey`, `loadTailwind`, `validateTree`, `assertValidTree`, `parsePath`, `innermostComponent`,
-`imageSource`, `isImagePath`, `remoteAllowed`, `remoteRefused`, `fontWeightValue`,
-`fontStretchValue`, `fontVariationsValue`, `HOST` and `HOST_NAME`. They are in `@inkoxide/tree`, which every front end shares. `renderTemplate`,
-`renderToTree`, `TemplateError` and `PAGE_SIZES` are still exported by `@inkoxide/react`.
+`@inkoxide/react` still exports what it exported in 0.10 (`fonts`, `FontRegistry`,
+`loadTailwind`, `validateTree`, `renderTemplate`, `renderToTree`, `HOST`, …), so code that built
+document trees with it runs as before. Every front end shares them, from `@inkoxide/tree`.
 
 ### SVG markup
 

@@ -276,9 +276,22 @@ only on demand, from the Actions tab, with the ID of that release run.
   `browser` exports (Svelte's client runtime). Vue's single-file components are
   compiled for the client (`@inkoxide/vue/vite`), Svelte's for the server in
   `node` and for the client in `dom`, and Angular's components just in time.
-- `packages/conformance/test`: the examples written again in Vue, Svelte and
-  Angular must build the document React builds and the same PDF, byte for
-  byte, and every front end must export the names of `@inkoxide/react`.
+- `packages/conformance/test`: the examples and a document of features
+  (per-page content, `@media`, Canvas, SVG text, an image, a note, fields),
+  written again in Vue, Svelte and Angular, must build the document React
+  builds and the same PDF, byte for byte; a component in the wrong place
+  gives React's error in each; every front end exports the names of
+  `@inkoxide/react` and every component; and a Vite server build of the Vue
+  and Svelte templates, as Nuxt and SvelteKit build them, renders React's PDF.
+- `examples/frameworks` (Playwright, `pnpm test` there): the invoice written
+  in Vue, Svelte and Angular renders in a worker, in Chromium, Firefox and
+  WebKit, the bytes React renders in Node, with the classes the Tailwind
+  plugin read from `.vue`, `.svelte` and Angular's inline templates, under a
+  Content Security Policy (the Angular page compiles just in time, so its
+  policy allows `'unsafe-eval'`).
+- The `front-end-versions` job of `ci.yml` runs the Angular tests with
+  Angular 21 and the Svelte tests with Svelte 5.16, the oldest versions the
+  packages support; the rest of CI tests the versions the workspace pins.
 - `scripts/check-generated.sh`: regenerates every committed generated
   file (`packages/schema/index.d.ts`, `docs/SCHEMA.md`,
   `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict`, the fixture

@@ -33,7 +33,7 @@
   "peerDependencies": {
     "@inkoxide/tailwind": "workspace:*",
     "@inkoxide/wasm": "workspace:*",
-    "svelte": "^5.29.0"
+    "svelte": "^5.16.0"
   },
   "peerDependenciesMeta": {
     "@inkoxide/tailwind": {

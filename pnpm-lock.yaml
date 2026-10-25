@@ -126,6 +126,67 @@ importers:
         specifier: 8.3.4
         version: 8.3.4(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.1)(sass-embedded@1.106.1)(sass@1.106.1)(terser@5.51.2)(tsx@4.23.15)
 
+  examples/frameworks:
+    dependencies:
+      '@angular/common':
+        specifier: 22.2.3
+        version: 22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2)
+      '@angular/compiler':
+        specifier: 22.2.3
+        version: 22.2.3
+      '@angular/core':
+        specifier: 22.2.3
+        version: 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
+      '@angular/platform-browser':
+        specifier: 22.2.3
+        version: 22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
+      '@inkoxide/angular':
+        specifier: workspace:*
+        version: link:../../packages/angular
+      '@inkoxide/svelte':
+        specifier: workspace:*
+        version: link:../../packages/svelte
+      '@inkoxide/tailwind':
+        specifier: workspace:*
+        version: link:../../packages/tailwind
+      '@inkoxide/vue':
+        specifier: workspace:*
+        version: link:../../packages/vue
+      '@inkoxide/wasm':
+        specifier: workspace:*
+        version: link:../../packages/wasm
+      rxjs:
+        specifier: 7.8.2
+        version: 7.8.2
+      svelte:
+        specifier: 5.57.2
+        version: 5.57.2
+      vue:
+        specifier: 3.5.44
+        version: 3.5.44(typescript@7.0.2)
+    devDependencies:
+      '@inkoxide/react':
+        specifier: workspace:*
+        version: link:../../packages/react
+      '@playwright/test':
+        specifier: 1.63.0
+        version: 1.63.0
+      '@sveltejs/vite-plugin-svelte':
+        specifier: 7.3.1
+        version: 7.3.1(svelte@5.57.2)(vite@8.3.4(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.1)(sass-embedded@1.106.1)(sass@1.106.1)(terser@5.51.2)(tsx@4.23.15))
+      '@vitejs/plugin-vue':
+        specifier: 6.0.10
+        version: 6.0.10(vite@8.3.4(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.1)(sass-embedded@1.106.1)(sass@1.106.1)(terser@5.51.2)(tsx@4.23.15))(vue@3.5.44(typescript@7.0.2))
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+      vite:
+        specifier: 8.3.4
+        version: 8.3.4(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.1)(sass-embedded@1.106.1)(sass@1.106.1)(terser@5.51.2)(tsx@4.23.15)
+
   packages/angular:
     dependencies:
       '@inkoxide/render':
@@ -198,6 +259,9 @@ importers:
       '@inkoxide/vue':
         specifier: workspace:*
         version: link:../vue
+      '@sveltejs/vite-plugin-svelte':
+        specifier: 7.3.1
+        version: 7.3.1(svelte@5.57.2)(vite@8.3.4(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.1)(sass-embedded@1.106.1)(sass@1.106.1)(terser@5.51.2)(tsx@4.23.15))
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0
@@ -213,6 +277,9 @@ importers:
       svelte:
         specifier: 5.57.2
         version: 5.57.2
+      vite:
+        specifier: 8.3.4
+        version: 8.3.4(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.1)(sass-embedded@1.106.1)(sass@1.106.1)(terser@5.51.2)(tsx@4.23.15)
       vue:
         specifier: 3.5.44
         version: 3.5.44(typescript@7.0.2)

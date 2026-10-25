@@ -5,6 +5,8 @@ component whose template uses the Inkoxide elements (`<ink-document>`, `<ink-pag
 `<ink-view>`, `<ink-text>`, `<ink-table>` and the rest), styled with classes or `[style]`; the PDF
 is the same, byte for byte, as the same document written for `@inkoxide/react`.
 
+The [guide](GUIDE.md) says how Angular writes each part of a document, and the API.
+
 Part of [Inkoxide](https://github.com/eddiesr93/inkoxide). Requires Node.js 22 or later and
 Angular 21 or 22; ES modules only.
 
@@ -75,7 +77,7 @@ Angular way:
 
 Templates need `schemas: [CUSTOM_ELEMENTS_SCHEMA]`, so that Angular passes the attributes and
 property bindings of the elements on. A template renders once, synchronously: change detection
-runs once, and listeners are ignored.
+runs once, and listeners (`(click)`) are errors.
 
 ## In the browser
 
@@ -106,7 +108,9 @@ export class Preview {
 }
 ```
 
-It gives `blob`, `url`, `safeUrl` (trusted for `<iframe [src]>`), `loading` and `error` as signals,
+The directives `[inkPdfViewer]` (on an `<iframe>`), `[inkPdfDownload]` (on an `<a>`) and
+`*inkBlobProvider` do the same for the elements they drive ([guide](GUIDE.md#in-the-browser)).
+`injectPdf` gives `blob`, `url`, `safeUrl` (trusted for `<iframe [src]>`), `loading` and `error` as signals,
 and `update()`. `renderToBlob` and `renderToStream` (a web stream) are there too. See
 [In the browser](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#in-the-browser)
 for where the engine and fonts come from.

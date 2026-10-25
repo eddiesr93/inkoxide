@@ -20,17 +20,22 @@ templates change.
   as attributes (`class`, kebab-case names), their content in the default slot and the per-page
   content in a `render` slot; `usePage()` injects the page. `@inkoxide/vue/browser` has `usePdf`,
   `<PdfViewer>`, `<PdfDownloadLink>` and `<BlobProvider>`; `@inkoxide/vue/vite` compiles
-  single-file templates for the client in a server build (Nuxt, Vite's SSR).
-- `@inkoxide/svelte`: Svelte 5 templates. The per-page content is a `render` snippet;
+  single-file templates for the client in a server build (Nuxt, Vite's SSR). Listeners, async
+  components, `<Suspense>` and Vapor components are template errors.
+- `@inkoxide/svelte`: Svelte 5.16+ templates. The per-page content is a `render` snippet;
   `@inkoxide/svelte/browser` has `createPdf`, `<PdfViewer>`, `<PdfDownloadLink>` and
   `<BlobProvider>`.
 - `@inkoxide/angular`: templates of Angular 21 and 22 components, with the `ink-*` elements
   (`<ink-view>`, `<ink-text>`, `<ink-path>`, `<ink-text-field>`) and `CUSTOM_ELEMENTS_SCHEMA`. The
   per-page content is an `ng-template` given to `[render]`; `injectPage()` gives the page.
-  `@inkoxide/angular/browser` has `injectPdf`, the render's state as signals.
-- `@inkoxide/tree`: what the front ends share, for writing one: the components' props, where each
-  may go, host nodes and `buildDocument`.
-- `@inkoxide/render`'s `createRenderer(frontEnd)`: the functions a front end exports.
+  `@inkoxide/angular/browser` has `injectPdf`, the render's state as signals, and the directives
+  `inkPdfViewer`, `inkPdfDownload` and `inkBlobProvider`.
+- Each front end has a guide (`GUIDE.md`) of how it writes a document.
+- `@inkoxide/tree`: what the front ends share, for writing one: the components' props
+  (`@inkoxide/tree/props`), where each may go, host nodes, `buildDocument` and
+  `templateFunctions`.
+- `@inkoxide/render`'s `createRenderer(frontEnd)`: the functions a front end exports; and, in its
+  browser entry, `PdfRun`, the state the browser helpers of every front end keep.
 - `renderTemplate` and `renderToTree` (a template to its document tree, without the engine) and
   `TemplateError` are exported by every front end.
 
@@ -40,9 +45,6 @@ templates change.
   `@inkoxide/react/templates`) instead of `@inkoxide/render`. `@inkoxide/render` no longer
   depends on React: it renders documents (`renderDocument`) and gives front ends their functions.
 - **Breaking:** `timings.reactMs` of `generate` is `timings.templateMs`.
-- **Breaking:** `@inkoxide/react` no longer exports what it shared with the renderer (`fonts`,
-  `FontRegistry`, `loadTailwind`, `validateTree`, `parsePath`, the image and font value helpers,
-  `HOST`); they are in `@inkoxide/tree` ([UPGRADING.md](UPGRADING.md) lists them).
 - The SVG markup of an `<Svg>` writes its attributes by name, whatever order they were set in.
 
 ## 0.10.1 - 2026-10-25

@@ -11,7 +11,5 @@ or should come sooner.
   internal review only.
 - **Svelte**: a custom renderer in place of reading back what Svelte rendered, once Svelte ships
   them ([sveltejs/svelte#18042](https://github.com/sveltejs/svelte/pull/18042)), so that component
-  stacks name the template's own components.
+  stacks name the template's own components in a minified bundle too.
 - **Angular**: typed components beside the `ink-*` elements, so that templates are type-checked.
-- **Examples**: a browser page for Vue, Svelte and Angular, with the Playwright tests of the React
-  one.

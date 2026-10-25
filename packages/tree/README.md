@@ -46,10 +46,13 @@ const { document } = buildDocument(container, {}, { fonts });
 ```
 
 A node may keep an `origin` and a `trace` that names the components above it, for the component
-stacks of errors. A front end that supports `render` props passes `renderPage`, which renders an
-element's `render` prop for one page. `trimTemplateText` gives the strings of template languages
-the white space JSX would, and `TAGS` and `BOOLEAN_PROPS` serve front ends that write elements and
-attributes. [`@inkoxide/render`](https://www.npmjs.com/package/@inkoxide/render)'s
+stacks of errors. A front end that supports `render` props passes `renderPage` (in `BuildHooks`),
+which renders an element's `render` prop for one page. `templateFunctions(mount, hooks)` gives a
+front end its `renderTemplate` and `renderToTree`; `finishTemplate` reads what a template language
+rendered (its text as JSX would give it, checked), and `templateError` turns what a template threw
+into a `TemplateError`. `COMPONENTS`, `TAGS`, `tagName` and `BOOLEAN_PROPS` serve front ends that
+write elements and attributes, and `@inkoxide/tree/props` has the types of the props every front
+end exports. [`@inkoxide/render`](https://www.npmjs.com/package/@inkoxide/render)'s
 `createRenderer` turns a front end into the functions that render PDFs.
 
 ## Licence

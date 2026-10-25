@@ -24,8 +24,8 @@ tree. This page describes how the pieces fit together, for contributors.
 | `packages/vue` | The Vue front end, `@inkoxide/vue`: a custom renderer (`createRenderer`) over host nodes, components, the render functions, `./browser`, `./templates`, and `./vite`, which compiles single-file templates for the client in a server build. |
 | `packages/svelte` | The Svelte front end, `@inkoxide/svelte`: components (generated) that render `ink-*` elements and put their props in a table of the render; the HTML of `svelte/server`, or the DOM `mount` builds in a browser, is read back into host nodes. |
 | `packages/angular` | The Angular front end, `@inkoxide/angular`: a `RendererFactory2` over host nodes, for template components that use the `ink-*` elements; `./browser` with `injectPdf`. |
-| `packages/conformance` | Not published: the examples written with each front end, which must build the document and the PDF React builds, and the names each exports. |
-| `examples` | Example documents in React; they produce the screenshots in the READMEs. |
+| `packages/conformance` | Not published: the examples and a document of features written with each front end, which must build the document and the PDF React builds; the names each exports and its components; a server build of the Vue and Svelte templates. |
+| `examples` | Example documents in React; they produce the screenshots in the READMEs. `examples/browser` renders them in a browser with `@inkoxide/react/browser`, and `examples/frameworks` the invoice with the Vue, Svelte and Angular front ends. |
 | `benchmarks` | Benchmarks of `@inkoxide/render` on an invoice and a report, on the server and in the browser. |
 | `fixtures` | Engine test documents, fonts, images and reference renders. |
 | `fuzz` | cargo-fuzz targets (nightly, outside the Cargo workspace). |

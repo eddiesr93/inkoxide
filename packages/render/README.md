@@ -61,6 +61,7 @@ document follows the
 | `countPages(pdf)`, `version()`, `engineStatus()` | The page count of a PDF; the engine and schema versions; what `init` loaded. |
 | `RenderError` | Every failure, with a `code`. |
 | `createRenderer(frontEnd)` | For a front end: the functions it exports (`renderToBuffer`, `renderToFile`, `renderToStream`, `generate`, `renderTree`; in a browser `renderToBlob` and a web stream), from how it builds a document tree (`FrontEnd`). |
+| `PdfRun`, `sameProps` (`@inkoxide/render/browser`) | For a front end's browser helpers: a document rendered to a PDF blob and its URL, again on request, each render stopping the one still running and each URL revoked when another replaces it; and whether two documents have the same props. |
 | `@inkoxide/render/templates` | What templates served by id share in every front end: `parseData`, `renderSettled`, `renderDocument`. |
 
 The [guide](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#api)
