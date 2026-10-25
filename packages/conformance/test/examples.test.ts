@@ -3,7 +3,6 @@
  * React builds, and the same PDF.
  */
 import '@angular/compiler';
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import { renderTemplate as angularTree } from '@inkoxide/angular';
@@ -42,6 +41,7 @@ import VueLetter from '../vue/Letter.vue';
 import VueReceipt from '../vue/Receipt.vue';
 import VueReport from '../vue/Report.vue';
 import VueResume from '../vue/Resume.vue';
+import { sha } from './sha.ts';
 
 const EXAMPLES = [
   {
@@ -109,7 +109,6 @@ const IMAGES = {
   logo: new Uint8Array(readFileSync(new URL('../../../fixtures/images/logo.png', import.meta.url))),
 };
 const TREE = { imageIds: Object.keys(IMAGES) };
-const sha = (pdf: Uint8Array) => createHash('sha256').update(pdf).digest('hex');
 
 beforeAll(async () => {
   await init();

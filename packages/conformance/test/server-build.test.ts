@@ -5,7 +5,6 @@
  * `@inkoxide/vue/vite`, Svelte's for the server), and the built module renders the PDF React
  * renders.
  */
-import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -19,10 +18,10 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import Invoice, { sample } from '../../../examples/invoice.tsx';
 import { pdfTemplates } from '../../vue/src/vite.ts';
+import { sha } from './sha.ts';
 
 // Inside the package, so that the built module finds the packages it imports.
 const out = mkdtempSync(new URL('../.server-build-', import.meta.url).pathname);
-const sha = (pdf: Uint8Array) => createHash('sha256').update(pdf).digest('hex');
 
 afterAll(() => {
   if (!process.env.KEEP) rmSync(out, { recursive: true, force: true });

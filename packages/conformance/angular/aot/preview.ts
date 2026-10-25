@@ -9,7 +9,13 @@ import { Receipt } from './receipt.ts';
   selector: 'app-preview',
   imports: [InkPdfViewer, InkPdfDownload, InkBlobProvider],
   template: `
-    <iframe [inkPdfViewer]="receipt" [inkPdfViewerToolbar]="false" title="Receipt"></iframe>
+    <iframe
+      [inkPdfViewer]="receipt"
+      [inkPdfViewerToolbar]="false"
+      #viewer="inkPdfViewer"
+      title="Receipt"
+    ></iframe>
+    <p>{{ viewer.pdf.loading() }}</p>
     <a [inkPdfDownload]="receipt" inkPdfDownloadFile="receipt.pdf" #link="inkPdfDownload">
       {{ link.pdf.loading() ? 'Rendering' : 'Download' }}
     </a>

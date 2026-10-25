@@ -1413,6 +1413,8 @@ exported:
   and `TextFormat`, the `format` of a `TextField`;
 - attachments: `AttachmentFile`, a file of `<Document attachments>`, `AttachmentProps`, and
   `FacturXOptions` and `FacturXProfile`, of `facturX()`;
+- `ReactProps<P>`, a component's props `P` with React children and a React `render` prop, the
+  props of each component;
 - `render` props and images: `RenderProp`, `PageInfo`, `ImageSrc`, `ImageSrcValue`,
   `ImageRequest`, `Painter`, the painter a `Canvas` draws with, `CanvasGradient`, its
   gradients, and `CanvasTextOptions`, the options of its `text`;

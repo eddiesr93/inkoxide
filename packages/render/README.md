@@ -60,8 +60,8 @@ document follows the
 | `Font.register(…)` | Adds fonts by family, from bytes, a file or a URL. |
 | `countPages(pdf)`, `version()`, `engineStatus()` | The page count of a PDF; the engine and schema versions; what `init` loaded. |
 | `RenderError` | Every failure, with a `code`. |
-| `createRenderer(frontEnd)` | For a front end: the functions it exports (`renderToBuffer`, `renderToFile`, `renderToStream`, `generate`, `renderTree`; in a browser `renderToBlob` and a web stream), from how it builds a document tree (`FrontEnd`). |
-| `PdfRun`, `sameDocument` (`@inkoxide/render/browser`) | For a front end's browser helpers: a document rendered to a PDF blob and its URL, again when it changes (`follow`) or on request, each render stopping the one still running and each URL revoked when another replaces it; and whether two documents render the same PDF. |
+| `createRenderer(frontEnd)` | For a front end: the functions it exports, from how it builds a document tree (`FrontEnd`): in Node a `NodeRenderer` (`renderToBuffer`, `renderToFile`, `renderToStream`, `generate`, `renderTree`), in a browser a `BrowserRenderer` (`renderToBuffer`, `renderToBlob`, a web stream, `generate`). Their documentation is the front ends'. |
+| `PdfRun`, `sameDocument`, `viewerUrl` (`@inkoxide/render/browser`) | For a front end's browser helpers: a document rendered to a PDF blob and its URL (`BlobRender` renders it), again when it changes (`follow`) or on request, each render stopping the one still running and each URL revoked when another replaces it; whether two documents render the same PDF; and the URL a frame shows a PDF at, with or without the viewer's toolbar. `PdfSnapshot` is the state, and `PdfState` the state with `update()`, as the helpers give it. |
 | `@inkoxide/render/templates` | What templates served by id share in every front end: `parseData`, `renderSettled`, `renderDocument`. |
 
 The [guide](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#api)

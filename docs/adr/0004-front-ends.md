@@ -34,15 +34,18 @@ the list of components (`COMPONENTS`), the types of the props (`@inkoxide/tree/p
 component's props by its name (`PropsByComponent`, which React's and Vue's components and the
 generated Svelte ones are typed from), the placement rules (`checkElement`, `checkText`,
 `checkTree`), host nodes, `buildDocument`, and what every front end does around its render
-(`templateFunctions`, `templateError`, `finishTemplate`, and for renderers `assignProp` and
-`nodeLinks`). A node keeps an opaque `origin` and a `trace` that names the components above it;
-the builder asks the front end to render a `render` prop for a page (`renderPage`, in
-`BuildHooks`), in a root of its own. `@inkoxide/render` takes a `FrontEnd` (how to build the tree
+(`templateFunctions`, `templateError`, and `finishTemplate`, which drops the comments a template
+language leaves). `@inkoxide/tree/common` has the names every front end exports as they are
+(`TemplateError`, `StyleSheet`, `facturX`, …), and `@inkoxide/tree/internal` what Inkoxide's own
+renderers share (`assignProp`, `nodeLinks`, stacks from traces), outside semver, as
+`@inkoxide/style/internal` is. A node keeps an opaque `origin` and a `trace` that names the
+components above it; the builder asks the front end to render a `render` prop for a page
+(`renderPage`, which `buildDocument` takes), in a root of its own. `@inkoxide/render` takes a `FrontEnd` (how to build the tree
 of an input, of a template with its data, and the name of its component) and `createRenderer`
 gives the functions each front end exports, documented once on `NodeRenderer` and
 `BrowserRenderer`; `@inkoxide/render/templates` keeps what templates served by id share in every
 front end. Its browser entry gives the browser helpers their state (`PdfRun`), and
-`sameDocument`: a document made again with the same props (an element of the same type, key and
+`sameDocument` (`viewerUrl` gives a frame its URL): a document made again with the same props (an element of the same type, key and
 props; a component with the same props or inputs) does not render again. Each framework package
 is one import: components, Node functions, a `./browser` entry and `./templates`, with the same
 names (`usePage` in React, Vue and Svelte; Angular's are `injectPage` and `injectPdf`, as its own
@@ -107,26 +110,6 @@ before it, a server render that threw left its contexts to the next render (fixe
 5.0's compiler refuses the components' TypeScript; CI tests 5.39. When Svelte ships custom
 renderers, a renderer can replace the reading without changing the components' API.
 
-## Alternatives
-
-- **Typed Angular components** (`<ink-view>` as components with `input()`, compiled with
-  ng-packagr): template type checking of the props, at the cost of an Angular compilation of the
-  package. ng-packagr and Angular's compiler (21 and 22) need TypeScript 6.0, beside the
-  repository's TypeScript 7, and the package's build would be unlike every other's. The elements
-  need none of it; typed components can come later, beside them. Only the ahead-of-time test
-  installs TypeScript 6 and `@angular/compiler-cli`, in `packages/conformance`.
-- **A Svelte renderer** (sveltejs/svelte#18042): still in review, and experimental; reading back
-  what Svelte rendered works with the Svelte 5 releases there are.
-- **One input for every front end** (`(Component, props)`): each framework's own value instead
-  (an element, a VNode, a component with its props or inputs), which its users already write.
-- **A spike per framework first**: the conformance suite was the criterion instead, from the
-  start.
-- **Nuxt and SvelteKit applications in examples**: a Vite server build of the templates, in the
-  conformance suite, tests what they do on a server, without two more applications to keep.
-- **Leaving a render's app mounted**: less code, but a template that reads a store or a global
-  signal would stay subscribed to it, once for every render.
-- **A version reported by every front end**: only React has a place for it (DevTools).
-
 ## Consequences
 
 - 1.0.0 breaks one import: React templates import from `@inkoxide/react` instead of
@@ -149,3 +132,23 @@ renderers, a renderer can replace the reading without changing the components' A
   cross-origin isolated on a pool of threads, and with its scripts from another origin. A server
   build of the Vue and Svelte templates (as Vite's SSR builds them) is tested in
   `packages/conformance`, in place of applications of those frameworks.
+
+## Alternatives
+
+- **Typed Angular components** (`<ink-view>` as components with `input()`, compiled with
+  ng-packagr): template type checking of the props, at the cost of an Angular compilation of the
+  package. ng-packagr and Angular's compiler (21 and 22) need TypeScript 6.0, beside the
+  repository's TypeScript 7, and the package's build would be unlike every other's. The elements
+  need none of it; typed components can come later, beside them. Only the ahead-of-time test
+  installs TypeScript 6 and `@angular/compiler-cli`, in `packages/conformance`.
+- **A Svelte renderer** (sveltejs/svelte#18042): still in review, and experimental; reading back
+  what Svelte rendered works with the Svelte 5 releases there are.
+- **One input for every front end** (`(Component, props)`): each framework's own value instead
+  (an element, a VNode, a component with its props or inputs), which its users already write.
+- **A spike per framework first**: the conformance suite was the criterion instead, from the
+  start.
+- **Nuxt and SvelteKit applications in examples**: a Vite server build of the templates, in the
+  conformance suite, tests what they do on a server, without two more applications to keep.
+- **Leaving a render's app mounted**: less code, but a template that reads a store or a global
+  signal would stay subscribed to it, once for every render.
+- **A version reported by every front end**: only React has a place for it (DevTools).

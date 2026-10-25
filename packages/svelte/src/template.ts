@@ -8,10 +8,10 @@ import {
   type Node,
   type PageInfo,
   type RenderPage,
-  renderWithTrace,
   type TemplateFunctions,
   templateFunctions,
 } from '@inkoxide/tree';
+import { renderWithTrace } from '@inkoxide/tree/internal';
 import type { Component, Snippet } from 'svelte';
 
 import PageRoot from './components/PageRoot.svelte';
@@ -75,11 +75,8 @@ export function svelteTemplates(mounter: Mounter): TemplateFunctions<Renderable>
     return renderAndRead(mounter, PageRoot, { snippet, page }, contexts, inst.type);
   };
 
-  return templateFunctions(
-    (input: Renderable) => {
-      const { component, props = {} } = componentAndProps(input);
-      return renderAndRead(mounter, component, props, new Map());
-    },
-    { renderPage },
-  );
+  return templateFunctions((input: Renderable) => {
+    const { component, props = {} } = componentAndProps(input);
+    return renderAndRead(mounter, component, props, new Map());
+  }, renderPage);
 }

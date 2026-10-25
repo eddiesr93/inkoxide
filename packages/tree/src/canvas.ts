@@ -158,7 +158,10 @@ const INITIAL: State = {
 
 export class Painter {
   /** @internal The tree builder makes the painter. */
-  constructor(private readonly fonts: PainterFonts) {}
+  private readonly fonts: PainterFonts;
+  constructor(fonts: PainterFonts) {
+    this.fonts = fonts;
+  }
 
   private d = '';
   private state: State = { ...INITIAL };

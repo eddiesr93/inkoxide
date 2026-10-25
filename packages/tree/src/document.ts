@@ -64,12 +64,6 @@ export interface TreeResult extends Omit<BuildResult, 'origin'> {
   dispose(): void;
 }
 
-/** What a front end gives `buildDocument` besides the host nodes. */
-export interface BuildHooks {
-  /** Renders an element's `render` prop for one page; see {@link RenderPage}. */
-  renderPage?: RenderPage;
-}
-
 /**
  * Renders the `render` prop of an element for one page, in a root of its own inside the element's
  * host type (the container's `parent`). The document keeps the root, and releases it with its own
@@ -84,14 +78,15 @@ interface Roots {
 }
 
 /**
- * Turns host nodes a front end rendered into an Inkoxide document. `templateMs` is the time the
- * front end took to render them, reported in `timings`. Throws a TemplateError with a component
- * stack.
+ * Turns host nodes a front end rendered into an Inkoxide document. `renderPage` renders the
+ * `render` prop of an element for a page (without it, a `render` prop is an error), and
+ * `templateMs` is the time the front end took to render the nodes, reported in `timings`. Throws a
+ * TemplateError with a component stack.
  */
 export function buildDocument(
   container: Container,
-  hooks: BuildHooks,
   opts: TreeOptions = {},
+  renderPage?: RenderPage,
   templateMs = 0,
 ): TreeResult {
   const registered = new Set(opts.imageIds);
@@ -107,7 +102,6 @@ export function buildDocument(
   const dispose = () => {
     for (const root of rendered.splice(0)) root.dispose?.();
   };
-  const { renderPage } = hooks;
   const roots: Roots = {
     renderPage:
       renderPage &&

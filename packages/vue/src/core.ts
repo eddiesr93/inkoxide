@@ -50,21 +50,5 @@ export {
 } from './components.ts';
 export type * from '@inkoxide/tree/props';
 export { usePage } from './page.ts';
-export {
-  type CanvasGradient,
-  type CanvasTextOptions,
-  type EmojiSource,
-  facturX,
-  type FacturXOptions,
-  type FacturXProfile,
-  facturXRelationship,
-  type Located,
-  PAGE_SIZES,
-  type Painter,
-  StyleSheet,
-  TemplateError,
-  type TemplateErrorKind,
-  type TreeOptions,
-  type TreeResult,
-} from '@inkoxide/tree';
+export * from '@inkoxide/tree/common';
 export { type Renderable, renderTemplate, renderToTree } from './template.ts';

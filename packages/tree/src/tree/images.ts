@@ -129,7 +129,10 @@ export class ImageIds {
   private readonly ids = new Map<unknown, string>();
   private readonly counts = new Map<string, number>();
 
-  constructor(private readonly taken: ReadonlySet<string> = new Set()) {}
+  private readonly taken: ReadonlySet<string>;
+  constructor(taken: ReadonlySet<string> = new Set()) {
+    this.taken = taken;
+  }
 
   /** The id of `key` (a string, or an object by identity); a new one is `${prefix}-${n}`. */
   of(key: unknown, prefix: string): string {
@@ -169,7 +172,10 @@ export class ImageTable {
   /** Other images to load: image id → a file, a request, or a function or promise `src`. */
   readonly pending: Record<string, PendingImage> = {};
 
-  constructor(private readonly opts: ImageTableOptions) {}
+  private readonly opts: ImageTableOptions;
+  constructor(opts: ImageTableOptions) {
+    this.opts = opts;
+  }
 
   /**
    * The image node's `src` (an image id) or `data` for `src`. `fail` reports a `src` that is

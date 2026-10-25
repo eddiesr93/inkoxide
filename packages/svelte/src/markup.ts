@@ -5,8 +5,6 @@
  * kept, for the placement check to name.
  */
 import {
-  assignProp,
-  componentNames,
   formatStack,
   hostName,
   type HostType,
@@ -16,6 +14,7 @@ import {
   TemplateError,
   type Trace,
 } from '@inkoxide/tree';
+import { assignProp, textInElement } from '@inkoxide/tree/internal';
 
 import { svelteNames } from './stack.ts';
 import type { PropsTable, TableEntry } from './table.ts';
@@ -42,9 +41,6 @@ const elementTrace: Trace = (origin) => {
   const named = entry ? svelteNames(entry.at) : [];
   return named.length > 0 ? named : around(parent);
 };
-
-/** A string's stack: that of the element it is in. */
-const textTrace: Trace = (parent) => (parent ? componentNames(parent as Instance) : []);
 
 /** The props of an element from its entry in the table. */
 function propsOf(tag: string, entry: TableEntry | undefined): Record<string, unknown> {
@@ -126,7 +122,7 @@ export function readHtml(html: string, table: PropsTable): Node[] {
     const top = stack[stack.length - 1]!;
     const [, close, open, attrs = '', selfClosing, text] = m;
     if (text !== undefined) {
-      top.children.push({ kind: 'text', text: decode(text), origin: top.el, trace: textTrace });
+      top.children.push({ kind: 'text', text: decode(text), origin: top.el, trace: textInElement });
     } else if (open !== undefined) {
       const tag = open.toLowerCase();
       const id = /\sdata-ink\s*=\s*"(\d+)"/.exec(attrs)?.[1] ?? null;
@@ -155,7 +151,7 @@ export function readDom(nodes: ArrayLike<DomNode>, table: PropsTable, parent?: I
   const out: Node[] = [];
   for (const n of Array.from(nodes)) {
     if (n.nodeType === 3)
-      out.push({ kind: 'text', text: n.nodeValue ?? '', origin: parent, trace: textTrace });
+      out.push({ kind: 'text', text: n.nodeValue ?? '', origin: parent, trace: textInElement });
     else if (n.nodeType === 1) {
       const tag = (n.localName ?? '').toLowerCase();
       const el = element(table, tag, n.getAttribute?.('data-ink') ?? null, parent);

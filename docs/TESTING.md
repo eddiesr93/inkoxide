@@ -270,8 +270,9 @@ only on demand, from the Actions tab, with the ID of that release run.
   builder through React, the Vue, Svelte and Angular front ends,
   `renderToBuffer`, `Font.register`, the browser helpers of each front end (in
   happy-dom), error messages, the export lists of every package and entry
-  (`@inkoxide/style`, `@inkoxide/tree`, whose README names each,
-  `@inkoxide/render`, each front end, `@inkoxide/vue/vite`), and the examples
+  (`@inkoxide/style`, `@inkoxide/tree` with `common` and `internal`,
+  `@inkoxide/render`, each front end, `@inkoxide/vue/vite`), each name found in
+  the package's docs or in those of the package it comes from, and the examples
   and benchmark invoices, each run through a symlinked path. Two Vitest projects run them:
   `node`, and `dom` for the `*.dom.test.ts` files, in happy-dom with the
   `browser` exports (Svelte's client runtime). Vue's single-file components are
@@ -293,7 +294,10 @@ only on demand, from the Actions tab, with the ID of that release run.
   installed in that package only), which renders React's PDF with no JIT
   compiler, binds the browser directives as declared in the package's
   declaration files, and links their partial declarations with Angular's
-  Babel linker.
+  Babel linker; `angular-cli.test.ts` builds an Angular CLI application
+  (its `application` builder, through `@angular-builders/custom-esbuild` and
+  Angular's Architect, as `ng build` runs it) with the Tailwind plugin, whose
+  bundle has the class table and not Tailwind's compiler, and without it.
 - `examples/frameworks` (Playwright, `pnpm test` there): the invoice written
   in Vue, Svelte and Angular renders in a worker, in Chromium, Firefox and
   WebKit, the bytes React renders in Node, with the classes the Tailwind
@@ -305,7 +309,8 @@ only on demand, from the Actions tab, with the ID of that release run.
   a CDN (`tests/cdn.spec.ts`). Those two need the engine's module with
   threads, which the WebAssembly job builds.
 - The `front-end-versions` job of `ci.yml` runs the Angular tests with
-  Angular 21 (its compiler too, for the ahead-of-time test) and the Svelte
+  Angular 21 (its compiler and builder too, for the ahead-of-time and CLI
+  tests) and the Svelte
   tests with Svelte 5.39, the oldest versions the packages support, and the
   Vue tests with Vue's next minor (3.6, whose Vapor components the package
   refuses); the rest of CI tests the versions the workspace pins.

@@ -3,7 +3,12 @@
  * URL, a link that downloads it, a frame that shows it in the browser's own viewer, and a
  * component that hands the render's state to its slot.
  */
-import { type BrowserRenderOptions, PdfRun } from '@inkoxide/render/browser';
+import {
+  type BrowserRenderOptions,
+  PdfRun,
+  type PdfState as RenderState,
+  viewerUrl,
+} from '@inkoxide/render/browser';
 import {
   defineComponent,
   h,
@@ -69,13 +74,7 @@ export function usePdf(
 }
 
 /** The state `usePdf` gives, unwrapped, as the slots of the components receive it. */
-export interface PdfState {
-  blob: Blob | null;
-  url: string | null;
-  loading: boolean;
-  error: unknown;
-  update(document?: Renderable): void;
-}
+export type PdfState = RenderState<Renderable>;
 
 const state = (pdf: UsePdfResult): PdfState => ({
   blob: pdf.blob.value,
@@ -139,7 +138,7 @@ export const PdfViewer = defineComponent({
     return () => {
       const url = pdf.url.value;
       if (url === null) return slots.fallback?.();
-      return h('iframe', { title: props.title, src: props.showToolbar ? url : `${url}#toolbar=0` });
+      return h('iframe', { title: props.title, src: viewerUrl(url, props.showToolbar) });
     };
   },
 });

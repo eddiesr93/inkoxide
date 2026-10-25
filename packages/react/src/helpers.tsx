@@ -3,7 +3,13 @@
  * a link that downloads it, a frame that shows it in the browser's own viewer, and a component
  * that hands the render's state to a function.
  */
-import { type BrowserRenderOptions, PdfRun, type PdfSnapshot } from '@inkoxide/render/browser';
+import {
+  type BrowserRenderOptions,
+  PdfRun,
+  type PdfSnapshot,
+  type PdfState,
+  viewerUrl,
+} from '@inkoxide/render/browser';
 import {
   type AnchorHTMLAttributes,
   type IframeHTMLAttributes,
@@ -17,20 +23,13 @@ import {
 
 import { browserRenderer } from './browser-render.ts';
 
-export interface UsePdfResult {
-  /** The PDF of the last render that finished, or null. */
-  blob: Blob | null;
+/** `usePdf`'s state, as every front end's helpers give it, and `update()`. */
+export interface UsePdfResult extends PdfState<ReactElement> {
   /**
    * An object URL of `blob`, revoked when a new one replaces it and on unmount; or null, and null
    * again while the component is hidden (`<Activity mode="hidden">`) until it renders again.
    */
   url: string | null;
-  /** Whether a render is running. */
-  loading: boolean;
-  /** Why the last render failed (a `RenderError`, usually), or null. */
-  error: unknown;
-  /** Renders again: `element` when given, otherwise the last one. */
-  update(element?: ReactElement): void;
 }
 
 /**
@@ -153,7 +152,7 @@ export function PdfViewer({
 }: PdfViewerProps) {
   const pdf = useDocumentPdf(document, options);
   if (pdf.url === null) return <>{fallback}</>;
-  return <iframe {...rest} title={title} src={showToolbar ? pdf.url : `${pdf.url}#toolbar=0`} />;
+  return <iframe {...rest} title={title} src={viewerUrl(pdf.url, showToolbar)} />;
 }
 
 export interface BlobProviderProps {

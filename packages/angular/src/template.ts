@@ -11,7 +11,9 @@ import { mount, renderPage } from './renderer.ts';
  */
 export type Renderable = Type<unknown> | { component: Type<unknown>; inputs?: Record<string, unknown> };
 
-const parts = (input: Renderable) => (typeof input === 'function' ? { component: input, inputs: {} } : input);
+/** The component an input renders, and its inputs. */
+const componentAndInputs = (input: Renderable) =>
+  typeof input === 'function' ? { component: input, inputs: {} } : input;
 
 /**
  * Angular's template functions: the component is created with its inputs and checked once,
@@ -19,11 +21,12 @@ const parts = (input: Renderable) => (typeof input === 'function' ? { component:
  */
 export const { renderTemplate, renderToTree }: TemplateFunctions<Renderable> = templateFunctions(
   (input: Renderable) => {
-    const { component, inputs } = parts(input);
+    const { component, inputs } = componentAndInputs(input);
     return mount(component, inputs);
   },
-  { renderPage },
+  renderPage,
 );
 
 /** The name of the component an input renders, for errors. */
-export const componentName = (input: Renderable): string => parts(input).component?.name || 'document';
+export const componentName = (input: Renderable): string =>
+  componentAndInputs(input).component?.name || 'document';

@@ -170,10 +170,11 @@ const { pdf } = await generate(invoice, { number: '2026-001', total: 120 });
 | `renderToBuffer(input, options?)`, `renderToFile(input, path, options?)`, `renderToStream(input, options?)` | A VNode or a component to a PDF (Node). |
 | `renderTemplate(input, options?)`, `renderToTree(input)` | A template to its document tree, without the engine; the tree's `dispose()` releases what the template rendered. |
 | `usePage()` | The page, in a `render` slot. |
+| `Renderable`, `VueProps`, `VueSlots` | What renders to a document (a VNode or a component), and a component's props and slots in Vue. |
 | `Font`, `init`, `countPages`, `version`, `engineStatus`, `RenderError`, `TemplateError` | As in the React guide. |
-| `@inkoxide/vue/browser` | The above without what needs Node, with `usePdf`, `PdfViewer`, `PdfDownloadLink`, `BlobProvider`, `renderToBlob`, `generate`. |
+| `@inkoxide/vue/browser` | The above without what needs Node, with `usePdf`, `PdfViewer`, `PdfDownloadLink`, `BlobProvider`, `renderToBlob`, `generate`; `PdfState` is the state the components' slots get. |
 | `@inkoxide/vue/templates` | `generate`, `renderTree`, `parseData`, `renderSettled`, `renderDocument`. |
-| `@inkoxide/vue/vite` | `pdfTemplates(vuePlugin, include?)`. |
+| `@inkoxide/vue/vite` | `pdfTemplates(vuePlugin, include?)`: `VuePluginLike` is what it takes of `@vitejs/plugin-vue`, and `TemplateFilter` picks the template files (a `RegExp` or a function of the file name). |
 
 The options of each are the React guide's
 [API](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#api).

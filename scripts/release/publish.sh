@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Stages and publishes @inkoxide/style, @inkoxide/tailwind, @inkoxide/tree, @inkoxide/render and
-# the front ends @inkoxide/react, vue, svelte and angular to npm. The release workflow runs it after publishing the engine packages.
+# the front ends @inkoxide/react, vue, svelte and angular to npm. The release workflow runs it
+# after publishing the engine packages.
 #   scripts/release/publish.sh            # publish
 #   scripts/release/publish.sh --dry-run  # stage and run npm publish --dry-run
 #

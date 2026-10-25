@@ -18,6 +18,17 @@ export interface PdfSnapshot {
   error: unknown;
 }
 
+/** What a helper gives besides the state: `update()` renders again, `document` or the last one. */
+export interface PdfState<Input> extends PdfSnapshot {
+  update(document?: Input): void;
+}
+
+/**
+ * The URL a frame shows a PDF at: `url`, and `#toolbar=0` when the viewer's toolbar is not wanted
+ * (Chromium's viewer follows it).
+ */
+export const viewerUrl = (url: string, toolbar: boolean): string => (toolbar ? url : `${url}#toolbar=0`);
+
 /** Renders the document a helper holds, as `renderToBlob` does. */
 export type BlobRender<Input> = (input: Input, opts: BrowserRenderOptions) => Promise<Blob>;
 
@@ -32,11 +43,18 @@ export class PdfRun<Input> {
   private last: Input | undefined;
   private running: AbortController | undefined;
 
+  private readonly render: BlobRender<Input>;
+  private readonly onChange: (state: PdfSnapshot) => void;
+  private readonly options: () => BrowserRenderOptions | undefined;
   constructor(
-    private readonly render: BlobRender<Input>,
-    private readonly onChange: (state: PdfSnapshot) => void,
-    private readonly options: () => BrowserRenderOptions | undefined = () => undefined,
-  ) {}
+    render: BlobRender<Input>,
+    onChange: (state: PdfSnapshot) => void,
+    options: () => BrowserRenderOptions | undefined = () => undefined,
+  ) {
+    this.render = render;
+    this.onChange = onChange;
+    this.options = options;
+  }
 
   /** The state now. */
   get snapshot(): PdfSnapshot {
@@ -93,17 +111,18 @@ export class PdfRun<Input> {
 
 /**
  * Whether two documents render the same PDF, so that a helper given one again does not render it
- * again: the same value; a component with the same props or inputs (`{ component, props }` in
- * Svelte, `{ component, inputs }` in Angular); or an element of the same type and key whose props
- * are the same values (a React element or a Vue VNode made again with the same props).
+ * again: the same value; an element of the same type and key whose props and children are the
+ * same values (a React element or a Vue VNode made again with the same props); or a component
+ * with the same props or inputs (`{ component, props }` in Svelte, `{ component, inputs }` in
+ * Angular). Elements first: a VNode has a `component` too, the instance it mounts, null until then.
  */
 export function sameDocument(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (!isObject(a) || !isObject(b)) return false;
-  if ('component' in a || 'component' in b) {
-    return a.component === b.component && sameProps(a.props, b.props) && sameProps(a.inputs, b.inputs);
+  if ('type' in a || 'type' in b) {
+    return a.type === b.type && a.key === b.key && a.children === b.children && sameProps(a.props, b.props);
   }
-  return 'type' in a && a.type === b.type && a.key === b.key && sameProps(a.props, b.props);
+  return a.component === b.component && sameProps(a.props, b.props) && sameProps(a.inputs, b.inputs);
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>

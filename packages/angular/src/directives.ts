@@ -9,7 +9,7 @@
 
 import * as i0 from '@angular/core';
 import { effect, ElementRef, inject, input, Renderer2, TemplateRef, ViewContainerRef } from '@angular/core';
-import type { BrowserRenderOptions } from '@inkoxide/render/browser';
+import { type BrowserRenderOptions, viewerUrl } from '@inkoxide/render/browser';
 
 import { injectPdf, type InjectPdfResult } from './helpers.ts';
 import type { Renderable } from './template.ts';
@@ -43,7 +43,7 @@ export class InkPdfViewer {
     effect(() => {
       const url = this.pdf.url();
       if (url === null) renderer.removeAttribute(frame, 'src');
-      else renderer.setAttribute(frame, 'src', this.toolbar() ? url : `${url}#toolbar=0`);
+      else renderer.setAttribute(frame, 'src', viewerUrl(url, this.toolbar()));
     });
   }
 
@@ -59,7 +59,7 @@ export class InkPdfViewer {
   static ɵdir: i0.ɵɵDirectiveDeclaration<
     InkPdfViewer,
     'iframe[inkPdfViewer]',
-    never,
+    ['inkPdfViewer'],
     {
       document: { alias: 'inkPdfViewer'; required: true; isSignal: true };
       options: { alias: 'inkPdfViewerOptions'; required: false; isSignal: true };

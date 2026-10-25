@@ -389,9 +389,9 @@ A run's `fontFeatures` and their bounds are in
 [`SCHEMA.md`](SCHEMA.md#textrun). A feature does something only when the
 run's font has it. A tag that is not four printable ASCII characters, or
 is set twice in a run, is `INVALID_VALUE`; a value or a count past its
-bound is `OUT_OF_RANGE`. In `@inkoxide/render`, `fontFeatureSettings` and
-`fontVariantNumeric` fill a run's `fontFeatures` (see
-[`GUIDE.md`](../packages/react/GUIDE.md)).
+bound is `OUT_OF_RANGE`. In every front end (`@inkoxide/react`, `@inkoxide/vue`,
+`@inkoxide/svelte`, `@inkoxide/angular`), the styles `fontFeatureSettings` and
+`fontVariantNumeric` fill a run's `fontFeatures` (see [`GUIDE.md`](../packages/react/GUIDE.md)).
 
 ## Variable fonts
 

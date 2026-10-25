@@ -40,6 +40,14 @@ export interface Container {
   dispose?(): void;
 }
 
+/**
+ * Where a template language renders nothing (Vue's `v-if`, Angular's `@if`), as its renderer may
+ * keep it until the tree is read: `finishTemplate` drops it.
+ */
+export interface CommentNode {
+  kind: 'comment';
+}
+
 /** True for the host types of the components; false for `div` and other elements. */
 export function isHostType(type: string): type is HostType {
   return Object.hasOwn(HOST_NAME, type);
@@ -75,8 +83,11 @@ export function innermostComponent(stack: string | undefined): string | undefine
   return stack?.split('\n')[1]?.trim().replace(/^in /, '');
 }
 
-/** Removes consecutive repeats from a list of names (a component that renders itself once). */
-export function dedupe(names: Iterable<string>): string[] {
+/**
+ * The names with each run of the same name kept once (a component that renders itself once
+ * shows once): only repeats next to each other go.
+ */
+export function withoutRepeats(names: Iterable<string>): string[] {
   const out: string[] = [];
   for (const n of names) if (out[out.length - 1] !== n) out.push(n);
   return out;

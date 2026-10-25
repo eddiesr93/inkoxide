@@ -10,10 +10,10 @@ export { facturX, type FacturXOptions, type FacturXProfile, facturXRelationship 
 export * from './fonts/index.ts';
 export { familyKey } from './fonts/registry.ts';
 export {
+  type CommentNode,
   type Container,
   componentNames,
   componentStack,
-  dedupe,
   formatStack,
   hostName,
   innermostComponent,
@@ -23,6 +23,7 @@ export {
   type TextInstance,
   type Trace,
   trimTemplateText,
+  withoutRepeats,
 } from './nodes.ts';
 export {
   checkElement,
@@ -33,17 +34,7 @@ export {
   rootContext,
 } from './placement.ts';
 export { loadTailwind } from './tailwind.ts';
-export {
-  assignProp,
-  classNames,
-  finishTemplate,
-  namesInTrace,
-  nodeLinks,
-  renderWithTrace,
-  templateError,
-  templateFunctions,
-  type TemplateFunctions,
-} from './template.ts';
+export { finishTemplate, templateError, templateFunctions, type TemplateFunctions } from './template.ts';
 export type { EncryptionOptions, OutputOptions, PdfALevel, PdfUaPart } from './tree/build.ts';
 export {
   type ImageSource,
@@ -64,7 +55,6 @@ export {
 export { type SchemaProblem, validateTree } from './tree/validate.ts';
 export {
   assertValidTree,
-  type BuildHooks,
   buildDocument,
   type Located,
   type RenderPage,

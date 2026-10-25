@@ -13,11 +13,14 @@ const createElement = (type: unknown, { key = null, ...props }: Record<string, u
   key,
   props,
 });
-const h = (type: unknown, props: Record<string, unknown> | null = null) => ({
+const h = (type: unknown, props: Record<string, unknown> | null = null, children: unknown = null) => ({
   __v_isVNode: true,
   type,
   key: null,
   props,
+  children,
+  // The instance it mounts: null until then.
+  component: null,
 });
 
 describe('sameDocument', () => {
@@ -35,6 +38,13 @@ describe('sameDocument', () => {
     expect(sameDocument(h(Invoice, { invoice }), h(Invoice, { invoice }))).toBe(true);
     expect(sameDocument(h(Invoice), h(Invoice, {}))).toBe(true);
     expect(sameDocument(h(Invoice, { invoice }), h(Invoice, { invoice, page: 2 }))).toBe(false);
+    expect(sameDocument(h(Invoice, { invoice }), h(Receipt, { invoice }))).toBe(false);
+    expect(
+      sameDocument(
+        h(Invoice, null, () => []),
+        h(Invoice, null, () => []),
+      ),
+    ).toBe(false);
   });
 
   it('compares components with their props or inputs', () => {

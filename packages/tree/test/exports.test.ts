@@ -8,9 +8,11 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import pkg from '../package.json' with { type: 'json' };
+import * as common from '../src/common.ts';
 import type { FIELD_KINDS, HOST, PropsByComponent } from '../src/index.ts';
 import * as main from '../src/index.ts';
-import { declared, sorted } from './entries.ts';
+import * as internal from '../src/internal.ts';
+import { declared, listed, sorted } from './entries.ts';
 
 const VALUES = [
   'BOOLEAN_PROPS',
@@ -24,16 +26,13 @@ const VALUES = [
   'TAGS',
   'TemplateError',
   'assertValidTree',
-  'assignProp',
   'buildDocument',
   'checkElement',
   'checkText',
   'checkTree',
   'childContext',
-  'classNames',
   'componentNames',
   'componentStack',
-  'dedupe',
   'facturX',
   'facturXRelationship',
   'familyKey',
@@ -49,25 +48,23 @@ const VALUES = [
   'isHostType',
   'isImagePath',
   'loadTailwind',
-  'namesInTrace',
-  'nodeLinks',
   'parsePath',
   'remoteAllowed',
   'remoteRefused',
-  'renderWithTrace',
   'rootContext',
   'tagName',
   'templateError',
   'templateFunctions',
   'trimTemplateText',
   'validateTree',
+  'withoutRepeats',
 ];
 
 /** The types of the main entry, but the props types (`@inkoxide/tree/props`). */
 const TYPES = [
-  'BuildHooks',
   'CanvasGradient',
   'CanvasTextOptions',
+  'CommentNode',
   'Common',
   'Container',
   'DrawingFont',
@@ -112,23 +109,43 @@ const SRC = new URL('../src/', import.meta.url);
  */
 function exported(file: URL): string[] {
   const code = readFileSync(file, 'utf8').replace(/^\s*\/\/.*$/gm, '');
-  const names: string[] = [];
-  for (const m of code.matchAll(/export\s+(?:type\s+)?\{([^}]*)\}\s*from\s*'[^']+';/g)) {
-    for (const part of (m[1] ?? '').split(',')) {
-      const name = part
-        .trim()
-        .replace(/^type\s+/, '')
-        .split(/\s+as\s+/)
-        .pop();
-      if (name) names.push(name);
-    }
-  }
+  const names = listed(code);
   for (const m of code.matchAll(/^export \* from '(\.\/[\w/.-]+)';$/gm))
     names.push(...exported(new URL(m[1] ?? '', file)));
   for (const m of code.matchAll(/^export (?:const|function|class|interface|type) (\w+)/gm))
     names.push(m[1] ?? '');
   return sorted(new Set(names));
 }
+
+/** What Inkoxide's own front ends share; not under semver. */
+const INTERNAL = [
+  'assignProp',
+  'classNames',
+  'listenerError',
+  'namesInTrace',
+  'nodeLinks',
+  'renderWithTrace',
+  'textInElement',
+];
+
+/** The names every front end exports as they are (`export * from '@inkoxide/tree/common'`). */
+const COMMON = [
+  'CanvasGradient',
+  'CanvasTextOptions',
+  'EmojiSource',
+  'FacturXOptions',
+  'FacturXProfile',
+  'Located',
+  'PAGE_SIZES',
+  'Painter',
+  'StyleSheet',
+  'TemplateError',
+  'TemplateErrorKind',
+  'TreeOptions',
+  'TreeResult',
+  'facturX',
+  'facturXRelationship',
+];
 
 describe('exports', () => {
   it('@inkoxide/tree exports exactly the documented names', () => {
@@ -138,6 +155,16 @@ describe('exports', () => {
   it('@inkoxide/tree exports exactly the documented types, and the props types', () => {
     const props = declared(SRC, 'props.ts');
     expect(exported(new URL('index.ts', SRC))).toEqual(sorted(new Set([...VALUES, ...TYPES, ...props])));
+  });
+
+  it('@inkoxide/tree/internal exports what the front ends share', () => {
+    expect(sorted(Object.keys(internal))).toEqual(sorted(INTERNAL));
+    expect(declared(SRC, 'internal.ts')).toEqual(sorted(INTERNAL));
+  });
+
+  it('@inkoxide/tree/common exports names of the main entry, which every front end exports', () => {
+    expect(declared(SRC, 'common.ts')).toEqual(sorted(COMMON));
+    expect(Object.keys(common).filter((name) => !(name in main))).toEqual([]);
   });
 
   it('has each name in the README', () => {
@@ -157,6 +184,11 @@ describe('exports', () => {
   });
 
   it('has an entry in package.json for each', () => {
-    expect(pkg.exports).toEqual({ '.': './src/index.ts', './props': './src/props.ts' });
+    expect(pkg.exports).toEqual({
+      '.': './src/index.ts',
+      './common': './src/common.ts',
+      './internal': './src/internal.ts',
+      './props': './src/props.ts',
+    });
   });
 });

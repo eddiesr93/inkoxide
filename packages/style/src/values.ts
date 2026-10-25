@@ -186,12 +186,15 @@ function unitDim(n: number, u: string, { units, keepEm }: Relative): Dim {
 
 class CalcParser {
   private i = 0;
-  constructor(
-    private readonly s: string,
-    private readonly rel: Relative,
-    /** Inside `calc()`, where `infinity` is a number. */
-    private readonly inCalc = false,
-  ) {}
+  private readonly s: string;
+  private readonly rel: Relative;
+  /** Inside `calc()`, where `infinity` is a number. */
+  private readonly inCalc: boolean;
+  constructor(s: string, rel: Relative, inCalc = false) {
+    this.s = s;
+    this.rel = rel;
+    this.inCalc = inCalc;
+  }
 
   parse(): Dim {
     const d = this.expr();

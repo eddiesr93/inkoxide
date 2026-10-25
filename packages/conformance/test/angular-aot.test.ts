@@ -5,7 +5,6 @@
  * package's declaration files, as those of any library, and their partial declarations link with
  * Angular's Babel linker. The other Angular tests compile just in time.
  */
-import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative } from 'node:path';
@@ -13,13 +12,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { type CompilerOptions, performCompilation } from '@angular/compiler-cli';
 import linker from '@angular/compiler-cli/linker/babel';
-import { renderToBuffer as angularPdf } from '@inkoxide/angular';
-import { renderToBuffer as reactPdf } from '@inkoxide/react';
+import { renderToBuffer as angularBuffer } from '@inkoxide/angular';
+import { renderToBuffer as reactBuffer } from '@inkoxide/react';
 import { createElement } from 'react';
 import ts from 'typescript';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import ReactReceipt, { sample } from '../../../examples/receipt.tsx';
+import { sha } from './sha.ts';
 
 const PACKAGES = fileURLToPath(new URL('../../', import.meta.url));
 const CONFORMANCE = fileURLToPath(new URL('../', import.meta.url));
@@ -27,7 +27,6 @@ const CONFORMANCE = fileURLToPath(new URL('../', import.meta.url));
 const out = mkdtempSync(join(CONFORMANCE, '.angular-aot-'));
 const dts = join(out, 'dts');
 const OPTIONS = { creationDate: '2026-10-25T00:00:00Z' };
-const sha = (pdf: Uint8Array) => createHash('sha256').update(pdf).digest('hex');
 
 type Transform = (code: string, options: object) => Promise<{ code?: string | null } | null>;
 
@@ -95,6 +94,8 @@ function compile(): void {
     paths: {
       '@inkoxide/*/browser': [join(dts, '*/src/browser.d.ts')],
       '@inkoxide/*/props': [join(dts, '*/src/props.d.ts')],
+      '@inkoxide/*/common': [join(dts, '*/src/common.d.ts')],
+      '@inkoxide/*/internal': [join(dts, '*/src/internal.d.ts')],
       '@inkoxide/*': [join(dts, '*/src/index.d.ts')],
     },
     strictTemplates: true,
@@ -122,8 +123,8 @@ describe('ahead of time', () => {
       Receipt: { ɵcmp?: unknown };
     };
     expect(Receipt.ɵcmp).toBeDefined();
-    const angular = await angularPdf({ component: Receipt as never, inputs: sample }, OPTIONS);
-    expect(sha(angular)).toBe(sha(await reactPdf(createElement(ReactReceipt, sample), OPTIONS)));
+    const angular = await angularBuffer({ component: Receipt as never, inputs: sample }, OPTIONS);
+    expect(sha(angular)).toBe(sha(await reactBuffer(createElement(ReactReceipt, sample), OPTIONS)));
   });
 
   it("reads the browser directives from the package's declaration files", () => {

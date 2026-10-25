@@ -161,7 +161,8 @@ jobs:
             add: >-
               pnpm --filter @inkoxide/angular --filter @inkoxide/conformance add -D
               @angular/core@21 @angular/common@21 @angular/compiler@21 @angular/platform-browser@21
-              @angular/compiler-cli@21
+              @angular/compiler-cli@21 @angular/build@21 @angular-builders/custom-esbuild@21
+              @angular-devkit/architect@0.2102 @angular-devkit/core@21
           - name: Svelte 5.39
             packages: packages/svelte packages/conformance
             add: >-

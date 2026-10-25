@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * Builds the TypeScript packages (style, tailwind, tree, render, react, vue, svelte, angular) and writes publish-ready copies into
- * tmp/release/<pkg>/. The workspace stays as it is: its `exports` keep pointing at src/ and its
- * workspace: links stay. Only the staged copies point at dist/ and carry registry versions.
+ * Builds the TypeScript packages (style, tailwind, tree, render, react, vue, svelte, angular) and
+ * writes publish-ready copies into tmp/release/<pkg>/. The workspace stays as it is: its
+ * `exports` keep pointing at src/ and its workspace: links stay. Only the staged copies point at
+ * dist/ and carry registry versions.
  * `inkoxide` and `@inkoxide/schema` are released by scripts/npm-release.mjs.
  *
  *   node scripts/release/stage.mjs

@@ -43,5 +43,5 @@ const renderPage: RenderPage = (inst: Instance, page: PageInfo): Container => {
 /** React's template functions: React renders an element once, synchronously, into host nodes. */
 export const { renderTemplate, renderToTree }: TemplateFunctions<ReactNode> = templateFunctions(
   (element: ReactNode) => renderToInstances(element),
-  { renderPage },
+  renderPage,
 );

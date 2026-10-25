@@ -183,7 +183,7 @@ export default inkoxideTailwindEsbuild({ sources: ['src'] });
 ```
 
 The plugin acts on the browser bundles and leaves the server's (`ng build` with SSR) alone, which
-keeps the compiler. Without it, the templates get the same classes, with the compiler loaded in
+keeps the compiler. The conformance tests build an application this way. Without it, the templates get the same classes, with the compiler loaded in
 the browser.
 
 ## Serving templates
@@ -199,9 +199,10 @@ component with the input `data`.
 |---|---|
 | `renderToBuffer(input, options?)`, `renderToFile(input, path, options?)`, `renderToStream(input, options?)` | A component (with its inputs) to a PDF (Node). |
 | `renderTemplate(input, options?)`, `renderToTree(input)` | A template to its document tree, without the engine; the tree's `dispose()` releases what the template rendered. |
-| `injectPage()`, `INK_PAGE` | The page, in a `render` template. |
+| `injectPage()`, `INK_PAGE` | The page, in a `render` template: `injectPage()` throws outside one, `inject(INK_PAGE)` gives the token's value. |
+| `Renderable` | What renders to a document: a component, or `{ component, inputs }`. |
 | `Font`, `init`, `countPages`, `version`, `engineStatus`, `RenderError`, `TemplateError` | As in the React guide. |
-| `@inkoxide/angular/browser` | The above without what needs Node, with `injectPdf`, `InkPdfViewer`, `InkPdfDownload`, `InkBlobProvider`, `renderToBlob`, `generate`. |
+| `@inkoxide/angular/browser` | The above without what needs Node, with `injectPdf` (its result is an `InjectPdfResult`), `InkPdfViewer`, `InkPdfDownload`, `InkBlobProvider` (its template's context is a `BlobProviderContext`), `renderToBlob`, `generate`. |
 | `@inkoxide/angular/templates` | `generate`, `renderTree`, `parseData`, `renderSettled`, `renderDocument`. |
 
 The options of each are the React guide's

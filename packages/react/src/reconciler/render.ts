@@ -1,4 +1,12 @@
-import { type Container, formatStack, type HostType, hostName, TemplateError } from '@inkoxide/tree';
+import {
+  type Container,
+  formatStack,
+  type HostType,
+  hostName,
+  TemplateError,
+  templateError,
+  withoutRepeats,
+} from '@inkoxide/tree';
 import type { ReactNode } from 'react';
 import Reconciler from 'react-reconciler';
 import { ConcurrentRoot } from 'react-reconciler/constants.js';
@@ -21,10 +29,9 @@ export function normalizeStack(stack: string | null | undefined): string | undef
   for (const line of stack.split('\n')) {
     const m = /^\s*(?:at|in)\s+([^\s(]+)/.exec(line);
     if (!m?.[1]) continue;
-    const name = hostName(m[1]);
-    if (names[names.length - 1] !== name) names.push(name);
+    names.push(hostName(m[1]));
   }
-  return names.length ? formatStack(names) : undefined;
+  return names.length ? formatStack(withoutRepeats(names)) : undefined;
 }
 
 interface Captured {
@@ -152,17 +159,7 @@ export function renderToInstances(element: ReactNode, parent?: HostType): Contai
   }
   if (captured) {
     unmount();
-    const { error, componentStack } = captured;
-    if (error instanceof TemplateError) {
-      error.componentStack ??= componentStack;
-      throw error;
-    }
-    const message = error instanceof Error ? error.message : String(error);
-    throw new TemplateError(`The template threw: ${message}`, {
-      kind: 'render',
-      componentStack,
-      cause: error,
-    });
+    throw templateError(captured.error, captured.componentStack);
   }
   container.dispose = unmount;
   return container;

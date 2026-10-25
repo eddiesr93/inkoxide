@@ -144,8 +144,9 @@ const { pdf } = await generate(invoice, { number: '2026-001', total: 120 });
 | `renderToBuffer(input, options?)`, `renderToFile(input, path, options?)`, `renderToStream(input, options?)` | A component (with its props) to a PDF (Node). |
 | `renderTemplate(input, options?)`, `renderToTree(input)` | A template to its document tree, without the engine; the tree's `dispose()` releases what the template rendered. |
 | `usePage()` | The page, in a `render` snippet. |
+| `Renderable` | What renders to a document: a component, or `{ component, props }`. |
 | `Font`, `init`, `countPages`, `version`, `engineStatus`, `RenderError`, `TemplateError` | As in the React guide. |
-| `@inkoxide/svelte/browser` | The above without what needs Node, with `createPdf`, `PdfViewer`, `PdfDownloadLink`, `BlobProvider`, `renderToBlob`, `generate`. |
+| `@inkoxide/svelte/browser` | The above without what needs Node, with `createPdf`, `PdfViewer`, `PdfDownloadLink`, `BlobProvider`, `renderToBlob`, `generate`; `PdfState` is what `createPdf` gives. |
 | `@inkoxide/svelte/templates` | `generate`, `renderTree`, `parseData`, `renderSettled`, `renderDocument`. |
 
 The options of each are the React guide's

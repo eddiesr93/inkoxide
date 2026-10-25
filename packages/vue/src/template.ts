@@ -31,5 +31,5 @@ const renderPage: RenderPage = (inst: Instance, page: PageInfo): Container =>
 /** Vue's template functions: Vue renders a VNode or a component once, synchronously, into host nodes. */
 export const { renderTemplate, renderToTree }: TemplateFunctions<Renderable> = templateFunctions(
   (input: Renderable) => mount(rootOf(input)),
-  { renderPage },
+  renderPage,
 );

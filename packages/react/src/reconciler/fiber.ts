@@ -1,4 +1,4 @@
-import { hostName, type Trace } from '@inkoxide/tree';
+import { hostName, type Trace, withoutRepeats } from '@inkoxide/tree';
 
 interface FiberLike {
   tag?: number;
@@ -29,8 +29,8 @@ export const fiberNames: Trace = (fiber) => {
   const names: string[] = [];
   while (f) {
     const n = nameOf(f);
-    if (n && names[names.length - 1] !== n) names.push(n);
+    if (n) names.push(n);
     f = f.return;
   }
-  return names;
+  return withoutRepeats(names);
 };

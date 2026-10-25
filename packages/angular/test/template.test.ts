@@ -171,6 +171,41 @@ describe('templates', () => {
     );
   });
 
+  it('keeps the stacks of a render apart from those of the renders after it', () => {
+    @Component({
+      selector: 'app-labelled',
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      template:
+        '<ink-text [render]="t" /><ng-template #t let-page>{{ label(page.pageNumber) }}</ng-template>',
+    })
+    class Labelled {
+      label(n: number): string {
+        if (n === 2) throw new Error('no second page');
+        return `Page ${n}`;
+      }
+    }
+    @Component({
+      selector: 'app-outer-labelled',
+      imports: [Labelled],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      template: '<ink-document><ink-page><app-labelled /></ink-page></ink-document>',
+    })
+    class OuterLabelled {}
+    @Component({
+      selector: 'app-other',
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      template: '<ink-document><ink-page><ink-text>Other</ink-text></ink-page></ink-document>',
+    })
+    class Other {}
+    const tree = renderTemplate(OuterLabelled, { fonts });
+    renderTemplate(Other, { fonts }).dispose();
+    // The page renders of a rebuild run after the other render, with the components of their own.
+    const e = thrown(() => tree.rebuild(2));
+    expect(e.message).toBe('The template threw: no second page');
+    expect(e.componentStack).toBe('\n    in Labelled\n    in Page\n    in Document\n    in OuterLabelled');
+    tree.dispose();
+  });
+
   it('refuses a listener', () => {
     @Component({
       selector: 'app-clicks',

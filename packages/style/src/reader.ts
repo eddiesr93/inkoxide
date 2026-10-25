@@ -90,13 +90,14 @@ export type EnumKey = keyof typeof ENUMS;
  */
 export class UnsupportedValueError extends Error {
   override readonly name = 'UnsupportedValueError';
-  constructor(
-    /** The CSS property (or style key) whose value is not supported. */
-    readonly property: string,
-    /** What is wrong, usually `<property>: <value> (<why>)`. */
-    readonly detail: string,
-  ) {
+  /** The CSS property (or style key) whose value is not supported. */
+  readonly property: string;
+  /** What is wrong, usually `<property>: <value> (<why>)`. */
+  readonly detail: string;
+  constructor(property: string, detail: string) {
     super(detail);
+    this.property = property;
+    this.detail = detail;
   }
 }
 
@@ -111,10 +112,12 @@ const INFINITE_PT = 1e4;
  * `vh` against `units`; without them, those lengths are errors.
  */
 export class Reader {
-  constructor(
-    readonly prop: string,
-    readonly units?: Units,
-  ) {}
+  readonly prop: string;
+  readonly units?: Units;
+  constructor(prop: string, units?: Units) {
+    this.prop = prop;
+    this.units = units;
+  }
 
   /** The error for a value of this property, to throw. */
   error(detail: string): UnsupportedValueError {

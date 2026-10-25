@@ -37,10 +37,13 @@ templates change.
 - Each front end has a guide (`GUIDE.md`) of how it writes a document.
 - `@inkoxide/tree`: what the front ends share, for writing one: the components' props
   (`@inkoxide/tree/props`, and `PropsByComponent`, by component name), where each may go, host
-  nodes, `buildDocument` and `templateFunctions`.
+  nodes, `buildDocument` and `templateFunctions`; `@inkoxide/tree/common`, the names every front
+  end exports as they are; and `@inkoxide/tree/internal`, for Inkoxide's own front ends, outside
+  semver.
 - `@inkoxide/render`'s `createRenderer(frontEnd)`: the functions a front end exports; and, in its
-  browser entry, `PdfRun`, the state the browser helpers of every front end keep, and
-  `sameDocument`, which tells them a document made again with the same props from another one.
+  browser entry, `PdfRun`, the state the browser helpers of every front end keep (`PdfSnapshot`,
+  `PdfState`), `sameDocument`, which tells them a document made again with the same props from
+  another one, and `viewerUrl`, a viewer's URL with or without its toolbar.
 - The render functions release what a template rendered (Vue's app, Angular's component, React's
   root, and the roots of per-page content), with its effects and subscriptions, once the PDF is
   made. A tree of `renderTemplate` or `renderTree` has `dispose()` for that.

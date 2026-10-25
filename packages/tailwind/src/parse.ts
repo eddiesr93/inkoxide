@@ -61,15 +61,17 @@ export function sortByRank(classes: string[], rank: (cls: string) => bigint | nu
 /** A class that cannot be turned into an engine style. Thrown in strict (dev) mode. */
 export class UnsupportedUtilityError extends Error {
   override readonly name = 'UnsupportedUtilityError';
-  constructor(
-    /** The offending class, as written. */
-    readonly className: string,
-    /** Why: an unknown class, a variant, or the CSS property/value that has no engine equivalent. */
-    readonly reason: string,
-    /** The CSS property, when the class is known to Tailwind but its output is not supported. */
-    readonly property?: string,
-  ) {
+  /** The offending class, as written. */
+  readonly className: string;
+  /** Why: an unknown class, a variant, or the CSS property/value that has no engine equivalent. */
+  readonly reason: string;
+  /** The CSS property, when the class is known to Tailwind but its output is not supported. */
+  readonly property?: string;
+  constructor(className: string, reason: string, property?: string) {
     super(`Unsupported Tailwind class "${className}": ${reason}`);
+    this.className = className;
+    this.reason = reason;
+    this.property = property;
   }
 }
 

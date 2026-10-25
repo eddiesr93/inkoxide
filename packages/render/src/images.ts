@@ -65,7 +65,10 @@ export class ByteCache {
   private readonly entries = new Map<string, Uint8Array>();
   private total = 0;
 
-  constructor(readonly budget: number) {}
+  readonly budget: number;
+  constructor(budget: number) {
+    this.budget = budget;
+  }
 
   /** The bytes kept. */
   get size(): number {

@@ -2,14 +2,12 @@
 // instead of DOM nodes. Templates render once and synchronously, so the update paths exist only
 // for completeness.
 import {
-  assignProp,
-  finishTemplate,
+  type CommentNode,
   componentNames,
+  finishTemplate,
   type Container,
-  dedupe,
   formatStack,
   hostName,
-  nodeLinks,
   type HostType,
   type Instance,
   type Node,
@@ -18,7 +16,9 @@ import {
   type TextInstance,
   templateError,
   type Trace,
+  withoutRepeats,
 } from '@inkoxide/tree';
+import { assignProp, listenerError, nodeLinks, textInElement } from '@inkoxide/tree/internal';
 import {
   camelize,
   type ComponentInternalInstance,
@@ -31,12 +31,8 @@ import {
   type VNode,
 } from 'vue';
 
-/** Where Vue renders nothing (`v-if`), kept until the tree is read; never in a finished tree. */
-interface Comment {
-  kind: 'comment';
-}
-
-type HostNode = Node | Comment;
+/** Where Vue renders nothing (`v-if`): `finishTemplate` drops it. */
+type HostNode = Node | CommentNode;
 type Parent = Instance | Container;
 
 /**
@@ -71,11 +67,8 @@ const vueNames: Trace = (origin) => {
     const n = nameOf(i);
     if (n) names.push(n);
   }
-  return dedupe(names);
+  return withoutRepeats(names);
 };
-
-/** A string's stack: that of the element it is in. */
-const textNames: Trace = (parent) => (parent ? componentNames(parent as Instance) : []);
 
 function insert(child: HostNode, parent: Parent, anchor?: HostNode | null): void {
   links.insert(child, parent, anchor);
@@ -92,15 +85,15 @@ const { createApp } = createRenderer<HostNode, Parent>({
     origin: undefined,
     trace: vueNames,
   }),
-  createText: (text): TextInstance => ({ kind: 'text', text, origin: undefined, trace: textNames }),
-  createComment: (): Comment => ({ kind: 'comment' }),
+  createText: (text): TextInstance => ({ kind: 'text', text, origin: undefined, trace: textInElement }),
+  createComment: (): CommentNode => ({ kind: 'comment' }),
   setText(node, text) {
     if (node.kind === 'text') node.text = text;
   },
   setElementText(el, text) {
     if (!('kind' in el)) return;
     for (const child of [...el.children] as HostNode[]) links.remove(child);
-    if (text) insert({ kind: 'text', text, origin: undefined, trace: textNames }, el);
+    if (text) insert({ kind: 'text', text, origin: undefined, trace: textInElement }, el);
   },
   insert,
   remove: links.remove,
@@ -113,11 +106,9 @@ const { createApp } = createRenderer<HostNode, Parent>({
       return;
     }
     if (/^on[A-Z]/.test(key) && next !== undefined && next !== null) {
-      const stack = [hostName(el.type), ...(parentComponent ? vueNames(parentComponent) : [])];
-      throw new TemplateError(
-        `<${hostName(el.type)}> takes no listener (${key}): nothing happens in a PDF. Remove the @${key.slice(2, 3).toLowerCase()}${key.slice(3)} binding.`,
-        { kind: 'props', componentStack: formatStack(dedupe(stack)) },
-      );
+      const binding = `@${key.slice(2, 3).toLowerCase()}${key.slice(3)}`;
+      const names = [hostName(el.type), ...(parentComponent ? vueNames(parentComponent) : [])];
+      throw listenerError(el.type, key, binding, names);
     }
     assignProp(el.props, key === 'class' ? key : camelize(key), next);
   },
@@ -143,13 +134,6 @@ export const PageRoot = defineComponent({
   },
 });
 
-/** Removes the comments Vue leaves where nothing renders. */
-function uncomment(nodes: Node[]): Node[] {
-  const out = (nodes as HostNode[]).filter((n): n is Node => n.kind !== 'comment');
-  for (const n of out) if (n.kind === 'element') n.children = uncomment(n.children);
-  return out;
-}
-
 interface VNodeLike {
   type: unknown;
   component: ComponentInternalInstance | null;
@@ -165,7 +149,10 @@ function vaporError(
   const name = type.name ?? type.__name ?? 'A component';
   return new TemplateError(
     `${name} is a Vapor component, which renders without VNodes, so Inkoxide's renderer never sees it. Write PDF templates as ordinary components (no <script setup vapor>).`,
-    { kind: 'render', componentStack: formatStack(dedupe([name, ...(parent ? vueNames(parent) : [])])) },
+    {
+      kind: 'render',
+      componentStack: formatStack(withoutRepeats([name, ...(parent ? vueNames(parent) : [])])),
+    },
   );
 }
 
@@ -218,16 +205,7 @@ function suspension(
   if (type && typeof type === 'object' && type.__isSuspense) {
     return new TemplateError(`A component used <Suspense>. ${advice}`, { kind: 'render' });
   }
-  if (type && typeof type === 'object' && type.__vapor) {
-    const name = type.name ?? type.__name ?? 'A component';
-    return new TemplateError(
-      `${name} is a Vapor component, which renders without VNodes, so Inkoxide's renderer never sees it. Write PDF templates as ordinary components (no <script setup vapor>).`,
-      {
-        kind: 'render',
-        componentStack: vnode.component ? formatStack(vueNames(vnode.component)) : undefined,
-      },
-    );
-  }
+  if (type && typeof type === 'object' && type.__vapor) return vaporError(type, vnode.component?.parent);
   const c = vnode.component;
   if (c) {
     const stack = formatStack(vueNames(c));
@@ -294,5 +272,5 @@ export function mount(root: object, parent?: HostType): Container {
     throw suspended;
   }
   // A copy: unmounting takes the nodes out of the container.
-  return finishTemplate(uncomment([...container.children]), parent, unmount);
+  return finishTemplate([...container.children], parent, unmount);
 }

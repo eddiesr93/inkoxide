@@ -4,11 +4,9 @@
  * roots of its pages, is released once the PDF is made, or at once when the render fails.
  */
 import '@angular/compiler';
-import { createHash } from 'node:crypto';
-
-import { renderToBuffer as angularPdf, renderTemplate as angularTree } from '@inkoxide/angular';
+import { renderToBuffer as angularBuffer, renderTemplate as angularTree } from '@inkoxide/angular';
 import * as R from '@inkoxide/react';
-import { renderToBuffer as sveltePdf, renderTemplate as svelteTree } from '@inkoxide/svelte';
+import { renderToBuffer as svelteBuffer, renderTemplate as svelteTree } from '@inkoxide/svelte';
 import * as V from '@inkoxide/vue';
 import { createElement as r, useLayoutEffect } from 'react';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -18,8 +16,7 @@ import * as Ng from '../angular/examples.ts';
 import { live } from '../live.ts';
 import SvelteMisplaced from '../svelte/Misplaced.svelte';
 import SveltePaged from '../svelte/Paged.svelte';
-
-const sha = (pdf: Uint8Array) => createHash('sha256').update(pdf).digest('hex');
+import { sha } from './sha.ts';
 
 /** Counts the React component in `live` while it is mounted. */
 function useCounted(): void {
@@ -104,8 +101,8 @@ describe('a render', () => {
   it.each([
     ['React', () => R.renderToBuffer(reactPaged)],
     ['Vue', () => V.renderToBuffer(vuePaged)],
-    ['Svelte', () => sveltePdf(SveltePaged)],
-    ['Angular', () => angularPdf(Ng.Paged)],
+    ['Svelte', () => svelteBuffer(SveltePaged)],
+    ['Angular', () => angularBuffer(Ng.Paged)],
   ])(
     'in %s gives the page to a component in a render prop, and releases what it rendered',
     async (_, pdf) => {

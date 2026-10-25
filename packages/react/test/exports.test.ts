@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { declared, sorted } from '../../tree/test/entries.ts';
+import { declared, sorted, undocumented } from '../../tree/test/entries.ts';
 import pkg from '../package.json' with { type: 'json' };
 import * as browser from '../src/browser.ts';
 import * as main from '../src/index.ts';
@@ -246,6 +246,14 @@ const BROWSER_TYPES = [
 const SRC = new URL('../src/', import.meta.url);
 const declaredIn = (file: string) => declared(SRC, file);
 
+/** Where the names are documented: the package's own docs, and those of the names it shares. */
+const OWN_DOCS = [new URL('../README.md', import.meta.url), new URL('../GUIDE.md', import.meta.url)];
+const SHARED_DOCS = [
+  new URL('../../react/GUIDE.md', import.meta.url),
+  new URL('../../render/README.md', import.meta.url),
+  new URL('../../tree/README.md', import.meta.url),
+];
+
 describe('exports', () => {
   it('@inkoxide/react exports exactly the documented names', () => {
     expect(sorted(Object.keys(main))).toEqual(sorted(MAIN_VALUES));
@@ -268,5 +276,19 @@ describe('exports', () => {
       './templates': './src/templates.ts',
       './browser': './src/browser.ts',
     });
+  });
+
+  it('has each name in its docs, or in those of the package it comes from', () => {
+    const names = [
+      ...COMPAT_VALUES,
+      ...COMPAT_TYPES,
+      ...MAIN_VALUES,
+      ...MAIN_TYPES,
+      ...TEMPLATES_VALUES,
+      ...TEMPLATES_TYPES,
+      ...BROWSER_VALUES,
+      ...BROWSER_TYPES,
+    ];
+    expect(undocumented(names, [...OWN_DOCS, ...SHARED_DOCS])).toEqual([]);
   });
 });

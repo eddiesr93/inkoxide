@@ -2,7 +2,7 @@
   // `document`, rendered and shown in an `<iframe>`, in the browser's own PDF viewer. It renders
   // when it mounts and when `document` changes, and shows the last PDF until the next one is
   // ready; before the first, its `fallback` snippet.
-  import type { BrowserRenderOptions } from '@inkoxide/render/browser';
+  import { type BrowserRenderOptions, viewerUrl } from '@inkoxide/render/browser';
   import type { Snippet } from 'svelte';
   import type { HTMLIframeAttributes } from 'svelte/elements';
 
@@ -27,5 +27,5 @@
 {#if pdf.url === null}
   {@render fallback?.()}
 {:else}
-  <iframe {...rest} {title} src={showToolbar ? pdf.url : `${pdf.url}#toolbar=0`}></iframe>
+  <iframe {...rest} {title} src={viewerUrl(pdf.url, showToolbar)}></iframe>
 {/if}

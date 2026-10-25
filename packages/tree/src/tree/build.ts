@@ -192,7 +192,9 @@ class Builder {
   /** The style of each element's `className`, to tell which keys came from it. */
   private readonly classStyles = new WeakMap<Instance, FlatStyle>();
 
-  constructor(private readonly opts: BuildOptions) {
+  private readonly opts: BuildOptions;
+  constructor(opts: BuildOptions) {
+    this.opts = opts;
     this.origin = opts.track ? new Map() : undefined;
     this.imageTable = new ImageTable(opts.images);
   }

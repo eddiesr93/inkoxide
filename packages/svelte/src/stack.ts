@@ -1,6 +1,7 @@
 // Component stacks in Svelte, which keeps none: each component is the function of its file
 // (`Invoice.svelte`), so a trace names the components it passes through.
-import { formatStack, namesInTrace } from '@inkoxide/tree';
+import { formatStack } from '@inkoxide/tree';
+import { namesInTrace } from '@inkoxide/tree/internal';
 
 /** A `.svelte` file in a trace (with the query a dev server adds), and its name. */
 const FILE = /([^/\\\s()]+)\.svelte(?:\?[^:\s)]*)?:\d+/g;

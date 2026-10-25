@@ -49,23 +49,7 @@ export {
 } from './components/index.ts';
 export type * from '@inkoxide/tree/props';
 export { usePage } from './page.ts';
-export {
-  type CanvasGradient,
-  type CanvasTextOptions,
-  type EmojiSource,
-  facturX,
-  type FacturXOptions,
-  type FacturXProfile,
-  facturXRelationship,
-  type Located,
-  PAGE_SIZES,
-  type Painter,
-  StyleSheet,
-  TemplateError,
-  type TemplateErrorKind,
-  type TreeOptions,
-  type TreeResult,
-} from '@inkoxide/tree';
+export * from '@inkoxide/tree/common';
 export { renderTemplate, renderToTree } from './template.ts';
 // What @inkoxide/react exported before 1.0, when the renderer built on it: still here for the code
 // that uses it, and the same for every front end in @inkoxide/tree.

@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { declared, sorted } from '../../tree/test/entries.ts';
+import { declared, sorted, undocumented } from '../../tree/test/entries.ts';
 import pkg from '../package.json' with { type: 'json' };
 import * as browser from '../src/browser.ts';
 import * as main from '../src/index.ts';
@@ -41,7 +41,7 @@ const MAIN_TYPES = [
   'TemplateLike',
   'Timings',
 ];
-const BROWSER_VALUES = [...MAIN_VALUES, 'clearCaches', 'PdfRun', 'sameDocument'];
+const BROWSER_VALUES = [...MAIN_VALUES, 'clearCaches', 'PdfRun', 'sameDocument', 'viewerUrl'];
 const BROWSER_TYPES = [
   ...MAIN_TYPES.filter((n) => n !== 'LocalImageOptions' && n !== 'NodeRenderer'),
   'BlobRender',
@@ -49,6 +49,7 @@ const BROWSER_TYPES = [
   'BrowserRenderOptions',
   'BrowserRenderer',
   'PdfSnapshot',
+  'PdfState',
 ];
 const TEMPLATES_VALUES = ['parseData', 'renderDocument', 'renderSettled'];
 const TEMPLATES_TYPES = [
@@ -62,6 +63,14 @@ const TEMPLATES_TYPES = [
 
 const SRC = new URL('../src/', import.meta.url);
 const declaredIn = (file: string) => declared(SRC, file);
+
+/** Where the names are documented: the package's own docs, and those of the names it shares. */
+const OWN_DOCS = [new URL('../README.md', import.meta.url)];
+const SHARED_DOCS = [
+  new URL('../../react/GUIDE.md', import.meta.url),
+  new URL('../../render/README.md', import.meta.url),
+  new URL('../../tree/README.md', import.meta.url),
+];
 
 describe('exports', () => {
   it('@inkoxide/render exports exactly the documented names', () => {
@@ -81,5 +90,17 @@ describe('exports', () => {
 
   it('has an entry in package.json for each', () => {
     expect(Object.keys(pkg.exports).sort()).toEqual(['.', './browser', './templates']);
+  });
+
+  it('has each name in its docs, or in those of the package it comes from', () => {
+    const names = [
+      ...MAIN_VALUES,
+      ...MAIN_TYPES,
+      ...BROWSER_VALUES,
+      ...BROWSER_TYPES,
+      ...TEMPLATES_VALUES,
+      ...TEMPLATES_TYPES,
+    ];
+    expect(undocumented(names, [...OWN_DOCS, ...SHARED_DOCS])).toEqual([]);
   });
 });

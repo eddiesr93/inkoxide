@@ -3,24 +3,19 @@
  * its URL, again whenever the document changes. `PdfViewer`, `PdfDownloadLink` and
  * `BlobProvider` are built on it.
  */
-import { type BrowserRenderOptions, PdfRun, type PdfSnapshot } from '@inkoxide/render/browser';
+import {
+  type BrowserRenderOptions,
+  PdfRun,
+  type PdfSnapshot,
+  type PdfState as RenderState,
+} from '@inkoxide/render/browser';
 import { onDestroy, untrack } from 'svelte';
 
 import { browserRenderer } from './browser-render.ts';
 import type { Renderable } from './template.ts';
 
-export interface PdfState {
-  /** The PDF of the last render that finished, or null. */
-  readonly blob: Blob | null;
-  /** An object URL of `blob`, revoked when a new one replaces it and when the component is destroyed; or null. */
-  readonly url: string | null;
-  /** Whether a render is running. */
-  readonly loading: boolean;
-  /** Why the last render failed (a `RenderError`, usually), or null. */
-  readonly error: unknown;
-  /** Renders again: `document` when given, otherwise the last one. */
-  update(document?: Renderable): void;
-}
+/** What `createPdf` gives: the render's state, read as it changes, and `update()`. */
+export type PdfState = Readonly<RenderState<Renderable>>;
 
 /**
  * Renders the document `document()` gives to a PDF in the engine's worker, at once and whenever
