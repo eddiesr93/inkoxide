@@ -1,8 +1,8 @@
 # Architecture
 
 Inkoxide is a pure function `render(document_tree, options) -> pdf_bytes`,
-with a React front end that builds the document tree. This page describes
-how the pieces fit together, for contributors.
+with front ends for React, Vue, Svelte and Angular that build the document
+tree. This page describes how the pieces fit together, for contributors.
 
 ## Repository layout
 
@@ -16,10 +16,15 @@ how the pieces fit together, for contributors.
 | `packages/wasm` | The npm package for it: loader (`index.js`), the pool's worker (`thread.js`), types; it runs the tests of `packages/inkoxide`. |
 | `crates/binding` | What the two bindings share: the render options as JavaScript passes them, their checks, and errors as JSON. |
 | `packages/schema` | The document schema (`document.v1.json`), its TypeScript types and changelog: `@inkoxide/schema`. |
-| `packages/style` | The flat style object, CSS units, and the readers of lengths, keywords, colours, `flex`, transforms, positions and page media queries that React and Tailwind share: `@inkoxide/style`. |
+| `packages/style` | The flat style object, CSS units, and the readers of lengths, keywords, colours, `flex`, transforms, positions and page media queries that the front ends and Tailwind share: `@inkoxide/style`. |
 | `packages/tailwind` | Tailwind class strings to engine styles, through the Tailwind v4 compiler: `@inkoxide/tailwind`, optional. In a browser bundle, its build plugin (`./plugin`) puts a table of the classes the sources use in place of the compiler (`./precompiled`): for Vite, Rollup, Rolldown, esbuild, webpack and Rspack (a loader, `webpack-loader.ts`, fills the table module from the scans `webpack-scans.ts` keeps) and Next.js (`withInkoxideTailwind`, which writes the table for Turbopack's `resolveAlias` and adds the webpack plugin to client builds). `sources.ts` reads the `@source` directives of the theme for the scan. |
-| `packages/react` | React components and a reconciler that build document trees: `@inkoxide/react`. |
-| `packages/render` | `renderToBuffer`, `renderToFile`, `Font.register` and the bundled fonts: `@inkoxide/render`; templates served by id: `@inkoxide/render/templates`; in a browser, with the engine as WebAssembly in a Web Worker: `@inkoxide/render/browser`. The shared code reaches the engine and the bundled assets through an `EngineHost` (`host.ts`): `node-host.ts` in Node, `browser-host.ts` and `worker.ts` in a browser. |
+| `packages/tree` | What every front end shares, `@inkoxide/tree`: the host types and props of the components (`components/`), where each may go (`placement.ts`), host nodes (`nodes.ts`), and the builder that turns them into a document tree (`tree/`), with the font registry, Canvas, Factur-X and errors. See [ADR 0004](adr/0004-front-ends.md). |
+| `packages/render` | The engine for every front end, `@inkoxide/render`: `Font.register` and the bundled fonts, image loading, the passes for the page count (`pipeline.ts`), `renderDocument`, and `createRenderer(frontEnd)`, which gives a front end its `renderToBuffer`, `renderToFile`, `renderToStream`, `generate` and `renderTree`; in a browser, with the engine as WebAssembly in a Web Worker, `@inkoxide/render/browser`; templates served by id, `@inkoxide/render/templates`. The shared code reaches the engine and the bundled assets through an `EngineHost` (`host.ts`): `node-host.ts` in Node, `browser-host.ts` and `worker.ts` in a browser. |
+| `packages/react` | The React front end, `@inkoxide/react`: components, a reconciler that builds host nodes, and the render functions; `./browser` with `usePdf`, `PdfViewer`, `PdfDownloadLink` and `BlobProvider`; `./templates`. Its README and guide document the components for every front end. |
+| `packages/vue` | The Vue front end, `@inkoxide/vue`: a custom renderer (`createRenderer`) over host nodes, components, the render functions, `./browser`, `./templates`, and `./vite`, which compiles single-file templates for the client in a server build. |
+| `packages/svelte` | The Svelte front end, `@inkoxide/svelte`: components (generated) that render `ink-*` elements and put their props in a table of the render; the HTML of `svelte/server`, or the DOM `mount` builds in a browser, is read back into host nodes. |
+| `packages/angular` | The Angular front end, `@inkoxide/angular`: a `RendererFactory2` over host nodes, for template components that use the `ink-*` elements; `./browser` with `injectPdf`. |
+| `packages/conformance` | Not published: the examples written with each front end, which must build the document and the PDF React builds, and the names each exports. |
 | `examples` | Example documents in React; they produce the screenshots in the READMEs. |
 | `benchmarks` | Benchmarks of `@inkoxide/render` on an invoice and a report, on the server and in the browser. |
 | `fixtures` | Engine test documents, fonts, images and reference renders. |
@@ -29,19 +34,28 @@ The npm packages depend on each other like this:
 
 - `@inkoxide/schema` depends on no other Inkoxide package. `@inkoxide/style` depends on
   `@inkoxide/schema`, for the types of the styles it reads, and on culori.
-- `@inkoxide/react` depends on `@inkoxide/schema` and `@inkoxide/style`.
-- `@inkoxide/render` depends on `@inkoxide/react`, `@inkoxide/schema` and `inkoxide`.
-- `@inkoxide/tailwind` depends on `@inkoxide/style`. `@inkoxide/react` and
-  `@inkoxide/render` load it only when it is installed (an optional peer dependency), for
-  `className`.
-- `@inkoxide/wasm` is an optional peer dependency of `@inkoxide/render`, for
-  `@inkoxide/render/browser`.
+- `@inkoxide/tree` depends on `@inkoxide/schema` and `@inkoxide/style`.
+- `@inkoxide/render` depends on `@inkoxide/tree`, `@inkoxide/schema` and `inkoxide`.
+- `@inkoxide/react`, `@inkoxide/vue`, `@inkoxide/svelte` and `@inkoxide/angular` depend on
+  `@inkoxide/render` and `@inkoxide/tree`, and on their framework as a peer.
+- `@inkoxide/tailwind` depends on `@inkoxide/style`. `@inkoxide/tree` loads it only when it is
+  installed (an optional peer dependency), for classes.
+- `@inkoxide/wasm` is an optional peer dependency of `@inkoxide/render` and the front ends, for
+  their browser entries.
 
-## From React to a document tree
+## From a template to a document tree
 
-`@inkoxide/react` is a React reconciler whose host components (`Document`,
-`Page`, `View`, `Text`, `Image`, `Table`, …) build an in-memory tree. After
-React commits, the tree is converted into a schema v1 document: `className`
+Each front end renders a template once into host nodes of `@inkoxide/tree`: an element per
+component (`{ type: 'ink-view', props, children }`) and a text node per string. React does it
+with a reconciler whose host components are the components; Vue with a custom renderer; Angular
+with a `RendererFactory2`; Svelte, which has no custom renderers yet, by reading back what it
+rendered ([ADR 0004](adr/0004-front-ends.md)). The template front ends join and trim their text
+as JSX does (`trimTemplateText`), so that a document gives the same nodes in every framework.
+`checkTree` (or React's host config, as it creates them) checks where each component is. A node
+keeps an `origin` and a `trace` that names the components above it, for the component stacks of
+errors, and a `render` prop is rendered for each page by the front end (`renderPage`).
+
+`buildDocument` then converts the nodes into a schema v1 document: `className`
 strings go through `@inkoxide/tailwind` when it is installed (the real
 Tailwind compiler turns classes into CSS, and the CSS declarations are
 mapped to engine styles; in a browser bundle built with its plugin, a

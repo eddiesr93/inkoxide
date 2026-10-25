@@ -3,6 +3,11 @@
 The reference for @inkoxide/react. The [README](README.md) covers installing, the quick start
 and the examples.
 
+The components, props, styles, options and errors are the same in every front end: this guide
+writes them in React, and the READMEs of [`@inkoxide/vue`](../vue/README.md),
+[`@inkoxide/svelte`](../svelte/README.md) and [`@inkoxide/angular`](../angular/README.md) say
+how each writes them (`class` for `className`, a slot or a template for a `render` prop).
+
 - [Components](#components)
 - [Styling](#styling)
 - [Fonts](#fonts)
@@ -1326,6 +1331,11 @@ renderToFile(element, path, options?): Promise<void>      // renders, then write
 renderToStream(element, options?): Promise<Readable>     // the PDF as a Node stream
 ```
 
+`renderTemplate(element, options?)` builds the document tree without the engine, synchronously
+(`{ document, images, warnings, validate(), locate(path), … }`), and `renderToTree(element)`
+resolves to the document alone, after loading Tailwind; a problem in the template throws a
+`TemplateError`, with its `componentStack`.
+
 `renderToStream` returns a stream to pipe into an HTTP response:
 `(await renderToStream(<Invoice />)).pipe(res)`. The stream starts once the PDF is ready, and a
 failed render rejects the promise.
@@ -1522,7 +1532,7 @@ options under the same id replaces the template's.
 
 - **`generate(template, data, options?)`** checks `data`, renders and resolves to
   `{ pdf, pages, passes, bytes, timings, fonts, warnings, document, images, schemaVersion,
-  engineVersion }`. `timings` has the milliseconds of each stage, each counted once: `reactMs`,
+  engineVersion }`. `timings` has the milliseconds of each stage, each counted once: `templateMs`,
   `treeMs` (with the rebuilds for the page count), `validateMs` (0 when `validate` is off),
   `engineMs`, `fetchMs` and `totalMs`. `warnings` are the document's font fallbacks, `hyphenate` with no
   language, and `render` props that did not settle; start-up warnings are in `engineStatus()`. `document` is the tree that was rendered,

@@ -1,7 +1,7 @@
 # Examples
 
-Seven complete documents for `@inkoxide/render`, one file each. They style with `className`, so
-install `@inkoxide/tailwind` next to `@inkoxide/render`. Every file exports its component and
+Seven complete documents for `@inkoxide/react`, one file each. They style with `className`, so
+install `@inkoxide/tailwind` next to `@inkoxide/react`. Every file exports its component and
 sample data, and renders `<name>.pdf` when you run it:
 
 ```sh

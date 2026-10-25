@@ -6,7 +6,8 @@ give it the document, the fonts and the images as bytes.
 
 This is the engine behind the npm packages [`inkoxide`](https://www.npmjs.com/package/inkoxide)
 (Node.js), [`@inkoxide/wasm`](https://www.npmjs.com/package/@inkoxide/wasm) (browsers) and
-[`@inkoxide/render`](https://www.npmjs.com/package/@inkoxide/render) (React).
+[`@inkoxide/render`](https://www.npmjs.com/package/@inkoxide/render), which renders templates of
+React, Vue, Svelte and Angular.
 
 ```rust
 use inkoxide::{FontStore, ImageStore, InputFormat, RenderOptions};

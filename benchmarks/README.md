@@ -1,6 +1,6 @@
 # Benchmarks
 
-`@inkoxide/render` on an invoice and a 43-page report, in Inter, on the server and in the
+`@inkoxide/react` on an invoice and a 43-page report, in Inter, on the server and in the
 browser. The results are in [docs/BENCHMARKS.md](../docs/BENCHMARKS.md).
 
 | File | What it is |

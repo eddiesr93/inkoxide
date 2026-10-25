@@ -76,6 +76,8 @@ for (const [name, props] of COMPONENTS) {
   };
 
   let { children, render, ...props }: Props = $props();
+  // A template renders once: the table keeps the props object, read when the render is done.
+  // svelte-ignore state_referenced_locally
   const id = capture('${tag}', props, render);
 </script>
 

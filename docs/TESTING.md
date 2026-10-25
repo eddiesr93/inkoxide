@@ -250,7 +250,7 @@ only on demand, from the Actions tab, with the ID of that release run.
   `tests/cdn.spec.ts` serves the page's scripts and assets from another
   origin, as a CDN would (ports 4182 and 4181), and checks that the workers
   start from `blob:` URLs and render the same bytes on a pool of threads.
-- `packages/render/test/browser.test.tsx`: `@inkoxide/render/browser` on
+- `packages/react/test/browser.test.tsx`: `@inkoxide/react/browser` on
   the calling thread renders the bytes the main entry renders. It needs
   `scripts/build-wasm.sh` first, and skips without it outside CI.
 - `packages/tailwind/test`: `plugin.test.ts` builds a page with Vite and
@@ -266,11 +266,19 @@ only on demand, from the Actions tab, with the ID of that release run.
   `not`, `inline`); `browser.test.ts` the browser entry, which maps classes as
   the Node one does and is strict outside production.
 - `packages/*/test` (Vitest, `pnpm test`): the style value readers and page
-  media queries, Tailwind class mapping and `initTailwind` options, the React
-  tree builder, `renderToBuffer`, `Font.register`, `usePdf` (in happy-dom),
-  error messages, the export lists of `@inkoxide/style` and
-  `@inkoxide/render`, and the examples and benchmark invoices, each run
-  through a symlinked path.
+  media queries, Tailwind class mapping and `initTailwind` options, the tree
+  builder through React, the Vue, Svelte and Angular front ends,
+  `renderToBuffer`, `Font.register`, the browser helpers of each front end (in
+  happy-dom), error messages, the export lists of `@inkoxide/style`,
+  `@inkoxide/render` and `@inkoxide/react`, and the examples and benchmark
+  invoices, each run through a symlinked path. Two Vitest projects run them:
+  `node`, and `dom` for the `*.dom.test.ts` files, in happy-dom with the
+  `browser` exports (Svelte's client runtime). Vue's single-file components are
+  compiled for the client (`@inkoxide/vue/vite`), Svelte's for the server in
+  `node` and for the client in `dom`, and Angular's components just in time.
+- `packages/conformance/test`: the examples written again in Vue, Svelte and
+  Angular must build the document React builds and the same PDF, byte for
+  byte, and every front end must export the names of `@inkoxide/react`.
 - `scripts/check-generated.sh`: regenerates every committed generated
   file (`packages/schema/index.d.ts`, `docs/SCHEMA.md`,
   `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict`, the fixture

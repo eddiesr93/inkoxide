@@ -6,7 +6,7 @@ Maintainers release from `main`, through the `release` workflow (`.github/workfl
 
 | What | Version |
 |---|---|
-| `inkoxide`, its platform packages (`@inkoxide/<platform>`), `@inkoxide/wasm`, `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/tailwind` and `@inkoxide/style` | One shared version |
+| `inkoxide`, its platform packages (`@inkoxide/<platform>`), `@inkoxide/wasm`, `@inkoxide/render`, `@inkoxide/tree`, `@inkoxide/react`, `@inkoxide/vue`, `@inkoxide/svelte`, `@inkoxide/angular`, `@inkoxide/tailwind` and `@inkoxide/style` | One shared version |
 | The crates `inkoxide` and `inkoxide-cli` | The same version, from the Cargo workspace |
 | `@inkoxide/schema` | Its own version, bumped only when the schema changes |
 
@@ -16,7 +16,7 @@ The other crates (`inkoxide-node`, `inkoxide-wasm`, `inkoxide-binding`) are not 
 ## Steps
 
 1. **Bump the versions** of the packages and crates above together: the Cargo workspace and the
-   six `package.json` files. Run `node scripts/gen-react-version.mjs`, which writes the version
+   ten `package.json` files. Run `node scripts/gen-react-version.mjs`, which writes the version
    `@inkoxide/react` reports. Bump `@inkoxide/schema` only if the schema changed.
 2. **Move the "Unreleased" entries** in [CHANGELOG.md](../CHANGELOG.md) and
    [packages/schema/CHANGELOG.md](../packages/schema/CHANGELOG.md) under the new versions.
@@ -43,7 +43,8 @@ A run that fails part way can be dispatched again: every step skips what is alre
      `inkoxide`, `@inkoxide/schema` and `@inkoxide/wasm`. The README of `@inkoxide/wasm` gets
      the version and the Subresource Integrity hash of each of its two modules.
    - `scripts/release/publish.sh` then publishes `@inkoxide/style`, `@inkoxide/tailwind`,
-     `@inkoxide/react` and `@inkoxide/render`.
+     `@inkoxide/tree`, `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/vue`, `@inkoxide/svelte`
+     and `@inkoxide/angular`.
 4. **`crates`** publishes `inkoxide` and then `inkoxide-cli` to crates.io, skipping a version
    already there.
 5. **`github-release`** tags the commit and creates the GitHub release from the newest
@@ -70,14 +71,14 @@ the registry lets that be set only on a package that exists, the maintainer publ
 version by hand, then sets the trusted publisher:
 
 - an engine package: from the staged copy, `node scripts/npm-release.mjs <bin-dir> <staging-dir>`;
-- a React package: `pnpm release:publish`, logged in with `npm login`;
+- a TypeScript package (`@inkoxide/tree`, a front end): `pnpm release:publish`, logged in with `npm login`;
 - a crate: `cargo publish -p <crate>`.
 
 ## The release scripts
 
 | Command | What it does |
 |---|---|
-| `pnpm release:stage` | `scripts/release/stage.mjs`: builds `@inkoxide/style`, `@inkoxide/tailwind`, `@inkoxide/react` and `@inkoxide/render` with `tsc`, and writes publish-ready copies to `tmp/release/<package>/`, with `exports` pointing at `dist/`, registry versions in place of `workspace:` links, `engines` from the root `package.json`, each package's `README.md`, and the fonts and hyphenation patterns of `@inkoxide/render`. The workspace stays as it is. `--list` prints the packages in publish order |
+| `pnpm release:stage` | `scripts/release/stage.mjs`: builds `@inkoxide/style`, `@inkoxide/tailwind`, `@inkoxide/tree`, `@inkoxide/render`, `@inkoxide/react`, `@inkoxide/vue`, `@inkoxide/svelte` and `@inkoxide/angular` with `tsc` (the Svelte components are copied as they are), and writes publish-ready copies to `tmp/release/<package>/`, with `exports` pointing at `dist/`, registry versions in place of `workspace:` links, `engines` from the root `package.json`, each package's `README.md`, and the fonts and hyphenation patterns of `@inkoxide/render`. The workspace stays as it is. `--list` prints the packages in publish order |
 | `pnpm release:publish` | `scripts/release/publish.sh`: stages, checks that the engine packages they depend on (`inkoxide`, `@inkoxide/schema`) are on the registry, waiting a few minutes for a version just published, and publishes each package not on the registry yet. `--dry-run` stages and runs `npm publish --dry-run`. In GitHub Actions it uses trusted publishing; locally, the `npm login` session, with 2FA in the browser |
 | `node scripts/npm-release.mjs <bin-dir> <staging-dir> [--publish [--dry-run]]` | Stages the engine packages from a directory holding a native binary for every platform, `inkoxide.wasm` and `inkoxide-threads.wasm`, and with `--publish` publishes them |
 | `node scripts/release/github-release.mjs [--dry-run] [--section <name>] [--target <commit>]` | Creates the tag and the GitHub release for a changelog section (by default the newest released one), with `gh`. An existing release is left alone |

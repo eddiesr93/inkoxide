@@ -129,7 +129,9 @@ function importedPackages(dist) {
   const spec = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"]([^'".][^'"]*)['"]/g;
   for (const file of walk(dist).filter((f) => /\.(js|d\.ts)$/.test(f))) {
     // Not the examples in doc comments.
-    const code = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const code = readFileSync(file, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
     for (const m of code.matchAll(spec)) {
       const s = m[1];
       if (s.startsWith('node:')) continue;
