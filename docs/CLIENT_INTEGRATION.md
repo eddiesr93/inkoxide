@@ -1,9 +1,12 @@
 # Client integration (Node.js)
 
 How to use the engine directly from a Node application, with documents
-built as JSON. To write documents as React components, use
-[`@inkoxide/render`](../packages/render/README.md) instead; it does all of
-this for you. [API.md](API.md) has the full API and
+built as JSON. To write documents as components, use the package of your
+framework instead ([`@inkoxide/react`](../packages/react/README.md),
+[`@inkoxide/vue`](../packages/vue/README.md),
+[`@inkoxide/svelte`](../packages/svelte/README.md) or
+[`@inkoxide/angular`](../packages/angular/README.md)); it does all of this
+for you. [API.md](API.md) has the full API and
 [EXAMPLES.md](../packages/schema/EXAMPLES.md) has complete documents. In a browser,
 [`@inkoxide/wasm`](../packages/wasm/README.md) has the same functions, on one
 thread or a pool of Web Workers: its README covers the setup, and

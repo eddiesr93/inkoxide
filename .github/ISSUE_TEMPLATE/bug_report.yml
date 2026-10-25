@@ -22,6 +22,6 @@ body:
     attributes:
       label: Versions
       description: Package versions, Node.js version and operating system.
-      placeholder: '@inkoxide/render 0.1.1, Node 22.22, macOS 26 arm64'
+      placeholder: '@inkoxide/vue 1.0.0, Node 22.22, macOS 26 arm64'
     validations:
       required: true

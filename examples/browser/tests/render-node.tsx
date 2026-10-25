@@ -2,7 +2,7 @@
 // as JSON: what the page must render too. The tests run it with tsx.
 import { createHash } from 'node:crypto';
 
-import { renderToBuffer } from '@inkoxide/render';
+import { renderToBuffer } from '@inkoxide/react';
 import { createElement } from 'react';
 
 import Invoice, { OPTIONS, sample } from '../src/Invoice.tsx';

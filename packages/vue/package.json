@@ -1,0 +1,38 @@
+{
+  "name": "@inkoxide/vue",
+  "version": "0.10.1",
+  "private": true,
+  "type": "module",
+  "description": "Vue templates to PDF with the Inkoxide engine, in Node and in the browser: components, renderToBuffer, renderToFile, Font.register.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts",
+    "./templates": "./src/templates.ts",
+    "./vite": "./src/vite.ts"
+  },
+  "dependencies": {
+    "@inkoxide/render": "workspace:*",
+    "@inkoxide/schema": "workspace:*",
+    "@inkoxide/tree": "workspace:*",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@inkoxide/tailwind": "workspace:*",
+    "@inkoxide/wasm": "workspace:*",
+    "@vitejs/plugin-vue": "6.0.10",
+    "vue": "3.5.44"
+  },
+  "peerDependencies": {
+    "@inkoxide/tailwind": "workspace:*",
+    "@inkoxide/wasm": "workspace:*",
+    "vue": "^3.5.0"
+  },
+  "peerDependenciesMeta": {
+    "@inkoxide/tailwind": {
+      "optional": true
+    },
+    "@inkoxide/wasm": {
+      "optional": true
+    }
+  }
+}

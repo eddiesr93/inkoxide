@@ -1,12 +1,19 @@
+import {
+  type Container,
+  formatStack,
+  type HostType,
+  hostName,
+  TemplateError,
+  templateError,
+  withoutRepeats,
+} from '@inkoxide/tree';
 import type { ReactNode } from 'react';
 import Reconciler from 'react-reconciler';
 import { ConcurrentRoot } from 'react-reconciler/constants.js';
 
-import type { HostType } from '../components/index.ts';
-import { TemplateError } from '../errors.ts';
 import { RenderCall } from '../page.ts';
+import { fiberNames, nameOf } from './fiber.ts';
 import { hostConfig } from './host-config.ts';
-import { type Container, componentNames, formatStack, hostName, nameOf } from './instance.ts';
 
 // oxlint-disable-next-line typescript/no-explicit-any -- the reconciler's generic host-config typing is not worth replicating.
 const reconciler = Reconciler(hostConfig as any);
@@ -22,10 +29,9 @@ export function normalizeStack(stack: string | null | undefined): string | undef
   for (const line of stack.split('\n')) {
     const m = /^\s*(?:at|in)\s+([^\s(]+)/.exec(line);
     if (!m?.[1]) continue;
-    const name = hostName(m[1]);
-    if (names[names.length - 1] !== name) names.push(name);
+    names.push(hostName(m[1]));
   }
-  return names.length ? formatStack(names) : undefined;
+  return names.length ? formatStack(withoutRepeats(names)) : undefined;
 }
 
 interface Captured {
@@ -95,7 +101,7 @@ function suspension(
     const at = innermost(root.current.alternate?.child ?? null, (f) => (f.flags & INCOMPLETE) !== 0);
     if (!at) return undefined;
     const { what, missing } = suspender(at, parent);
-    const names = componentNames({ fiber: at });
+    const names = [...fiberNames(at)];
     if (missing !== undefined) names.unshift(missing);
     return new TemplateError(`${what} suspended. ${advice}`, {
       kind: 'render',
@@ -109,14 +115,15 @@ function suspension(
   if (!boundary) return undefined;
   return new TemplateError(
     `A component inside <Suspense> suspended, so the document would show its fallback. ${advice}`,
-    { kind: 'render', componentStack: formatStack(['Suspense', ...componentNames({ fiber: boundary })]) },
+    { kind: 'render', componentStack: formatStack(['Suspense', ...fiberNames(boundary)]) },
   );
 }
 
 /**
  * Renders a React element into plain host instances, synchronously: one sync update, flushed,
  * then the container is read. Hooks and context work; a render that suspends is an error, and
- * effects must not be relied on (their state updates never reach the document).
+ * effects must not be relied on (their state updates never reach the document). The container's
+ * `dispose` unmounts the root; a render that fails is unmounted at once.
  */
 export function renderToInstances(element: ReactNode, parent?: HostType): Container {
   const container: Container = parent === undefined ? { children: [] } : { children: [], parent };
@@ -138,27 +145,22 @@ export function renderToInstances(element: ReactNode, parent?: HostType): Contai
     noop,
     null,
   );
+  const unmount = () => {
+    reconciler.updateContainerSync(null, root, null, null);
+    reconciler.flushSyncWork();
+  };
   reconciler.updateContainerSync(element, root, null, null);
   reconciler.flushSyncWork();
   const suspended = captured ? undefined : suspension(root as unknown as FiberRoot, element, parent);
   if (suspended) {
     // Unmounted, so React does not render the template again when the promise settles.
-    reconciler.updateContainerSync(null, root, null, null);
-    reconciler.flushSyncWork();
+    unmount();
     throw suspended;
   }
   if (captured) {
-    const { error, componentStack } = captured;
-    if (error instanceof TemplateError) {
-      error.componentStack ??= componentStack;
-      throw error;
-    }
-    const message = error instanceof Error ? error.message : String(error);
-    throw new TemplateError(`The template threw: ${message}`, {
-      kind: 'render',
-      componentStack,
-      cause: error,
-    });
+    unmount();
+    throw templateError(captured.error, captured.componentStack);
   }
+  container.dispose = unmount;
   return container;
 }

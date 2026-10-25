@@ -1,0 +1,33 @@
+// What @inkoxide/react exported before 1.0, when the renderer built on it: still here for the code
+// that uses it, and the same for every front end in @inkoxide/tree. Only @inkoxide/react exports
+// them (packages/conformance/test/api.test.ts).
+export {
+  assertValidTree,
+  type EncryptionOptions,
+  familyKey,
+  type FontFace,
+  FontRegistry,
+  fonts,
+  fontStretchValue,
+  fontVariationsValue,
+  fontWeightValue,
+  HOST,
+  HOST_NAME,
+  type HostType,
+  type ImageSource,
+  imageSource,
+  innermostComponent,
+  isImagePath,
+  loadTailwind,
+  type OutputOptions,
+  parsePath,
+  type PdfALevel,
+  type PdfUaPart,
+  type PendingImage,
+  type RemoteImagePolicy,
+  remoteAllowed,
+  remoteRefused,
+  type ResolvedFont,
+  type SchemaProblem,
+  validateTree,
+} from '@inkoxide/tree';

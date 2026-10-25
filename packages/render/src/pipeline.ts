@@ -1,14 +1,13 @@
+import type { Document } from '@inkoxide/schema';
 import {
   assertValidTree,
   innermostComponent,
   loadTailwind,
-  renderTemplate,
   TemplateError,
   type TreeOptions,
   type TreeResult,
-} from '@inkoxide/react';
-import type { Document } from '@inkoxide/schema';
-import { type ComponentType, createElement, type ReactElement } from 'react';
+} from '@inkoxide/tree';
+import { withReactMs } from '@inkoxide/tree/internal';
 import type { z } from 'zod';
 
 import {
@@ -31,14 +30,28 @@ import { REMOTE_IMAGES_VARIABLE, remotePolicy } from './remote.ts';
 import { type Abortable, type DataIssue, RenderError, type RenderOpts, type RenderResult } from './types.ts';
 
 /**
- * A template for `generate`: a component that takes `{ data }`, the zod schema of that data and
- * the static images it refers to by id.
+ * A template for `generate`: a component that takes `{ data }` (a React, Vue, Svelte or Angular
+ * component: `Component`), the zod schema of that data and the static images it refers to by id.
  */
-export interface TemplateLike<S extends z.ZodType = z.ZodType> {
+export interface TemplateLike<S extends z.ZodType = z.ZodType, Component = unknown> {
   meta: { id: string };
   schema: S;
-  Template: ComponentType<{ data: z.output<S> }>;
+  Template: Component;
   images?: Record<string, Uint8Array>;
+}
+
+/**
+ * What a front end (`@inkoxide/react`, `@inkoxide/vue`, …) gives the pipeline: how to build the
+ * document tree of what its users render (`Input`: an element, a component and its props), and
+ * of a template's component (`Component`) with its data.
+ */
+export interface FrontEnd<Input, Component> {
+  /** The tree of `input`, built with `opts`. Throws TemplateError for a problem in the template. */
+  renderTemplate(input: Input, opts: TreeOptions): TreeResult;
+  /** What renders the template component `Template` with `{ data }`. */
+  withData(Template: Component, data: unknown): Input;
+  /** The name of the component `input` renders, for errors (`Invoice`); `'document'` when unknown. */
+  componentName(input: Input): string;
 }
 
 /** The options of `generate`: those of `renderToBuffer`. */
@@ -124,16 +137,26 @@ function fromTemplateError(e: unknown, id?: string): never {
   throw new RenderError('INTERNAL', `Rendering ${what} failed: ${(e as Error).message}`, { cause: e });
 }
 
+/** `assertValidTree`, whose problems throw as `fromTemplateError` gives them. */
+function assertValid(tree: TreeResult, id?: string): void {
+  try {
+    assertValidTree(tree);
+  } catch (e) {
+    fromTemplateError(e, id);
+  }
+}
+
 /** The tree of a template for parsed data; a template error becomes a RenderError. */
-function templateTree<S extends z.ZodType>(
-  t: TemplateLike<S>,
+function templateTree<S extends z.ZodType, Input, Component>(
+  fe: FrontEnd<Input, Component>,
+  t: TemplateLike<S, Component>,
   data: z.output<S>,
   opts: RenderOpts,
   policies: ImagePolicies,
 ): TreeResult {
   const imageOptions = treeImageOptions(policies);
   try {
-    return renderTemplate(createElement(t.Template, { data }), {
+    return fe.renderTemplate(fe.withData(t.Template, data), {
       ...imageOptions,
       imageIds: Object.keys({ ...t.images, ...opts.images }),
     });
@@ -185,8 +208,9 @@ const MAX_PASSES = 4;
  * before `init` has finished, or while fonts added with `Font.register` are not loaded, it
  * throws an `INTERNAL` RenderError that says to call `init`.
  */
-export function renderTree<S extends z.ZodType>(
-  t: TemplateLike<S>,
+export function renderTree<S extends z.ZodType, Input, Component>(
+  fe: FrontEnd<Input, Component>,
+  t: TemplateLike<S, Component>,
   data: unknown,
   opts: RenderOpts = {},
 ): TreeResult {
@@ -198,7 +222,7 @@ export function renderTree<S extends z.ZodType>(
   }
   const parsed = parseData(t, data);
   // Before the template runs: a bad option is not a template error.
-  const tree = templateTree(t, parsed, opts, imagePolicies(opts));
+  const tree = templateTree(fe, t, parsed, opts, imagePolicies(opts));
   return withTemplateImages(t, tree, opts.images);
 }
 
@@ -207,7 +231,7 @@ export function renderTree<S extends z.ZodType>(
  * caller passes under the same id replaces the template's, as in `generate`.
  */
 function withTemplateImages(
-  t: TemplateLike,
+  t: Pick<TemplateLike, 'images'>,
   tree: TreeResult,
   passed: Record<string, Uint8Array> = {},
 ): TreeResult {
@@ -221,11 +245,12 @@ function withTemplateImages(
 }
 
 /**
- * The whole pipeline: data → zod → React → tree (+ Tailwind) → ajv (dev) → engine → PDF,
- * with per-stage timings.
+ * The whole pipeline: data → zod → the front end's render → tree (+ Tailwind) → ajv (dev) →
+ * engine → PDF, with per-stage timings.
  */
-export async function generate<S extends z.ZodType>(
-  t: TemplateLike<S>,
+export async function generate<S extends z.ZodType, Input, Component>(
+  fe: FrontEnd<Input, Component>,
+  t: TemplateLike<S, Component>,
   data: unknown,
   opts: GenerateOptions = {},
 ): Promise<RenderResult> {
@@ -234,47 +259,46 @@ export async function generate<S extends z.ZodType>(
   const parsed = parseData(t, data);
   // Before the template runs: a bad option is not a template error.
   const policies = imagePolicies(opts);
-  let tree = templateTree(t, parsed, opts, policies);
-
-  let validateMs = 0;
-  if (opts.validate ?? !isProduction()) {
-    const v0 = performance.now();
-    try {
-      assertValidTree(tree);
-    } catch (e) {
-      fromTemplateError(e, t.meta.id);
+  const first = templateTree(fe, t, parsed, opts, policies);
+  try {
+    let validateMs = 0;
+    if (opts.validate ?? !isProduction()) {
+      const v0 = performance.now();
+      assertValid(first, t.meta.id);
+      validateMs = performance.now() - v0;
     }
-    validateMs = performance.now() - v0;
-  }
 
-  const e0 = performance.now();
-  const first = tree;
-  const settled = await settle(tree, { ...t.images }, opts, policies);
-  tree = settled.tree;
-  const { pdf, pages, passes, fetchMs } = settled;
-  const e1 = performance.now();
-  const v = version();
-  return {
-    pdf,
-    timings: {
-      // Rebuilds reuse the first React render: they count as tree time, not engine time.
-      reactMs: first.timings.reactMs,
+    const e0 = performance.now();
+    const settled = await settle(first, { ...t.images }, opts, policies);
+    const { tree, pdf, pages, passes, fetchMs } = settled;
+    const e1 = performance.now();
+    const v = version();
+    const timings = {
+      // Rebuilds reuse the first render of the template: they count as tree time, not engine time.
+      templateMs: first.timings.templateMs,
       treeMs: first.timings.treeMs + settled.treeMs,
       validateMs,
       engineMs: e1 - e0 - fetchMs - settled.treeMs,
       fetchMs,
       totalMs: e1 - t0,
-    },
-    passes,
-    pages,
-    bytes: pdf.byteLength,
-    schemaVersion: v.schema,
-    engineVersion: v.engine,
-    fonts: tree.fonts,
-    warnings: tree.warnings,
-    document: tree.document,
-    images: settled.images,
-  };
+    };
+    return {
+      pdf,
+      timings: withReactMs(timings),
+      passes,
+      pages,
+      bytes: pdf.byteLength,
+      schemaVersion: v.schema,
+      engineVersion: v.engine,
+      fonts: tree.fonts,
+      warnings: tree.warnings,
+      document: tree.document,
+      images: settled.images,
+    };
+  } finally {
+    // What the front end rendered, released once the PDF is made (or the render failed).
+    first.dispose();
+  }
 }
 
 /**
@@ -461,45 +485,36 @@ export interface RenderToBufferOptions extends RenderOpts {
 }
 
 /**
- * A `<Document>` element straight to PDF bytes: no template registry, schema or sample data. A
- * template is any component and its data are its props.
- *
- * ```tsx
- * const pdf = await renderToBuffer(<Invoice invoice={invoice} />);
- * ```
+ * A document straight to PDF bytes, rendered by the front end `fe`: no template registry, schema
+ * or sample data. A template is any component and its data are its props.
  */
-export async function renderToBuffer(
-  element: ReactElement,
+export async function renderToBuffer<Input, Component>(
+  fe: FrontEnd<Input, Component>,
+  input: Input,
   opts: RenderToBufferOptions = {},
 ): Promise<Uint8Array> {
   await init();
-  const name = componentName(element);
+  const name = fe.componentName(input);
   // Outside the try: a bad option is not a template error.
   const policies = imagePolicies(opts);
   const imageOptions = treeImageOptions(policies);
   let tree: TreeResult;
   try {
-    tree = renderTemplate(element, {
+    tree = fe.renderTemplate(input, {
       ...imageOptions,
       imageIds: Object.keys(opts.images ?? {}),
     });
-    if (opts.validate ?? !isProduction()) assertValidTree(tree);
   } catch (e) {
     fromTemplateError(e, name);
   }
-  const { pdf } = await settle(tree, {}, opts, policies);
-  return pdf;
-}
-
-/** The name of the element's component, for errors; JavaScript callers can pass anything. */
-function componentName(element: ReactElement): string {
-  const t = (element as { type?: unknown } | null | undefined)?.type as
-    | string
-    | { displayName?: string; name?: string }
-    | null
-    | undefined;
-  if (typeof t === 'string') return t;
-  return (t && (t.displayName ?? t.name)) || 'document';
+  try {
+    if (opts.validate ?? !isProduction()) assertValid(tree, name);
+    const { pdf } = await settle(tree, {}, opts, policies);
+    return pdf;
+  } finally {
+    // What the front end rendered, released once the PDF is made (or the render failed).
+    tree.dispose();
+  }
 }
 
 /**

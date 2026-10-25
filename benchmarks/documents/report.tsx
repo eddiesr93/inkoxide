@@ -1,6 +1,6 @@
 // A 43-page report: 40 sections of headings, justified paragraphs and tables, in Inter. The server
 // benchmark (bench.tsx) and the browser one (browser/) render it.
-import { Document, Page, Text, View } from '@inkoxide/render';
+import { Document, Page, Text, View } from '@inkoxide/react';
 import type { ReactElement } from 'react';
 
 const s = {

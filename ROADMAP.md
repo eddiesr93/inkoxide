@@ -9,3 +9,7 @@ or should come sooner.
   rebuilt there.
 - **Encryption**: an independent review of the key derivation by cryptographers. It has had an
   internal review only.
+- **Svelte**: a custom renderer in place of reading back what Svelte rendered, once Svelte ships
+  them ([sveltejs/svelte#18042](https://github.com/sveltejs/svelte/pull/18042)), so that component
+  stacks name the template's own components in a minified bundle too.
+- **Angular**: typed components beside the `ink-*` elements, so that templates are type-checked.

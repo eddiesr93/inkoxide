@@ -1,7 +1,7 @@
 // A short letter in German, hyphenated, with a character Inter lacks: the page fetches the
 // engine's German hyphenation patterns and Noto Sans, the fallback font, only for it. Rendered in
 // Node too, by the tests, for the same PDF.
-import { Document, Page, Text } from '@inkoxide/render';
+import { Document, Page, Text } from '@inkoxide/react';
 
 export default function Letter() {
   return (

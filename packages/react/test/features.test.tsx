@@ -8,9 +8,11 @@ import type {
   TextNode,
 } from '@inkoxide/schema';
 import { parseColor } from '@inkoxide/tailwind';
+import { imageSource, isImagePath, remoteAllowed } from '@inkoxide/tree';
 import type { ReactNode } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
 
+import { boxStyle } from '../../tree/src/tree/style.ts';
 import {
   Attachment,
   Canvas,
@@ -31,8 +33,6 @@ import {
   Image,
   ImageBackground,
   type ImageSrc,
-  imageSource,
-  isImagePath,
   LinearGradient,
   Link,
   List,
@@ -51,7 +51,6 @@ import {
   RadialGradient,
   Radio,
   Rect,
-  remoteAllowed,
   renderTemplate,
   Row,
   Select,
@@ -72,7 +71,6 @@ import {
   usePage,
   View,
 } from '../src/index.ts';
-import { boxStyle } from '../src/tree/style.ts';
 import { body, first, registry, setup, thrown } from './helpers.ts';
 
 beforeAll(setup);
@@ -1734,7 +1732,7 @@ describe('drawings', () => {
     const svg = decode(img.data);
     expect(svg).toContain('viewBox="0 0 100 50"');
     expect(svg).toContain('<linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#1e4a99"/>');
-    expect(svg).toContain('stroke-width="2" stroke-dasharray="2 1"');
+    expect(svg).toContain('stroke-dasharray="2 1" stroke-width="2"');
     expect(
       thrown(() =>
         tree(
@@ -1760,7 +1758,7 @@ describe('drawings', () => {
         <Rect width={10} height={10} clipPath="url(#c)" />
       </Svg>,
     );
-    expect(decode(first<ImageNode>(r).data)).toContain('<clipPath id="c" clipPathUnits="objectBoundingBox">');
+    expect(decode(first<ImageNode>(r).data)).toContain('<clipPath clipPathUnits="objectBoundingBox" id="c">');
   });
 
   it('writes a Marker and the shapes that reference it', () => {
@@ -1799,11 +1797,13 @@ describe('drawings', () => {
     );
     const svg = decode(first<ImageNode>(r).data);
     expect(svg).toContain(
-      '<marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse" markerUnits="strokeWidth"><path d="M0 0L10 5L0 10Z" fill="context-stroke"/></marker>',
+      '<marker id="arrow" markerHeight="6" markerUnits="strokeWidth" markerWidth="6" orient="auto-start-reverse" refX="10" refY="5" viewBox="0 0 10 10"><path d="M0 0L10 5L0 10Z" fill="context-stroke"/></marker>',
     );
-    expect(svg).toContain('<marker id="dot" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="30">');
-    expect(svg).toContain('fx="0.3" fy="0.3" fr="0.1"');
-    expect(svg).toContain('marker-start="url(#arrow)" marker-mid="url(#dot)" marker-end="url(#arrow)"/>');
+    expect(svg).toContain('<marker id="dot" markerHeight="4" markerWidth="4" orient="30" refX="2" refY="2">');
+    expect(svg).toContain('fr="0.1" fx="0.3" fy="0.3"');
+    expect(svg).toContain(
+      'marker-end="url(#arrow)" marker-mid="url(#dot)" marker-start="url(#arrow)" points',
+    );
     expect(r.validate()).toEqual([]);
     expect(
       thrown(() =>
@@ -1842,7 +1842,7 @@ describe('drawings', () => {
     // The size around the drawing is its text's default.
     expect(svg).toContain('viewBox="0 0 100 40" font-size="11">');
     expect(svg).toContain(
-      `<text x="10 20" y="30" text-anchor="middle" textLength="50" lengthAdjust="spacingAndGlyphs" font-family="'Inter'" font-weight="400">a &lt; b &amp; <tspan dx="2" baseline-shift="super" font-size="8" fill="red" font-family="'Inter'" font-weight="400">2</tspan>`,
+      `<text lengthAdjust="spacingAndGlyphs" text-anchor="middle" textLength="50" x="10 20" y="30" font-family="'Inter'" font-weight="400">a &lt; b &amp; <tspan baseline-shift="super" dx="2" fill="red" font-size="8" font-family="'Inter'" font-weight="400">2</tspan>`,
     );
     // Inter has no bold italic: the italic face, the closest it has.
     expect(svg).toContain(`<tspan font-family="'Inter'" font-weight="400" font-style="italic">c</tspan>`);
@@ -1863,7 +1863,7 @@ describe('drawings', () => {
       </Svg>,
     );
     const svg = decode((first<ImageNode>(r) as ImageNode).data);
-    expect(svg).toContain('<text x="90" y="30" direction="rtl" text-anchor="start"');
+    expect(svg).toContain('<text direction="rtl" text-anchor="start" x="90" y="30"');
     expect(svg).toContain('<tspan alignment-baseline="hanging"');
     expect(r.validate()).toEqual([]);
   });
@@ -1933,10 +1933,10 @@ describe('drawings', () => {
     );
     const svg = decode(first<ImageNode>(r).data);
     expect(svg).toContain(
-      `<textPath href="#curve" startOffset="50%" text-anchor="middle" side="right" method="stretch" font-family="'Inter'" font-weight="400">on a <tspan fill="red"`,
+      `<textPath href="#curve" method="stretch" side="right" startOffset="50%" text-anchor="middle" font-family="'Inter'" font-weight="400">on a <tspan fill="red"`,
     );
     expect(svg).toContain(
-      'writing-mode="vertical-rl" text-orientation="upright" font-variant="small-caps" font-kerning="none" font-feature-settings=',
+      'font-feature-settings="\'tnum\'" font-kerning="none" font-variant="small-caps" text-orientation="upright" writing-mode="vertical-rl"',
     );
     expect(r.validate()).toEqual([]);
     const placed = (children: ReactNode) =>
@@ -1993,7 +1993,7 @@ describe('drawings', () => {
     );
     for (const node of body(r)) {
       expect(decode((node as ImageNode).data)).toBe(
-        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10" fill="red"><rect width="1" height="1"/></svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10" fill="red"><rect height="1" width="1"/></svg>',
       );
     }
     expect(body(r)).toHaveLength(2);
@@ -2895,11 +2895,11 @@ describe('props and style values that would do nothing', () => {
     const svg = decode(first<ImageNode>(r).data);
     // The drawing inherits the paint of the Svg's own classes.
     expect(svg).toMatch(/<svg [^>]* fill="rgb\(0,0,255\)" stroke-width="2" font-size="10">/);
-    expect(svg).toContain('<rect width="5" height="5" fill="rgb(255,0,0)" opacity="0.5"/>');
-    expect(svg).toContain('<circle r="2" fill="teal" stroke-width="3"/>');
-    expect(svg).toContain('<g fill="none" stroke="currentColor" color="rgb(0,255,0)">');
+    expect(svg).toContain('<rect fill="rgb(255,0,0)" height="5" opacity="0.5" width="5"/>');
+    expect(svg).toContain('<circle fill="teal" r="2" stroke-width="3"/>');
+    expect(svg).toContain('<g color="rgb(0,255,0)" fill="none" stroke="currentColor">');
     expect(svg).toMatch(
-      /<text x="1" y="15" font-size="9" text-decoration="underline" letter-spacing="1" font-family="[^"]+" font-weight="700">a<\/text>/,
+      /<text font-size="9" letter-spacing="1" text-decoration="underline" x="1" y="15" font-family="[^"]+" font-weight="700">a<\/text>/,
     );
     expect(r.validate()).toEqual([]);
     // Outside an Svg they draw nothing.

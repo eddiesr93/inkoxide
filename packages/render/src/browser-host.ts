@@ -72,12 +72,12 @@ export function configureBrowser(opts: BrowserOptions = {}): void {
 
 /** An error of the engine, as the worker sends it back. */
 class EngineError extends Error {
-  constructor(
-    readonly code: string,
-    readonly path: string,
-    message: string,
-  ) {
+  readonly code: string;
+  readonly path: string;
+  constructor(code: string, path: string, message: string) {
     super(message);
+    this.code = code;
+    this.path = path;
     this.name = 'InkoxideError';
   }
 }

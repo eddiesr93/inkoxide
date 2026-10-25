@@ -1,6 +1,6 @@
 import { realpathSync } from 'node:fs';
 
-import { Document, Footer, Page, renderToFile, Text, View } from '@inkoxide/render';
+import { Document, Footer, Page, renderToFile, Text, View } from '@inkoxide/react';
 
 export interface LetterProps {
   date: string;

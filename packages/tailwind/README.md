@@ -5,9 +5,10 @@ Units are tuned for print: `1rem` is 12pt and `1px` 0.75pt. Page variants (`md:`
 `print:`) read the page the element is on. An unsupported class (a variant such as `hover:`, a
 shadow, a gradient) throws outside production, and is logged once and ignored in production.
 
-Install it next to [`@inkoxide/render`](https://www.npmjs.com/package/@inkoxide/render) to
-style documents with `className`; without it, `style` works alone. The render
-[guide](https://github.com/eddiesr93/inkoxide/blob/main/packages/render/GUIDE.md#tailwind)
+Install it next to the package of your framework
+([`@inkoxide/react`](https://www.npmjs.com/package/@inkoxide/react), `@inkoxide/vue`,
+`@inkoxide/svelte` or `@inkoxide/angular`) to style documents with classes; without it, `style` works alone. The render
+[guide](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#tailwind)
 covers styling with classes, and
 [TAILWIND_SUPPORT.md](https://github.com/eddiesr93/inkoxide/blob/main/docs/TAILWIND_SUPPORT.md)
 lists every supported utility.
@@ -21,7 +22,7 @@ npm install @inkoxide/tailwind
 
 ## Usage
 
-`@inkoxide/render` calls it for you. To map classes yourself:
+The front ends call it for you. To map classes yourself:
 
 ```js
 import { DEFAULT_THEME_CSS, initTailwind, setTailwindStrict, tw } from '@inkoxide/tailwind';

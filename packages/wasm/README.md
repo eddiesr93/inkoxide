@@ -6,10 +6,11 @@ as the native [`inkoxide`](https://www.npmjs.com/package/inkoxide) package,
 with the same functions, plus `init`, `threadCount`, `loadHyphenation` and
 `clearCaches`, and one more render option, `deferredFonts`.
 
-This page is for using the engine directly. To render React components in a
-browser, in a Web Worker, use `@inkoxide/render/browser`, which runs this
+This page is for using the engine directly. To render templates in a browser,
+in a Web Worker, use the browser entry of your framework's package
+(`@inkoxide/react/browser`, `@inkoxide/vue/browser`, …), which runs this
 package for you: see
-[In the browser](https://github.com/eddiesr93/inkoxide/blob/main/packages/render/GUIDE.md#in-the-browser).
+[In the browser](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#in-the-browser).
 
 ```sh
 npm install @inkoxide/wasm
@@ -77,7 +78,7 @@ threadCount(); // the pool's size, or 1 where memory cannot be shared
 A render's `threads: 1` keeps to the calling thread. A bug on a pool thread
 cannot end the call that waits for it: the thread posts `{ message }` on the
 `BroadcastChannel` named `trapChannel`, and the page, listening, ends the
-worker. `@inkoxide/render/browser` does all of this with its `threads` option.
+worker. `@inkoxide/render/browser`, under each front end's browser entry, does all of this with its `threads` option.
 
 **From a CDN.** A page cannot start a worker from a script of another origin. When this package
 is served from one, the pool's threads start as workers of the page's origin from a `blob:` URL

@@ -1,6 +1,6 @@
 # Inkoxide in the browser
 
-A Vite page that renders an invoice with `@inkoxide/render/browser`: the engine is WebAssembly
+A Vite page that renders an invoice with `@inkoxide/react/browser`: the engine is WebAssembly
 (`@inkoxide/wasm`), in a Web Worker. `<PdfViewer>` shows the PDF in the page and
 `<PdfDownloadLink>` downloads it.
 
@@ -19,7 +19,7 @@ pnpm --filter @inkoxide/examples-browser dev
 - `inkoxideTailwind()` from `@inkoxide/tailwind/plugin`, which puts a table of the page's classes
   in the bundle in place of Tailwind's compiler.
 
-`src/Invoice.tsx` imports from `@inkoxide/render`, as server code would; the config points that
+`src/Invoice.tsx` imports from `@inkoxide/react`, as server code would; the config points that
 at the browser entry.
 
 `src/Letter.tsx` is a short letter in German, hyphenated, with a character Inter lacks. The page

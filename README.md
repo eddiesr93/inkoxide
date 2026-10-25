@@ -4,10 +4,10 @@
 
 **A PDF layout engine for Node.js, written in Rust.**
 
-Typeset documents from React components, or from a JSON document tree.
+Typeset documents from React, Vue, Svelte or Angular components, or from a JSON document tree.
 
 [![CI](https://github.com/eddiesr93/inkoxide/actions/workflows/ci.yml/badge.svg)](https://github.com/eddiesr93/inkoxide/actions/workflows/ci.yml)
-[![@inkoxide/render on npm](https://img.shields.io/npm/v/@inkoxide/render?color=4f46e5&label=%40inkoxide%2Frender)](https://www.npmjs.com/package/@inkoxide/render)
+[![@inkoxide/react on npm](https://img.shields.io/npm/v/@inkoxide/react?color=4f46e5&label=%40inkoxide%2Freact)](https://www.npmjs.com/package/@inkoxide/react)
 [![inkoxide on npm](https://img.shields.io/npm/v/inkoxide?color=0f766e&label=inkoxide)](https://www.npmjs.com/package/inkoxide)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-0ea5e9)](LICENSE)
 
@@ -23,21 +23,20 @@ Typeset documents from React components, or from a JSON document tree.
 
 <table>
 <tr>
-<td align="center" valign="top" width="33%"><img src="packages/render/media/invoice.png" alt="Invoice PDF: logo, sender and client addresses, a four-row line-item table, subtotal, tax and a highlighted total due." width="260"><br><sub><b>Invoice</b></sub></td>
-<td align="center" valign="top" width="33%"><img src="packages/render/media/report.png" alt="First page of a sales report PDF: three KPI cards, a monthly revenue bar chart and the start of a regional sales table." width="260"><br><sub><b>Multi-page report</b></sub></td>
-<td align="center" valign="top" width="33%"><img src="packages/render/media/certificate.png" alt="Landscape certificate PDF: a double border, Certificate of Completion, the recipient name, two signature lines and a gold seal." width="260"><br><sub><b>Certificate</b></sub></td>
+<td align="center" valign="top" width="33%"><img src="packages/react/media/invoice.png" alt="Invoice PDF: logo, sender and client addresses, a four-row line-item table, subtotal, tax and a highlighted total due." width="260"><br><sub><b>Invoice</b></sub></td>
+<td align="center" valign="top" width="33%"><img src="packages/react/media/report.png" alt="First page of a sales report PDF: three KPI cards, a monthly revenue bar chart and the start of a regional sales table." width="260"><br><sub><b>Multi-page report</b></sub></td>
+<td align="center" valign="top" width="33%"><img src="packages/react/media/certificate.png" alt="Landscape certificate PDF: a double border, Certificate of Completion, the recipient name, two signature lines and a gold seal." width="260"><br><sub><b>Certificate</b></sub></td>
 </tr>
 <tr>
-<td align="center" valign="top" width="33%"><img src="packages/render/media/letter.png" alt="Business letter PDF: a letterhead, the date and address block, four justified paragraphs and a signature." width="260"><br><sub><b>Business letter</b></sub></td>
-<td align="center" valign="top" width="33%"><img src="packages/render/media/resume.png" alt="Résumé PDF: a dark sidebar with initials, contact details and skill tags, and a main column with profile, experience and education." width="260"><br><sub><b>Résumé</b></sub></td>
-<td align="center" valign="top" width="33%"><img src="packages/render/media/form.png" alt="Membership application PDF with text fields, a plan select, two radio buttons and two consent checkboxes." width="260"><br><sub><b>Fillable form</b></sub></td>
+<td align="center" valign="top" width="33%"><img src="packages/react/media/letter.png" alt="Business letter PDF: a letterhead, the date and address block, four justified paragraphs and a signature." width="260"><br><sub><b>Business letter</b></sub></td>
+<td align="center" valign="top" width="33%"><img src="packages/react/media/resume.png" alt="Résumé PDF: a dark sidebar with initials, contact details and skill tags, and a main column with profile, experience and education." width="260"><br><sub><b>Résumé</b></sub></td>
+<td align="center" valign="top" width="33%"><img src="packages/react/media/form.png" alt="Membership application PDF with text fields, a plan select, two radio buttons and two consent checkboxes." width="260"><br><sub><b>Fillable form</b></sub></td>
 </tr>
 </table>
 
 Inkoxide does the typesetting of a PDF: text shaping, line breaking, layout, pagination and PDF
-output, in native code. Documents are written as React components with
-[`@inkoxide/render`](https://www.npmjs.com/package/@inkoxide/render), styled with Tailwind
-classes or style objects, or built as JSON by any program and rendered with
+output, in native code. Documents are written as components of React, Vue, Svelte or Angular,
+styled with Tailwind classes or style objects, or built as JSON by any program and rendered with
 [`inkoxide`](https://www.npmjs.com/package/inkoxide). Render times, on the server and in the
 browser, are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
@@ -54,14 +53,16 @@ browser, are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
   2b, 2a, 3b and 3a, tagged PDF and PDF/UA-1, AES-256 encryption with passwords and permissions,
   parallel rendering across pages, and byte-identical output for identical input.
 - **Validation.** Every document is checked against a JSON Schema, with the path of each error.
-  In React, errors carry the component stack.
+  In a template, errors carry the component stack.
+- **Your framework.** The same components in React, Vue, Svelte and Angular, which build the same
+  document and so the same PDF, byte for byte.
 
 ## Getting started
 
 ### With React
 
 ```sh
-npm install @inkoxide/render
+npm install @inkoxide/react react
 ```
 
 To style with Tailwind classes (`className`), as the example does, add:
@@ -74,7 +75,7 @@ Save this as `receipt.tsx`:
 
 ```tsx
 /** @jsxRuntime automatic */
-import { Document, Page, renderToFile, Text, View } from '@inkoxide/render';
+import { Document, Page, renderToFile, Text, View } from '@inkoxide/react';
 
 function Receipt({ customer, lines }: { customer: string; lines: { name: string; amount: number }[] }) {
   const total = lines.reduce((sum, l) => sum + l.amount, 0);
@@ -111,12 +112,26 @@ renderToFile(
 );
 ```
 
-<img src="packages/render/media/receipt.png" alt="The resulting receipt.pdf: an A6 page with 'Receipt for Ada Lovelace', three items with prices and a bold total of $9.70." width="280">
+<img src="packages/react/media/receipt.png" alt="The resulting receipt.pdf: an A6 page with 'Receipt for Ada Lovelace', three items with prices and a bold total of $9.70." width="280">
 
 Run it with `npx tsx receipt.tsx`. The fonts (Inter, Noto Sans, Roboto Mono) ship with the
 package, and `@inkoxide/tailwind` brings the Tailwind compiler. The six documents above, with
 their code, are in [`examples/`](examples) and in the
-[@inkoxide/render README](packages/render/README.md).
+[@inkoxide/react README](packages/react/README.md).
+
+### With Vue, Svelte or Angular
+
+The same document, written with the components of your framework:
+
+| Framework | Package | How a template looks |
+|---|---|---|
+| Vue 3.5+ | [`@inkoxide/vue`](packages/vue) | `<Text class="text-lg font-bold">Receipt</Text>` in a single-file component or a render function |
+| Svelte 5.39+ | [`@inkoxide/svelte`](packages/svelte) | `<Text class="text-lg font-bold">Receipt</Text>` in a component |
+| Angular 21, 22 | [`@inkoxide/angular`](packages/angular) | `<ink-text class="text-lg font-bold">Receipt</ink-text>` in a component's template |
+
+Each package has the same functions (`renderToBuffer`, `renderToFile`, `renderToStream`, a
+browser entry and templates served by id), and each package's README shows the receipt above in
+it.
 
 ### With JSON
 
@@ -148,7 +163,8 @@ MessagePack. [`@inkoxide/schema`](packages/schema) has its TypeScript types and 
 
 | Topic | Document |
 |---|---|
-| Writing documents in React | [Guide](packages/render/GUIDE.md): components, styling, fonts, images, pagination, tables, forms, API, errors |
+| Writing documents | [Guide](packages/react/GUIDE.md): components, styling, fonts, images, pagination, tables, forms, API, errors, in React; the READMEs of [Vue](packages/vue), [Svelte](packages/svelte) and [Angular](packages/angular) say how each writes them |
+| Upgrading from 0.x | [UPGRADING.md](UPGRADING.md) |
 | Tailwind classes | [Supported utilities](docs/TAILWIND_SUPPORT.md) |
 | Using the engine from Node | [Client integration](docs/CLIENT_INTEGRATION.md): fonts, images, errors, threading, determinism |
 | The engine API | [API reference](docs/API.md): the Rust and Node APIs, options and error codes |
@@ -160,8 +176,12 @@ MessagePack. [`@inkoxide/schema`](packages/schema) has its TypeScript types and 
 
 | Package | What it is |
 |---|---|
-| [`@inkoxide/render`](packages/render) | React components to PDF: `renderToBuffer`, `renderToFile`, `Font.register`, bundled fonts |
-| [`@inkoxide/react`](packages/react) | The React components and reconciler that build document trees |
+| [`@inkoxide/react`](packages/react) | React templates to PDF: the components, `renderToBuffer`, `renderToFile`, a browser entry |
+| [`@inkoxide/vue`](packages/vue) | The same for Vue |
+| [`@inkoxide/svelte`](packages/svelte) | The same for Svelte |
+| [`@inkoxide/angular`](packages/angular) | The same for Angular |
+| [`@inkoxide/render`](packages/render) | The engine for every front end: `Font.register`, bundled fonts, images, `renderDocument` for a JSON document tree |
+| [`@inkoxide/tree`](packages/tree) | What the front ends share: the components' props, where each may go, and host nodes to the document tree |
 | [`@inkoxide/tailwind`](packages/tailwind) | Optional: Tailwind class strings (`className`) to engine styles, with the Tailwind v4 compiler, and a build plugin that puts a table of your classes in the browser bundle in its place |
 | [`@inkoxide/style`](packages/style) | Style values: CSS lengths, colours and transforms read into engine styles |
 | [`inkoxide`](packages/inkoxide) | The engine for Node.js: a JSON or MessagePack document tree in, PDF bytes out |
@@ -187,8 +207,9 @@ The Node packages declare Node.js 22 or later (`engines`), and CI tests them on 
 | Windows | x64 |
 
 In browsers (current Chrome, Edge, Firefox and Safari), the engine is WebAssembly
-(`@inkoxide/wasm`), and `@inkoxide/render/browser` renders in a Web Worker; see
-[In the browser](packages/render/GUIDE.md#in-the-browser).
+(`@inkoxide/wasm`), and the browser entry of each front end (`@inkoxide/react/browser`,
+`@inkoxide/vue/browser`, …) renders in a Web Worker; see
+[In the browser](packages/react/GUIDE.md#in-the-browser).
 
 ## Contributing
 

@@ -45,7 +45,7 @@ pnpm test                  # the TypeScript packages
 - **Schema changes** start in `packages/schema/document.v1.json`. Then update the serde structs
   in `crates/core/src/schema/`, and regenerate the files made from the schema:
   `node scripts/gen-schema-types.mjs` (`packages/schema/index.d.ts`),
-  `node scripts/gen-schema-validator.mjs` (`packages/react/src/tree/schema-validator.ts`),
+  `node scripts/gen-schema-validator.mjs` (`packages/tree/src/tree/schema-validator.ts`),
   `python3 scripts/gen-schema-doc.py` (`docs/SCHEMA.md`) and
   `python3 scripts/gen-fuzz-dict.py` (`fuzz/render_json.dict`). Teach the fuzz generator
   (`fuzz/src/lib.rs`) the new properties, and add an entry to `packages/schema/CHANGELOG.md`.
@@ -53,11 +53,15 @@ pnpm test                  # the TypeScript packages
 - **Generated files** are committed. `scripts/check-generated.sh` runs every generator and fails
   when one of their files changed: besides the schema files above, the fixtures that
   `scripts/fixtures/` generates, the version `@inkoxide/react` reports
-  (`scripts/gen-react-version.mjs`), the Tailwind theme (`scripts/gen-tailwind-theme.mjs`),
+  (`scripts/gen-react-version.mjs`), the Svelte components (`scripts/gen-svelte-components.mjs`),
+  the Tailwind theme (`scripts/gen-tailwind-theme.mjs`),
   `docs/TAILWIND_SUPPORT.md` (`scripts/gen-tailwind-docs.ts`) and the example sources in
-  `packages/render/README.md` and `examples/README.md` (`examples/render.ts --readme`). After it
+  `packages/react/README.md` and `examples/README.md` (`examples/render.ts --readme`). After it
   fails, the regenerated files are in place: review and commit them.
-- **React and Tailwind changes** need a test in `packages/*/test`. A new Tailwind utility
+- **Front-end and Tailwind changes** need a test in `packages/*/test`. A change to what a
+  component does belongs in `@inkoxide/tree`, so that every framework has it; a change to the
+  components' API needs it in each front end, and `packages/conformance` checks that the
+  examples still build the same document and PDF in each. A new Tailwind utility
   belongs in `packages/tailwind/src/supported.ts`; its examples are tests, and
   `pnpm exec tsx scripts/gen-tailwind-docs.ts` regenerates `docs/TAILWIND_SUPPORT.md`.
 - **Screenshots** in the READMEs come from `examples/`. After changing an example or the

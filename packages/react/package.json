@@ -3,28 +3,37 @@
   "version": "0.10.1",
   "private": true,
   "type": "module",
-  "description": "React components and reconciler that build Inkoxide document trees.",
+  "description": "React templates to PDF with the Inkoxide engine, in Node and in the browser: components, renderToBuffer, renderToFile, Font.register.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts",
+    "./templates": "./src/templates.ts"
   },
   "dependencies": {
+    "@inkoxide/render": "workspace:*",
     "@inkoxide/schema": "workspace:*",
-    "@inkoxide/style": "workspace:*",
-    "ajv-formats": "3.0.1",
+    "@inkoxide/tree": "workspace:*",
     "react": "19.3.0",
-    "react-reconciler": "0.34.0"
+    "react-reconciler": "0.34.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@inkoxide/tailwind": "workspace:*",
+    "@inkoxide/wasm": "workspace:*",
     "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "@types/react-reconciler": "0.33.1",
-    "ajv": "8.20.0"
+    "react-dom": "19.3.0"
   },
   "peerDependencies": {
-    "@inkoxide/tailwind": "workspace:*"
+    "@inkoxide/tailwind": "workspace:*",
+    "@inkoxide/wasm": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@inkoxide/tailwind": {
+      "optional": true
+    },
+    "@inkoxide/wasm": {
       "optional": true
     }
   }

@@ -18,6 +18,6 @@
     "target/**",
     "tmp/**",
     "packages/render/assets/**",
-    "packages/react/src/tree/schema-validator.ts"
+    "packages/tree/src/tree/schema-validator.ts"
   ]
 }

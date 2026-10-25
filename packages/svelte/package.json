@@ -1,0 +1,46 @@
+{
+  "name": "@inkoxide/svelte",
+  "version": "0.10.1",
+  "private": true,
+  "type": "module",
+  "description": "Svelte templates to PDF with the Inkoxide engine, in Node and in the browser: components, renderToBuffer, renderToFile, Font.register.",
+  "exports": {
+    ".": {
+      "svelte": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./browser": {
+      "svelte": "./src/browser.ts",
+      "default": "./src/browser.ts"
+    },
+    "./templates": {
+      "svelte": "./src/templates.ts",
+      "default": "./src/templates.ts"
+    }
+  },
+  "dependencies": {
+    "@inkoxide/render": "workspace:*",
+    "@inkoxide/schema": "workspace:*",
+    "@inkoxide/tree": "workspace:*",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@inkoxide/tailwind": "workspace:*",
+    "@inkoxide/wasm": "workspace:*",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "svelte": "5.57.2"
+  },
+  "peerDependencies": {
+    "@inkoxide/tailwind": "workspace:*",
+    "@inkoxide/wasm": "workspace:*",
+    "svelte": "^5.39.0"
+  },
+  "peerDependenciesMeta": {
+    "@inkoxide/tailwind": {
+      "optional": true
+    },
+    "@inkoxide/wasm": {
+      "optional": true
+    }
+  }
+}

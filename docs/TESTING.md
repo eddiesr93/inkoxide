@@ -250,7 +250,7 @@ only on demand, from the Actions tab, with the ID of that release run.
   `tests/cdn.spec.ts` serves the page's scripts and assets from another
   origin, as a CDN would (ports 4182 and 4181), and checks that the workers
   start from `blob:` URLs and render the same bytes on a pool of threads.
-- `packages/render/test/browser.test.tsx`: `@inkoxide/render/browser` on
+- `packages/react/test/browser.test.tsx`: `@inkoxide/react/browser` on
   the calling thread renders the bytes the main entry renders. It needs
   `scripts/build-wasm.sh` first, and skips without it outside CI.
 - `packages/tailwind/test`: `plugin.test.ts` builds a page with Vite and
@@ -266,17 +266,62 @@ only on demand, from the Actions tab, with the ID of that release run.
   `not`, `inline`); `browser.test.ts` the browser entry, which maps classes as
   the Node one does and is strict outside production.
 - `packages/*/test` (Vitest, `pnpm test`): the style value readers and page
-  media queries, Tailwind class mapping and `initTailwind` options, the React
-  tree builder, `renderToBuffer`, `Font.register`, `usePdf` (in happy-dom),
-  error messages, the export lists of `@inkoxide/style` and
-  `@inkoxide/render`, and the examples and benchmark invoices, each run
-  through a symlinked path.
+  media queries, Tailwind class mapping and `initTailwind` options, the tree
+  builder through React, the Vue, Svelte and Angular front ends,
+  `renderToBuffer`, `Font.register`, the browser helpers of each front end (in
+  happy-dom), error messages, the export lists of every package and entry
+  (`@inkoxide/style`, `@inkoxide/tree` with `common` and `internal`,
+  `@inkoxide/render`, each front end, `@inkoxide/vue/vite`), each name found in
+  the package's docs or in those of the package it comes from, and the examples
+  and benchmark invoices, each run through a symlinked path. Two Vitest projects run them:
+  `node`, and `dom` for the `*.dom.test.ts` files, in happy-dom with the
+  `browser` exports (Svelte's client runtime). Vue's single-file components are
+  compiled for the client (`@inkoxide/vue/vite`), Svelte's for the server in
+  `node` and for the client in `dom`, and Angular's components just in time.
+- `packages/conformance/test`: the examples and a document of features
+  (per-page content, `@media`, Canvas, SVG text, an image, a note, fields),
+  written again in Vue, Svelte and Angular, must build the document React
+  builds and the same PDF, byte for byte; a component in the wrong place
+  gives React's error in each, with React's component stack when it is in a
+  component of the template; a component deeper in per-page content reads the
+  page, and what each front end rendered (the document and the roots of its
+  pages) is released once the PDF is made, or at once when the render fails;
+  every front end exports the names of `@inkoxide/react` and every component;
+  a Vite server build of the Vue and Svelte templates, as Vite's SSR builds
+  them for a Nuxt app's server bundle and SvelteKit's endpoints, with the
+  Tailwind plugin, which leaves it Tailwind's compiler, renders React's PDF;
+  and `angular-aot.test.ts` compiles an
+  Angular template with signal inputs ahead of time (`ngc`, on TypeScript 6,
+  installed in that package only), which renders React's PDF with no JIT
+  compiler, binds the browser directives as declared in the package's
+  declaration files, and links their partial declarations with Angular's
+  Babel linker; `angular-cli.test.ts` builds an Angular CLI application
+  (its `application` builder, through `@angular-builders/custom-esbuild` and
+  Angular's Architect, as `ng build` runs it) with the Tailwind plugin, whose
+  bundle has the class table and not Tailwind's compiler, and without it.
+- `examples/frameworks` (Playwright, `pnpm test` there): the invoice written
+  in Vue, Svelte and Angular renders in a worker, in Chromium, Firefox and
+  WebKit, the bytes React renders in Node, with the classes the Tailwind
+  plugin read from `.vue`, `.svelte` and Angular's inline templates, under a
+  Content Security Policy (the Angular page compiles just in time, so its
+  policy allows `'unsafe-eval'`); and, as `examples/browser` does for React,
+  each page cross-origin isolated, on a pool of threads
+  (`tests/threads.spec.ts`), and with its scripts from another origin, as from
+  a CDN (`tests/cdn.spec.ts`). Those two need the engine's module with
+  threads, which the WebAssembly job builds.
+- The `front-end-versions` job of `ci.yml` runs the Angular tests with
+  Angular 21 (its compiler and builder too, for the ahead-of-time and CLI
+  tests) and the Svelte
+  tests with Svelte 5.39, the oldest versions the packages support, and the
+  Vue tests with Vue's next minor (3.6, whose Vapor components the package
+  refuses); the rest of CI tests the versions the workspace pins.
 - `scripts/check-generated.sh`: regenerates every committed generated
   file (`packages/schema/index.d.ts`, `docs/SCHEMA.md`,
   `docs/TAILWIND_SUPPORT.md`, `fuzz/render_json.dict`, the fixture
   documents and the emoji, variable and vertical test fonts that
-  `scripts/fixtures` writes, the version `@inkoxide/react` reports and the
-  Tailwind theme) and
+  `scripts/fixtures` writes, the version `@inkoxide/react` reports, the
+  Svelte components of `packages/svelte/src/components` and the Tailwind
+  theme) and
   fails when one is stale; `ci.yml` and `scripts/ci.sh` run it. The
   images of `scripts/fixtures/images.py` and its document are the
   exception: it needs Pillow, whose PNG bytes change between versions.

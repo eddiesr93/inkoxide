@@ -1,6 +1,6 @@
 import { realpathSync } from 'node:fs';
 
-import { Circle, Document, Page, Path, renderToFile, Svg, Text, View } from '@inkoxide/render';
+import { Circle, Document, Page, Path, renderToFile, Svg, Text, View } from '@inkoxide/react';
 
 export interface CertificateProps {
   recipient: string;

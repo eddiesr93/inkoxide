@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 
+import { loadWith } from '../../tree/src/tailwind.ts';
 import { Document, Page, renderTemplate, Text } from '../src/index.ts';
-import { loadWith } from '../src/tailwind.ts';
 import { registry, thrown } from './helpers.ts';
 
 // Its own file: Tailwind is not loaded here, and the module state carries from test to test.

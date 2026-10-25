@@ -2,7 +2,7 @@
 
 ## React documents
 
-`@inkoxide/render` on two documents, an invoice styled with Tailwind classes and a 43-page
+`@inkoxide/react` on two documents, an invoice styled with Tailwind classes and a 43-page
 report, on the server and in the browser. The documents are in
 [`benchmarks/documents`](../benchmarks/documents). Apple M4 Pro (14 cores), 24 GB, macOS.
 
@@ -20,7 +20,7 @@ and 207 ms for the report (median of 5 processes).
 
 ### In the browser
 
-`@inkoxide/render/browser`, the engine as WebAssembly in a Web Worker, on a page built with Vite
+`@inkoxide/react/browser`, the engine as WebAssembly in a Web Worker, on a page built with Vite
 and served from localhost. Median of 20 renders after a warm-up (10 for the report).
 
 | Browser | Document | Pages | Render | Longest main-thread task |

@@ -11,7 +11,10 @@ export function memo<K, V>(map: Map<K, V>, key: K, make: (key: K) => V): V {
 /** A small LRU: a Map whose insertion order is the recency order. */
 export class Lru<V> {
   private readonly map = new Map<string, V>();
-  constructor(readonly capacity: number) {}
+  readonly capacity: number;
+  constructor(capacity: number) {
+    this.capacity = capacity;
+  }
 
   get(key: string): V | undefined {
     const v = this.map.get(key);

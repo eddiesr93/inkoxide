@@ -13,8 +13,8 @@ threads, on a page that is cross-origin isolated (see [WebAssembly](#webassembly
 The document format itself is described in [`SCHEMA.md`](SCHEMA.md) and
 [`EXAMPLES.md`](../packages/schema/EXAMPLES.md). The JSX API that builds
 documents from React components is in
-[`packages/render/README.md`](../packages/render/README.md) and
-[`GUIDE.md`](../packages/render/GUIDE.md).
+[`packages/react/README.md`](../packages/react/README.md) and
+[`GUIDE.md`](../packages/react/GUIDE.md).
 
 The API follows semantic versioning. Changes are
 additive: new options, new error codes and new functions are minor
@@ -389,9 +389,9 @@ A run's `fontFeatures` and their bounds are in
 [`SCHEMA.md`](SCHEMA.md#textrun). A feature does something only when the
 run's font has it. A tag that is not four printable ASCII characters, or
 is set twice in a run, is `INVALID_VALUE`; a value or a count past its
-bound is `OUT_OF_RANGE`. In `@inkoxide/render`, `fontFeatureSettings` and
-`fontVariantNumeric` fill a run's `fontFeatures` (see
-[`GUIDE.md`](../packages/render/GUIDE.md)).
+bound is `OUT_OF_RANGE`. In every front end (`@inkoxide/react`, `@inkoxide/vue`,
+`@inkoxide/svelte`, `@inkoxide/angular`), the styles `fontFeatureSettings` and
+`fontVariantNumeric` fill a run's `fontFeatures` (see [`GUIDE.md`](../packages/react/GUIDE.md)).
 
 ## Variable fonts
 
@@ -437,7 +437,7 @@ In `@inkoxide/render`, `Font.register` takes a weight range
 (`fontWeight: [100, 900]`), a width or a width range (`fontStretch:
 'condensed'`, `[75, 100]`) and `fontVariationSettings`, and the builder
 declares one instance per weight, width and settings a document uses (see
-[`GUIDE.md`](../packages/render/GUIDE.md)).
+[`GUIDE.md`](../packages/react/GUIDE.md)).
 
 ## Determinism
 

@@ -1,5 +1,5 @@
-import type { EncryptionOptions, PdfALevel, PdfUaPart } from '@inkoxide/react';
 import type { Document } from '@inkoxide/schema';
+import type { EncryptionOptions, PdfALevel, PdfUaPart } from '@inkoxide/tree';
 
 export interface RenderOpts {
   /**
@@ -116,8 +116,8 @@ export interface RemoteImageOptions {
 }
 
 export interface Timings {
-  /** React render to host instances. */
-  reactMs: number;
+  /** The template rendered to host nodes, by React, Vue, Svelte or Angular. */
+  templateMs: number;
   /**
    * Instances to the schema tree, Tailwind resolution included, and the rebuilds for the page
    * count (`render` props).
@@ -131,6 +131,8 @@ export interface Timings {
   fetchMs: number;
   /** Everything, data validation included. */
   totalMs: number;
+  /** @deprecated `templateMs`, by its name before 1.0, when templates were React's only. */
+  readonly reactMs: number;
 }
 
 export interface RenderResult {

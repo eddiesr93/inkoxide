@@ -1,5 +1,5 @@
-// The invoice the page renders. It imports from `@inkoxide/render`: in the page, vite.config.ts
-// points that at `@inkoxide/render/browser`; the tests render it in Node with the main entry, and
+// The invoice the page renders. It imports from `@inkoxide/react`: in the page, vite.config.ts
+// points that at `@inkoxide/react/browser`; the tests render it in Node with the main entry, and
 // compare the two PDFs.
 import {
   Cell,
@@ -15,7 +15,7 @@ import {
   Text,
   TotalPages,
   View,
-} from '@inkoxide/render';
+} from '@inkoxide/react';
 
 export interface Item {
   description: string;

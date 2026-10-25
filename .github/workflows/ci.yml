@@ -139,6 +139,67 @@ jobs:
         # cross-origin isolated, on a pool of threads (tests/threads.spec.ts).
         working-directory: examples/browser
         run: pnpm test
+      - name: Browser tests of the front ends
+        # examples/frameworks: the invoice written in Vue, Svelte and Angular renders, in a worker,
+        # in each browser, the bytes React renders in Node, with the classes the Tailwind plugin
+        # read from .vue, .svelte and Angular's inline templates.
+        working-directory: examples/frameworks
+        run: pnpm test
+
+  front-end-versions:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest versions the front ends support (their peer ranges), and Vue's next minor; the
+        # workspace pins the newest releases, which the other jobs test.
+        include:
+          - name: Angular 21
+            packages: packages/angular packages/conformance
+            add: >-
+              pnpm --filter @inkoxide/angular --filter @inkoxide/conformance add -D
+              @angular/core@21 @angular/common@21 @angular/compiler@21 @angular/platform-browser@21
+              @angular/compiler-cli@21 @angular/build@21 @angular-builders/custom-esbuild@21
+              @angular-devkit/architect@0.2102 @angular-devkit/core@21
+          - name: Svelte 5.39
+            packages: packages/svelte packages/conformance
+            add: >-
+              pnpm --workspace-root --filter @inkoxide/svelte --filter @inkoxide/conformance add -D
+              svelte@5.39.0
+          # Vue's next minor, whose Vapor components @inkoxide/vue refuses.
+          - name: Vue 3.6
+            packages: packages/vue packages/conformance
+            add: >-
+              pnpm --workspace-root --filter @inkoxide/vue --filter @inkoxide/conformance add -D
+              vue@rc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        uses: ./.github/actions/install-rust
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.22.0'
+          package-manager-cache: false
+      - name: Install pnpm
+        # The version comes from packageManager in package.json.
+        run: corepack enable
+      - name: Build the native binding
+        run: scripts/build-node.sh --debug
+      - name: Install dependencies, then the older version
+        env:
+          ADD: ${{ matrix.add }}
+        run: |
+          pnpm install --frozen-lockfile
+          $ADD
+      - name: Test
+        env:
+          PACKAGES: ${{ matrix.packages }}
+        run: pnpm exec vitest run $PACKAGES
 
   schema:
     name: Schema

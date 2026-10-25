@@ -10,7 +10,7 @@ import {
   Text,
   TextField,
   View,
-} from '@inkoxide/render';
+} from '@inkoxide/react';
 
 export interface FormProps {
   title: string;

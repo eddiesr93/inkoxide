@@ -50,5 +50,8 @@ Options, defaults and error codes are typed in `index.d.ts` and described in the
 [API reference](https://github.com/eddiesr93/inkoxide/blob/main/docs/API.md). The document
 format is in the [schema reference](https://github.com/eddiesr93/inkoxide/blob/main/docs/SCHEMA.md)
 and the [example documents](https://github.com/eddiesr93/inkoxide/blob/main/packages/schema/EXAMPLES.md).
-To write documents as React components, use
-[`@inkoxide/render`](https://www.npmjs.com/package/@inkoxide/render).
+To write documents as components, use the package of your framework:
+[`@inkoxide/react`](https://www.npmjs.com/package/@inkoxide/react),
+[`@inkoxide/vue`](https://www.npmjs.com/package/@inkoxide/vue),
+[`@inkoxide/svelte`](https://www.npmjs.com/package/@inkoxide/svelte) or
+[`@inkoxide/angular`](https://www.npmjs.com/package/@inkoxide/angular).

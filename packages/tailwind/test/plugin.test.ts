@@ -119,6 +119,43 @@ describe('the build plugin', () => {
     expect(styles[1]).toEqual({ backgroundColor: expect.any(Array) });
   });
 
+  it("reads the classes of Angular's inline templates, as the Angular CLI's esbuild build has them", async () => {
+    const app = realpathSync(mkdtempSync(join(tmpdir(), 'inkoxide-plugin-angular-')));
+    try {
+      mkdirSync(join(app, 'src'));
+      // The class string is only in the component's template: the page reads it from there.
+      writeFileSync(
+        join(app, 'src/card.component.ts'),
+        'export const template = `<ink-view class="px-6 text-sky-700"><ink-text>Card</ink-text></ink-view>`;\n',
+      );
+      writeFileSync(
+        join(app, 'src/main.ts'),
+        `import { initTailwind, tw } from '@inkoxide/tailwind';
+import { template } from './card.component.ts';
+await initTailwind();
+export const styles = [tw(/class="([^"]+)"/.exec(template)?.[1] ?? '')];
+`,
+      );
+      const result = await esbuild.build({
+        entryPoints: [join(app, 'src/main.ts')],
+        absWorkingDir: app,
+        bundle: true,
+        write: false,
+        format: 'esm',
+        platform: 'browser',
+        target: 'es2023',
+        metafile: true,
+        logLevel: 'silent',
+        plugins: [inkoxideTailwindEsbuild()],
+      });
+      expect(Object.keys(result.metafile.inputs).some((i) => i.endsWith('table.ts'))).toBe(true);
+      const { styles } = await run(result.outputFiles[0]?.text ?? '');
+      expect(styles[0]).toEqual({ paddingLeft: 18, paddingRight: 18, color: expect.any(Array) });
+    } finally {
+      rmSync(app, { recursive: true, force: true });
+    }
+  });
+
   /** The config of a webpack or Rspack build of the page into `out`, as an ES module. */
   const webpackConfig = (out: string, rule: object) => ({
     mode: 'production' as const,
