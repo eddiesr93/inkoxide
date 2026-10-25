@@ -82,7 +82,8 @@ export interface Abortable {
   /**
    * Time a render may take, in ms from 0 (`Infinity`, the default, for no limit), the loading of
    * its images and every pass included: past it, the render stops as with `signal`, and rejects
-   * with a `DOMException` named `TimeoutError`. A fraction is rounded up to a whole ms.
+   * with a `DOMException` named `TimeoutError`. A fraction is rounded up to a whole ms; 0 has
+   * passed already, so the render stops however fast it would be.
    */
   timeoutMs?: number;
 }

@@ -7,6 +7,13 @@ All notable changes to the packages in this repository. The format follows
 together, and so does `@inkoxide/wasm` from its first release. The document schema has its own version and
 [changelog](packages/schema/CHANGELOG.md).
 
+## Unreleased
+
+### Fixed
+
+- `timeoutMs: 0` stops a render every time, with a `TimeoutError`. It started a timer of 0 ms,
+  which a fast render could beat, so a small document sometimes rendered anyway.
+
 ## 0.10.1 - 2026-10-25
 
 ### Added

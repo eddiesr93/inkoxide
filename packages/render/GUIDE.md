@@ -1604,7 +1604,8 @@ function InvoicePage({ invoice }: { invoice: InvoiceData }) {
   components, and **`generate`** renders a [template](#serving-templates). Their options (`BrowserRenderOptions`, and
   `GenerateOptions` for `generate`) are those of the Node entry, with a `signal` or `timeoutMs`
   (a time in ms) that stops a render: its worker ends, and the next render starts a new one.
-  `timeoutMs` counts the whole render, the loading of its images and every pass. A render that
+  `timeoutMs` counts the whole render, the loading of its images and every pass; `0` has passed
+  already, so the render always stops. A render that
   times out rejects with a `DOMException` named `TimeoutError`.
   `renderToStream` returns a promise of a web `ReadableStream<Uint8Array>` of the PDF in 64 KiB
   chunks: pass it to a `Response` (in a service worker, say), or write it to a file the user

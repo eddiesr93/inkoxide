@@ -314,12 +314,16 @@ export async function renderPdf(
 
 /**
  * The `signal` of a render, and a timeout after its `timeoutMs`: a signal that aborts with
- * whichever comes first, from now.
+ * whichever comes first, from now. A time of 0 has passed already: its signal is aborted, so the
+ * render cannot finish before a timer of 0 ms fires.
  */
 export function renderSignal({ signal, timeoutMs }: Abortable): AbortSignal | undefined {
   const ms = timeoutMs === undefined ? undefined : timerMs(timeoutMs);
   if (ms === undefined) return signal;
-  const timeout = AbortSignal.timeout(ms);
+  const timeout =
+    ms === 0
+      ? AbortSignal.abort(new DOMException('The render timed out.', 'TimeoutError'))
+      : AbortSignal.timeout(ms);
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
