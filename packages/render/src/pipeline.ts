@@ -7,6 +7,7 @@ import {
   type TreeOptions,
   type TreeResult,
 } from '@inkoxide/tree';
+import { withReactMs } from '@inkoxide/tree/internal';
 import type { z } from 'zod';
 
 import {
@@ -26,14 +27,7 @@ import { engineHost } from './host.ts';
 import { type ImagePolicies, loadEmojiImages, loadImages } from './images.ts';
 import { checkImageLimits, checkOptionTypes, DEFAULT_IMAGE_TIMEOUT_MS, isProduction } from './policy.ts';
 import { REMOTE_IMAGES_VARIABLE, remotePolicy } from './remote.ts';
-import {
-  type Abortable,
-  type DataIssue,
-  RenderError,
-  type RenderOpts,
-  type RenderResult,
-  type Timings,
-} from './types.ts';
+import { type Abortable, type DataIssue, RenderError, type RenderOpts, type RenderResult } from './types.ts';
 
 /**
  * A template for `generate`: a component that takes `{ data }` (a React, Vue, Svelte or Angular
@@ -141,6 +135,15 @@ function fromTemplateError(e: unknown, id?: string): never {
   }
   const what = id === undefined ? 'the document' : `"${id}"`;
   throw new RenderError('INTERNAL', `Rendering ${what} failed: ${(e as Error).message}`, { cause: e });
+}
+
+/** `assertValidTree`, whose problems throw as `fromTemplateError` gives them. */
+function assertValid(tree: TreeResult, id?: string): void {
+  try {
+    assertValidTree(tree);
+  } catch (e) {
+    fromTemplateError(e, id);
+  }
 }
 
 /** The tree of a template for parsed data; a template error becomes a RenderError. */
@@ -261,11 +264,7 @@ export async function generate<S extends z.ZodType, Input, Component>(
     let validateMs = 0;
     if (opts.validate ?? !isProduction()) {
       const v0 = performance.now();
-      try {
-        assertValidTree(first);
-      } catch (e) {
-        fromTemplateError(e, t.meta.id);
-      }
+      assertValid(first, t.meta.id);
       validateMs = performance.now() - v0;
     }
 
@@ -285,8 +284,7 @@ export async function generate<S extends z.ZodType, Input, Component>(
     };
     return {
       pdf,
-      // Read by its old name, it is not one more timing to log or sum.
-      timings: Object.defineProperty(timings, 'reactMs', { get: () => timings.templateMs }) as Timings,
+      timings: withReactMs(timings),
       passes,
       pages,
       bytes: pdf.byteLength,
@@ -510,13 +508,7 @@ export async function renderToBuffer<Input, Component>(
     fromTemplateError(e, name);
   }
   try {
-    if (opts.validate ?? !isProduction()) {
-      try {
-        assertValidTree(tree);
-      } catch (e) {
-        fromTemplateError(e, name);
-      }
-    }
+    if (opts.validate ?? !isProduction()) assertValid(tree, name);
     const { pdf } = await settle(tree, {}, opts, policies);
     return pdf;
   } finally {

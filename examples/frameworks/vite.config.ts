@@ -16,7 +16,7 @@ export const CSP = [
   "default-src 'self'",
   "script-src 'self' 'wasm-unsafe-eval'",
   "worker-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
+  "style-src 'self'",
   "img-src 'self' blob:",
   "frame-src 'self' blob:",
   "object-src 'none'",

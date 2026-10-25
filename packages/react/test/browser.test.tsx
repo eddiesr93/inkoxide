@@ -1,5 +1,5 @@
 /**
- * `@inkoxide/render/browser` renders what the main entry renders, to the same bytes: the same
+ * `@inkoxide/react/browser` renders what the main entry renders, to the same bytes: the same
  * pipeline, with the engine as WebAssembly. Here it runs on the calling thread (`worker: false`);
  * examples/browser runs it in a worker, in browsers. Each entry is loaded in a module graph of its
  * own, as in an application, since both keep process-wide state. Needs packages/wasm/inkoxide.wasm
@@ -11,9 +11,6 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
-import { DEFAULT_FACES } from '../../render/src/fonts.ts';
-import { HYPHENATION_FILES } from '../../render/src/hyphenation.ts';
 
 const WASM = new URL('../../wasm/inkoxide.wasm', import.meta.url);
 const built = existsSync(WASM);
@@ -65,7 +62,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe.skipIf(!built)('@inkoxide/render/browser', () => {
+describe.skipIf(!built)('@inkoxide/react/browser', () => {
   it('renders the bytes the main entry renders', async () => {
     const node = await load<typeof import('../src/index.ts')>('../src/index.ts');
     const expected = await node.renderToBuffer(<Doc ink={node} />, { ...OPTS, images: { logo: PNG } });
@@ -341,18 +338,5 @@ describe.skipIf(!built)('@inkoxide/render/browser', () => {
         { signal: AbortSignal.abort(reason) },
       ),
     ).rejects.toBe(reason);
-  });
-});
-
-describe('the bundled assets of the browser host', () => {
-  it('are the files of fonts.ts and hyphenation.ts', async () => {
-    const { BUNDLED_ASSETS } = await load<typeof import('../../render/src/browser-host.ts')>(
-      '../../render/src/browser-host.ts',
-    );
-    const files = [
-      ...DEFAULT_FACES.map((f) => `fonts/${f.file}`),
-      ...Object.values(HYPHENATION_FILES).map((f) => `hyphenation/${f}`),
-    ];
-    expect([...BUNDLED_ASSETS].sort()).toEqual(files.sort());
   });
 });

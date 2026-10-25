@@ -40,9 +40,25 @@ export interface Located {
   componentStack: string;
 }
 
+/** Milliseconds: the front end's render to host nodes, and host nodes to the schema tree. */
+export interface TreeTimings {
+  templateMs: number;
+  treeMs: number;
+  /** @deprecated `templateMs`, by its name before 1.0, when templates were React's only. */
+  readonly reactMs: number;
+}
+
+/**
+ * `timings` with `reactMs`, the name of `templateMs` before 1.0. Read only and not enumerable: it is
+ * not one more timing to log or sum, so a spread or JSON leaves it out.
+ */
+export const withReactMs = <T extends { templateMs: number }>(timings: T): T & { readonly reactMs: number } =>
+  Object.defineProperty(timings, 'reactMs', { get: () => timings.templateMs }) as T & {
+    readonly reactMs: number;
+  };
+
 export interface TreeResult extends Omit<BuildResult, 'origin'> {
-  /** Milliseconds: the front end's render to host nodes, and host nodes to the schema tree. */
-  timings: { templateMs: number; treeMs: number };
+  timings: TreeTimings;
   /** Maps an engine/ajv path back to the component that produced it (rebuilds lazily). */
   locate(path: string): Located | undefined;
   /** ajv validation with paths mapped to components; `[]` when valid. */
@@ -162,7 +178,7 @@ function fromContainer(
     remote: built.remote,
     pending: built.pending,
     pageCount: opts.pageCount ?? 1,
-    timings: { templateMs, treeMs: t2 - t1 },
+    timings: withReactMs({ templateMs, treeMs: t2 - t1 }),
     locate: locateFn,
     validate: () => validateTree(built.document).map((p) => ({ ...p, ...locateFn(p.path) })),
     rebuild: (pageCount) => fromContainer(container, roots, { ...opts, pageCount }, 0, images),

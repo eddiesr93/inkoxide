@@ -55,7 +55,8 @@ templates change.
 - **Breaking:** React templates import from `@inkoxide/react` (and `@inkoxide/react/browser`,
   `@inkoxide/react/templates`) instead of `@inkoxide/render`. `@inkoxide/render` no longer
   depends on React: it renders documents (`renderDocument`) and gives front ends their functions.
-- `timings.templateMs` of `generate` is the time of the template's render, in every front end.
+- `timings.templateMs` of `generate` and of a document tree is the time of the template's render,
+  in every front end.
   `timings.reactMs`, its name before, is a deprecated alias of it, which a spread or JSON leaves
   out.
 - The SVG markup of an `<Svg>` writes its attributes by name, whatever order they were set in.

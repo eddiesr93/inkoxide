@@ -10,7 +10,8 @@
     "tsBuildInfoFile": null,
     "paths": {
       "@inkoxide/tailwind": ["../tailwind/dist/index.d.ts"],
-      "@inkoxide/tree": ["../tree/dist/index.d.ts"]
+      "@inkoxide/tree": ["../tree/dist/index.d.ts"],
+      "@inkoxide/tree/internal": ["../tree/dist/internal.d.ts"]
     }
   },
   "include": ["src"]

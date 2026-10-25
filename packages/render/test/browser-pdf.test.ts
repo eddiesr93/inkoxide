@@ -67,6 +67,16 @@ describe('sameDocument', () => {
     expect(sameDocument(Invoice, Invoice)).toBe(true);
     expect(sameDocument(Invoice, { component: Invoice })).toBe(false);
   });
+
+  it('compares components given alone by identity', () => {
+    // Vue components are objects, which two components declaring the same props must not equal.
+    const props = { invoice: Object };
+    const A = { name: 'A', props, setup: () => null };
+    const B = { name: 'B', props, setup: () => null };
+    expect(sameDocument(A, A)).toBe(true);
+    expect(sameDocument(A, B)).toBe(false);
+    expect(sameDocument({}, {})).toBe(false);
+  });
 });
 
 describe('PdfRun.follow', () => {

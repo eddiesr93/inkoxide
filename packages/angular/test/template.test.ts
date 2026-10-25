@@ -1,5 +1,6 @@
 import '@angular/compiler';
-import { Component, CUSTOM_ELEMENTS_SCHEMA, Input } from '@angular/core';
+import { CurrencyPipe, DatePipe } from '@angular/common';
+import { Component, CUSTOM_ELEMENTS_SCHEMA, Injectable, inject, Input } from '@angular/core';
 import { FontRegistry, loadTailwind } from '@inkoxide/tree';
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -203,6 +204,30 @@ describe('templates', () => {
     const e = thrown(() => tree.rebuild(2));
     expect(e.message).toBe('The template threw: no second page');
     expect(e.componentStack).toBe('\n    in Labelled\n    in Page\n    in Document\n    in OuterLabelled');
+    tree.dispose();
+  });
+
+  it('injects what is provided in the root, as an application does', () => {
+    @Injectable({ providedIn: 'root' })
+    class Seller {
+      readonly name = 'Acme';
+    }
+    @Component({
+      selector: 'app-dated',
+      imports: [CurrencyPipe, DatePipe],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      template: `<ink-document
+        ><ink-page>
+          <ink-text>{{ seller.name }} {{ 1234.5 | currency: 'EUR' }} {{ day | date: 'yyyy-MM-dd' }}</ink-text>
+        </ink-page></ink-document
+      >`,
+    })
+    class Dated {
+      readonly seller = inject(Seller);
+      readonly day = new Date(2026, 9, 25);
+    }
+    const tree = renderTemplate(Dated, { fonts });
+    expect(JSON.stringify(tree.document)).toContain('Acme €1,234.50 2026-10-25');
     tree.dispose();
   });
 

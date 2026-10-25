@@ -1,6 +1,7 @@
 // What the renderers of template languages share (Vue's, Angular's, Svelte's reading): the props
-// as attributes set them, the links of nodes to their parents, and stacks from traces. Exported by
-// `@inkoxide/tree/internal`, for Inkoxide's own front ends.
+// as attributes set them, the links of nodes to their parents, stacks from traces, and the
+// components they are given with their values. Exported by `@inkoxide/tree/internal`, for
+// Inkoxide's own front ends.
 import { BOOLEAN_PROPS } from './components/index.ts';
 import { TemplateError } from './errors.ts';
 import { componentNames, formatStack, hostName, type Instance, type Trace, withoutRepeats } from './nodes.ts';
@@ -40,7 +41,7 @@ export function renderWithTrace<T>(render: () => T, stackOf: (error: unknown) =>
 }
 
 /** `class` as template languages give it (a string, a list, an object of flags) as one string. */
-export function classNames(value: unknown): string {
+function classNames(value: unknown): string {
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) return value.map(classNames).filter(Boolean).join(' ');
   if (value && typeof value === 'object') {
@@ -122,4 +123,21 @@ export function nodeLinks<N extends object, P extends Linked>() {
       return (p.children[p.children.indexOf(node) + 1] as N | undefined) ?? null;
     },
   };
+}
+
+/** The values a component is given, by name: Svelte's props, Angular's inputs. */
+type Values = Record<string, unknown>;
+
+/**
+ * What a front end renders when it is a component, alone or with its values (`{ component, props }`
+ * in Svelte, `{ component, inputs }` in Angular): the component, and the values under `key`, none
+ * for a component alone.
+ */
+export function componentAndValues<C>(
+  input: C | ({ component: C } & { [K in 'props' | 'inputs']?: Values }),
+  key: 'props' | 'inputs',
+): { component: C; values: Values } {
+  if (typeof input === 'function') return { component: input as C, values: {} };
+  const given = input as { component: C } & { [K in 'props' | 'inputs']?: Values };
+  return { component: given.component, values: given[key] ?? {} };
 }

@@ -15,6 +15,7 @@ import {
   type RendererType2,
   type TemplateRef,
   type Type,
+  ɵINJECTOR_SCOPE as INJECTOR_SCOPE,
 } from '@angular/core';
 import {
   type CommentNode,
@@ -271,10 +272,16 @@ const NO_DOCUMENT = { head: null };
 
 let environment: EnvironmentInjector | undefined;
 
-/** The injector templates are created in: their renderer, and no zone or scheduler. */
+/**
+ * The injector templates are created in: their renderer, and no zone or scheduler. It is a root
+ * injector, as an application's is, so that templates inject what is `providedIn: 'root'`
+ * (`LOCALE_ID`, which the `date`, `currency` and `number` pipes read, and their own services);
+ * each is made once, and every render shares it.
+ */
 function environmentInjector(): EnvironmentInjector {
   environment ??= createEnvironmentInjector(
     [
+      { provide: INJECTOR_SCOPE, useValue: 'root' },
       { provide: RendererFactory2, useValue: rendererFactory },
       { provide: DOCUMENT, useValue: NO_DOCUMENT },
     ],

@@ -86,9 +86,11 @@ templates are render functions.
 `CUSTOM_ELEMENTS_SCHEMA`, and the renderer reads attributes, property bindings, classes and
 styles; `[inkStyle]` takes what `[style]` cannot (`@media` blocks, lists of styles). Component
 hosts are replaced by their content, and `[render]` takes an `ng-template`; listeners are errors.
-A node's stack is React's: the renderer links each node to its parent, and the stack names the
-elements around it and, for a component's host element, the component; a `render` template's
-content goes on with the element whose template it is. The stack of an error a template throws
+Templates are created in a root injector of Inkoxide's (no zone, no scheduler), so that what is
+`providedIn: 'root'` and `LOCALE_ID` are there, as in an application. A node's stack is React's:
+the renderer links each node to its parent, and the stack names the elements around it and, for
+a component's host element, the component; a `render` template's content goes on with the element
+whose template it is. The stack of an error a template throws
 names the components in its trace (`Invoice_Template`), then the elements around the innermost
 one's host. The package ships no Angular components, so it needs no Angular compilation of its
 own: its browser helper is `injectPdf`, signals, and its directives (`inkPdfViewer`,
@@ -116,7 +118,7 @@ renderers, a renderer can replace the reading without changing the components' A
   `@inkoxide/render`, which now renders documents for every front end ([UPGRADING.md](../../UPGRADING.md)).
   `@inkoxide/react` keeps the names it exported before.
 - `timings.templateMs` is the time of any front end's render; `timings.reactMs`, its name before,
-  stays as a deprecated alias.
+  stays as a deprecated alias, in `generate`'s timings and in a tree's.
 - An SVG drawing writes its attributes by name, so that its markup does not depend on the order a
   framework sets them in.
 - Component stacks are React's in every front end. In Svelte, and for an error an Angular template

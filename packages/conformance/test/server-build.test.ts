@@ -2,14 +2,15 @@
  * The templates in a server build, as a Nuxt app's server bundle and SvelteKit's endpoints have
  * them (Nuxt's server routes are Nitro's, which takes Vue templates as render functions): Vite
  * builds the code for Node (single-file components compiled for the client through
- * `@inkoxide/vue/vite`, Svelte's for the server), and the built module renders the PDF React
- * renders.
+ * `@inkoxide/vue/vite`, Svelte's for the server), with the Tailwind plugin of the app's config,
+ * which leaves a server bundle its compiler, and the built module renders the PDF React renders.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { renderToBuffer } from '@inkoxide/react';
+import { inkoxideTailwind } from '@inkoxide/tailwind/plugin';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import vue from '@vitejs/plugin-vue';
 import { createElement } from 'react';
@@ -33,7 +34,7 @@ describe('a server build', () => {
       configFile: false,
       logLevel: 'silent',
       root: new URL('..', import.meta.url).pathname,
-      plugins: [pdfTemplates(vue()), svelte()],
+      plugins: [pdfTemplates(vue()), svelte(), inkoxideTailwind()],
       build: {
         ssr: 'server/entry.ts',
         outDir: out,
@@ -46,7 +47,9 @@ describe('a server build', () => {
       },
       ssr: { noExternal: ['@inkoxide/svelte'] },
     });
-    const server = (await import(pathToFileURL(join(out, 'entry.mjs')).href)) as {
+    const entry = join(out, 'entry.mjs');
+    expect(readFileSync(entry, 'utf8')).not.toContain('@inkoxide/tailwind table');
+    const server = (await import(pathToFileURL(entry).href)) as {
       vue(data: Record<string, unknown>): Promise<Uint8Array>;
       svelte(data: Record<string, unknown>): Promise<Uint8Array>;
     };

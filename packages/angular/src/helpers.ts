@@ -44,13 +44,13 @@ export function injectPdf(
   opts: BrowserRenderOptions | (() => BrowserRenderOptions | undefined) = {},
 ): InjectPdfResult {
   const sanitizer = inject(DomSanitizer);
-  const state = signal<PdfSnapshot>({ blob: null, url: null, loading: false, error: null });
   const options = (): BrowserRenderOptions | undefined => (typeof opts === 'function' ? opts() : opts);
   const run = new PdfRun<Renderable>(
     browserRenderer.renderToBlob,
     (next) => state.set(next),
     () => untracked(options),
   );
+  const state = signal<PdfSnapshot>(run.snapshot);
   const read = (): Renderable | undefined =>
     isSignal(document)
       ? document()

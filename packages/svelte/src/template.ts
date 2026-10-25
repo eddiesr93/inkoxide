@@ -11,7 +11,7 @@ import {
   type TemplateFunctions,
   templateFunctions,
 } from '@inkoxide/tree';
-import { renderWithTrace } from '@inkoxide/tree/internal';
+import { componentAndValues, renderWithTrace } from '@inkoxide/tree/internal';
 import type { Component, Snippet } from 'svelte';
 
 import PageRoot from './components/PageRoot.svelte';
@@ -37,13 +37,9 @@ export type Mounter = (
   table: PropsTable,
 ) => Node[];
 
-/** The component an input renders, and its props. */
-const componentAndProps = (input: Renderable) =>
-  typeof input === 'function' ? { component: input, props: {} } : input;
-
 /** The name of the component an input renders, for errors. */
 export const componentName = (input: Renderable): string => {
-  const c = componentAndProps(input).component as { name?: string } | undefined;
+  const c = componentAndValues(input, 'props').component as { name?: string } | undefined;
   return (c?.name && c.name.replace(/^_?/, '')) || 'document';
 };
 
@@ -76,7 +72,7 @@ export function svelteTemplates(mounter: Mounter): TemplateFunctions<Renderable>
   };
 
   return templateFunctions((input: Renderable) => {
-    const { component, props = {} } = componentAndProps(input);
-    return renderAndRead(mounter, component, props, new Map());
+    const { component, values } = componentAndValues(input, 'props');
+    return renderAndRead(mounter, component, values, new Map());
   }, renderPage);
 }

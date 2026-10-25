@@ -42,7 +42,10 @@ export class Receipt {
 ```
 
 Inputs, `@if`, `@for`, `ng-content`, dependency injection and components of your own work; a
-component's host element is replaced by its content. Change detection runs once. The white space of
+component's host element is replaced by its content. Templates are created in a root injector of
+their own, as an application's components are in its root: what is `providedIn: 'root'` is there
+(made once, and shared by every render), and so is `LOCALE_ID`, which the `date`, `currency` and
+`number` pipes read. Change detection runs once. The white space of
 a template is read as JSX reads it, so a document gives the same tree, and the same PDF, in every
 front end.
 

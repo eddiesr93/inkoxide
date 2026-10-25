@@ -27,12 +27,12 @@ export function createPdf(
   document: () => Renderable | undefined,
   opts: () => BrowserRenderOptions | undefined = () => undefined,
 ): PdfState {
-  let state = $state<PdfSnapshot>({ blob: null, url: null, loading: false, error: null });
   const run = new PdfRun<Renderable>(
     browserRenderer.renderToBlob,
     (next) => (state = next),
     () => untrack(opts),
   );
+  let state = $state<PdfSnapshot>(run.snapshot);
 
   $effect.pre(() => {
     const next = document();

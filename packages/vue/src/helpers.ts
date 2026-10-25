@@ -39,6 +39,13 @@ export interface UsePdfResult {
 }
 
 /**
+ * `document` now: a ref's value, a getter's, or itself. A function that takes props is a functional
+ * component, which `toValue` would call as a getter; one that takes none renders the same either way.
+ */
+const current = (document: MaybeRefOrGetter<Renderable | undefined>): Renderable | undefined =>
+  typeof document === 'function' && document.length > 0 ? (document as Renderable) : toValue(document);
+
+/**
  * Renders `document` to a PDF in the engine's worker, at once and whenever it changes (a ref or a
  * getter: `usePdf(() => h(Invoice, { invoice: invoice.value }))`), and again on `update()`. A
  * render that starts stops the one still running; the end of the scope stops it too. `opts` are
@@ -64,7 +71,7 @@ export function usePdf(
   );
 
   watch(
-    () => toValue(document),
+    () => current(document),
     (next) => run.follow(next),
     { immediate: true },
   );

@@ -115,6 +115,7 @@ export class PdfRun<Input> {
  * same values (a React element or a Vue VNode made again with the same props); or a component
  * with the same props or inputs (`{ component, props }` in Svelte, `{ component, inputs }` in
  * Angular). Elements first: a VNode has a `component` too, the instance it mounts, null until then.
+ * A component alone is the same only as itself.
  */
 export function sameDocument(a: unknown, b: unknown): boolean {
   if (a === b) return true;
@@ -122,6 +123,8 @@ export function sameDocument(a: unknown, b: unknown): boolean {
   if ('type' in a || 'type' in b) {
     return a.type === b.type && a.key === b.key && a.children === b.children && sameProps(a.props, b.props);
   }
+  // Any other object (a Vue component's options) is the same document only as itself.
+  if (!('component' in a && 'component' in b)) return false;
   return a.component === b.component && sameProps(a.props, b.props) && sameProps(a.inputs, b.inputs);
 }
 

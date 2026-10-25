@@ -288,8 +288,9 @@ only on demand, from the Actions tab, with the ID of that release run.
   pages) is released once the PDF is made, or at once when the render fails;
   every front end exports the names of `@inkoxide/react` and every component;
   a Vite server build of the Vue and Svelte templates, as Vite's SSR builds
-  them for a Nuxt app's server bundle and SvelteKit's endpoints, renders
-  React's PDF; and `angular-aot.test.ts` compiles an
+  them for a Nuxt app's server bundle and SvelteKit's endpoints, with the
+  Tailwind plugin, which leaves it Tailwind's compiler, renders React's PDF;
+  and `angular-aot.test.ts` compiles an
   Angular template with signal inputs ahead of time (`ngc`, on TypeScript 6,
   installed in that package only), which renders React's PDF with no JIT
   compiler, binds the browser directives as declared in the package's

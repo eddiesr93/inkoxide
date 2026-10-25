@@ -10,26 +10,10 @@ import * as vueBrowser from '@inkoxide/vue/browser';
 import * as vueTemplates from '@inkoxide/vue/templates';
 import { describe, expect, it } from 'vitest';
 
+import * as reactCompat from '../../react/src/compat.ts';
+
 /** What only @inkoxide/react exports: what it exported before 1.0, for the code that uses it. */
-const REACT_COMPAT = new Set([
-  'FontRegistry',
-  'HOST',
-  'HOST_NAME',
-  'assertValidTree',
-  'familyKey',
-  'fontStretchValue',
-  'fontVariationsValue',
-  'fontWeightValue',
-  'fonts',
-  'imageSource',
-  'innermostComponent',
-  'isImagePath',
-  'loadTailwind',
-  'parsePath',
-  'remoteAllowed',
-  'remoteRefused',
-  'validateTree',
-]);
+const REACT_COMPAT = new Set(Object.keys(reactCompat));
 
 const sorted = (list: string[]) => [...list].sort();
 

@@ -89,6 +89,14 @@ describe('renderTree', () => {
     await init();
     expect(renderTree(styled, {}).warnings).toEqual([]);
   });
+
+  it('reads the time of the template by its name before 1.0 too, in each rebuild', () => {
+    const tree = renderTree(styled, {});
+    for (const { timings } of [tree, tree.rebuild(2)]) {
+      expect(timings.reactMs).toBe(timings.templateMs);
+      expect(Object.keys(timings)).not.toContain('reactMs');
+    }
+  });
 });
 
 const logo = readFileSync(resolve(import.meta.dirname, '../../../fixtures/images/logo.png'));

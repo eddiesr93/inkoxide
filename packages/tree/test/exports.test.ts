@@ -120,12 +120,13 @@ function exported(file: URL): string[] {
 /** What Inkoxide's own front ends share; not under semver. */
 const INTERNAL = [
   'assignProp',
-  'classNames',
+  'componentAndValues',
   'listenerError',
   'namesInTrace',
   'nodeLinks',
   'renderWithTrace',
   'textInElement',
+  'withReactMs',
 ];
 
 /** The names every front end exports as they are (`export * from '@inkoxide/tree/common'`). */

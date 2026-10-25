@@ -130,7 +130,8 @@ render functions.
 
 - `usePdf(document, options?)` renders `document` (a VNode, a component, or a ref or getter of one)
   at once and whenever it changes, and gives `blob`, `url`, `loading` and `error` as refs, and
-  `update()`. A render that starts stops the one still running; the end of the scope stops it and
+  `update()`. A function that takes props is a functional component; one that takes none is a
+  getter. A render that starts stops the one still running; the end of the scope stops it and
   revokes the URL.
 - `<PdfViewer :document>` shows the PDF in an `<iframe>`, in the browser's viewer (`#fallback`
   before the first render, `:show-toolbar="false"` to hide the viewer's toolbar);

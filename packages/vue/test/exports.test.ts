@@ -2,8 +2,6 @@
  * The public API: every name @inkoxide/vue exports, from each entry. A name added here is API under
  * semver, so it needs its place in the package's README or GUIDE.md first.
  */
-import { readFileSync } from 'node:fs';
-
 import { describe, expect, it } from 'vitest';
 
 import { declared, sorted, undocumented } from '../../tree/test/entries.ts';
@@ -252,13 +250,7 @@ describe('exports', () => {
 
   it('@inkoxide/vue/vite exports the plugin and its types', () => {
     expect(sorted(Object.keys(vite))).toEqual(VITE_VALUES);
-    // The entry declares them: the names it exports, as written.
-    const code = readFileSync(new URL('vite.ts', SRC), 'utf8');
-    const names = [...code.matchAll(/^export (?:interface|type|function|const) (\w+)/gm)].map(
-      (m) => m[1] ?? '',
-    );
-    expect(sorted(names)).toEqual(sorted([...VITE_VALUES, ...VITE_TYPES]));
-    expect(code).not.toMatch(/^export (?:\{|\*|default)/m);
+    expect(declared(SRC, 'vite.ts')).toEqual(sorted([...VITE_VALUES, ...VITE_TYPES]));
   });
 
   it('has an entry in package.json for each', () => {

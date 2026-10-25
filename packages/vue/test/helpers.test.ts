@@ -4,11 +4,12 @@
  * settles it.
  */
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
-import { createApp, defineComponent, h, nextTick, ref, type VNode } from 'vue';
+import { createApp, defineComponent, h, nextTick, ref, shallowRef, type VNode } from 'vue';
 
 import { BlobProvider, type PdfState, PdfViewer, usePdf, type UsePdfResult } from '../src/helpers.ts';
 
 interface Started {
+  doc: unknown;
   opts: { signal?: AbortSignal };
   resolve(blob: Blob): void;
   reject(e: unknown): void;
@@ -18,8 +19,8 @@ const renders = vi.hoisted((): Started[] => []);
 
 vi.mock('../src/browser-render.ts', () => ({
   browserRenderer: {
-    renderToBlob: (_doc: unknown, opts: Started['opts']) =>
-      new Promise<Blob>((resolve, reject) => renders.push({ opts, resolve, reject })),
+    renderToBlob: (doc: unknown, opts: Started['opts']) =>
+      new Promise<Blob>((resolve, reject) => renders.push({ doc, opts, resolve, reject })),
   },
 }));
 
@@ -100,6 +101,25 @@ describe('usePdf', () => {
     tick.value++;
     await nextTick();
     expect(renders).toHaveLength(1);
+  });
+
+  it('renders a functional component, and the components a getter gives', async () => {
+    const Invoice = (props: { n?: number }) => h('span', props.n);
+    const Receipt = { name: 'Receipt', props: { n: Number }, render: () => h('span') };
+    const Other = { name: 'Other', props: { n: Number }, render: () => h('span') };
+    const which = shallowRef<object>(Receipt);
+    mountWith(
+      () => null,
+      () => {
+        usePdf(Invoice);
+        usePdf(() => which.value);
+      },
+    );
+    expect(started(0).doc).toBe(Invoice);
+    expect(started(1).doc).toBe(Receipt);
+    which.value = Other;
+    await nextTick();
+    expect(started(2).doc).toBe(Other);
   });
 
   it('keeps the last PDF and gives the error of a render that fails', async () => {

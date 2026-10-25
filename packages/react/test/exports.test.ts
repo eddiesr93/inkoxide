@@ -11,7 +11,7 @@ import * as browser from '../src/browser.ts';
 import * as main from '../src/index.ts';
 import * as templates from '../src/templates.ts';
 
-/** What @inkoxide/react exported before 1.0, kept for the code that uses it (core.ts). */
+/** What @inkoxide/react exported before 1.0, kept for the code that uses it (compat.ts). */
 const COMPAT_VALUES = [
   'FontRegistry',
   'HOST',
@@ -258,6 +258,8 @@ describe('exports', () => {
   it('@inkoxide/react exports exactly the documented names', () => {
     expect(sorted(Object.keys(main))).toEqual(sorted(MAIN_VALUES));
     expect(declaredIn('index.ts')).toEqual(sorted([...MAIN_VALUES, ...MAIN_TYPES]));
+    // Only @inkoxide/react has them; the conformance suite leaves them out of the comparison.
+    expect(declaredIn('compat.ts')).toEqual(sorted([...COMPAT_VALUES, ...COMPAT_TYPES]));
   });
 
   it('@inkoxide/react/templates exports exactly the template pipeline', () => {
