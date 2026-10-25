@@ -348,7 +348,7 @@ export type BookmarkProp = string | Bookmark;
  */
 export type HyphenationCallback = (word: string) => string[];
 
-interface Common {
+export interface Common {
   className?: string;
   style?: Style;
   /** Node id: the target of `href="#id"` links. */
@@ -363,7 +363,7 @@ interface Common {
   children?: unknown;
 }
 
-interface Flow extends Common {
+export interface Flow extends Common {
   /** `true` is the same as `'page-before'`. */
   break?: BreakProp | boolean;
   /** `wrap={false}` is the same as `break="avoid"`. */
@@ -735,7 +735,7 @@ export interface PageBreakProps {
   id?: string;
 }
 
-interface FieldCommon extends Omit<Flow, 'children' | 'href' | 'bookmark' | 'fixed'> {
+export interface FieldCommon extends Omit<Flow, 'children' | 'href' | 'bookmark' | 'fixed'> {
   /**
    * Field name, unique in the document (radio buttons of one group share it). A `<FieldSet>`
    * puts its name in front; dots make groups the same way (`address.street`).

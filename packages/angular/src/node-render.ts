@@ -1,9 +1,13 @@
+import type { Type } from '@angular/core';
 // Angular's render functions in Node.
-import { createRenderer } from '@inkoxide/render';
+import { createRenderer, type NodeRenderer } from '@inkoxide/render';
 
 import { angular } from './front-end.ts';
+import type { Renderable } from './template.ts';
 
-const renderer = createRenderer(angular);
+type Renderer = NodeRenderer<Renderable, Type<unknown>>;
+
+const renderer: Renderer = createRenderer(angular);
 
 /**
  * A document straight to PDF bytes: no template registry, schema or sample data. A template is
@@ -13,11 +17,11 @@ const renderer = createRenderer(angular);
  * const pdf = await renderToBuffer({ component: InvoiceComponent, inputs: { invoice } });
  * ```
  */
-export const renderToBuffer = renderer.renderToBuffer;
+export const renderToBuffer: Renderer['renderToBuffer'] = renderer.renderToBuffer;
 /** `renderToBuffer`, then writes the PDF to `path`; a failed write is an `INTERNAL` RenderError. */
-export const renderToFile = renderer.renderToFile;
+export const renderToFile: Renderer['renderToFile'] = renderer.renderToFile;
 /**
  * `renderToBuffer` as a Node stream, to pipe into an HTTP response. The engine writes the whole
  * file at once, so the stream starts when the PDF is ready.
  */
-export const renderToStream = renderer.renderToStream;
+export const renderToStream: Renderer['renderToStream'] = renderer.renderToStream;

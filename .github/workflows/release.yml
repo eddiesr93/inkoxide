@@ -1,7 +1,8 @@
 # Builds the native Node bindings on every platform and the WebAssembly engine,
 # and publishes every npm package: the platform binaries, `inkoxide`,
 # `@inkoxide/schema` and `@inkoxide/wasm`, then `@inkoxide/style`,
-# `@inkoxide/tailwind`, `@inkoxide/react` and `@inkoxide/render`. Versions
+# `@inkoxide/tailwind`, `@inkoxide/tree`, `@inkoxide/render`, `@inkoxide/react`,
+# `@inkoxide/vue`, `@inkoxide/svelte` and `@inkoxide/angular`. Versions
 # already on the registry are skipped. npm trusts this workflow (trusted
 # publishing), so no token is stored and every package gets provenance.
 # Then it publishes the crates `inkoxide` and `inkoxide-cli` to crates.io,

@@ -9,7 +9,11 @@
     "rewriteRelativeImportExtensions": true,
     "tsBuildInfoFile": null,
     "paths": {
-      "@inkoxide/tailwind": ["../tailwind/dist/index.d.ts"]
+      "@inkoxide/tailwind": ["../tailwind/dist/index.d.ts"],
+      "@inkoxide/tree": ["../tree/dist/index.d.ts"],
+      "@inkoxide/render": ["../render/dist/index.d.ts"],
+      "@inkoxide/render/browser": ["../render/dist/browser.d.ts"],
+      "@inkoxide/render/templates": ["../render/dist/templates.d.ts"]
     }
   },
   "include": ["src"]

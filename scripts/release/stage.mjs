@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Builds the TypeScript packages (style, tailwind, react, render) and writes publish-ready copies into
+ * Builds the TypeScript packages (style, tailwind, tree, render, react, vue, svelte, angular) and writes publish-ready copies into
  * tmp/release/<pkg>/. The workspace stays as it is: its `exports` keep pointing at src/ and its
  * workspace: links stay. Only the staged copies point at dist/ and carry registry versions.
  * `inkoxide` and `@inkoxide/schema` are released by scripts/npm-release.mjs.
@@ -28,6 +28,8 @@ const fail = failer('stage');
  * - `sideEffects`: false for a package with no import-time side effects (module state only, no
  *   I/O or globals);
  * - `assets`: the fonts and hyphenation patterns of @inkoxide/render;
+ * - `svelte`: the package ships Svelte components (`.svelte` files, copied as they are, with their
+ *   imports of `.ts` files pointed at the emitted `.js`);
  * - `extras`: files and directories of packages/<name> published next to `dist`, which its
  *   README links through jsDelivr.
  *
@@ -37,8 +39,13 @@ const PACKAGES = [
   { name: 'style', sideEffects: false },
   // Not side-effect free: importing @tailwindcss/node registers module resolution hooks.
   { name: 'tailwind' },
-  { name: 'react', sideEffects: false },
-  { name: 'render', assets: true, extras: ['media', 'GUIDE.md'] },
+  { name: 'tree', sideEffects: false },
+  // Not side-effect free: its entries install the engine host of where they run.
+  { name: 'render', assets: true },
+  { name: 'react', extras: ['media', 'GUIDE.md'] },
+  { name: 'vue' },
+  { name: 'svelte', svelte: true },
+  { name: 'angular' },
 ];
 
 /** Licence files that must ship with the fonts. */
@@ -78,8 +85,18 @@ function rewriteModuleUrls(dist) {
   }
 }
 
+/** Imports of `.ts` files in the Svelte components become imports of the emitted `.js`. */
+function rewriteSvelteImports(dist) {
+  const spec = /(\bfrom\s*)(['"])(\.{1,2}\/[^'"]*?)\.ts\2/g;
+  for (const file of walk(dist).filter((f) => f.endsWith('.svelte'))) {
+    const src = readFileSync(file, 'utf8');
+    const out = src.replace(spec, (_, lead, q, path) => `${lead}${q}${path}.js${q}`);
+    if (out !== src) writeFileSync(file, out);
+  }
+}
+
 /** tsc into packages/<pkg>/dist, then the files tsc does not emit (images, unimported JSON). */
-function build(name) {
+function build(name, svelte = false) {
   const dir = join(ROOT, 'packages', name);
   const dist = join(dir, 'dist');
   rmSync(dist, { recursive: true, force: true });
@@ -99,6 +116,7 @@ function build(name) {
   }
   rewriteDeclarations(dist);
   rewriteModuleUrls(dist);
+  if (svelte) rewriteSvelteImports(dist);
   if (!existsSync(join(dist, 'index.js')) || !existsSync(join(dist, 'index.d.ts'))) {
     fail(`@inkoxide/${name}: the build produced no dist/index.js and dist/index.d.ts.`);
   }
@@ -110,7 +128,9 @@ function importedPackages(dist) {
   const names = new Set();
   const spec = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"]([^'".][^'"]*)['"]/g;
   for (const file of walk(dist).filter((f) => /\.(js|d\.ts)$/.test(f))) {
-    for (const m of readFileSync(file, 'utf8').matchAll(spec)) {
+    // Not the examples in doc comments.
+    const code = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    for (const m of code.matchAll(spec)) {
       const s = m[1];
       if (s.startsWith('node:')) continue;
       names.add(s.startsWith('@') ? s.split('/').slice(0, 2).join('/') : s.split('/')[0]);
@@ -145,9 +165,10 @@ function manifest({ name, sideEffects, assets, extras = [] }, pkg, dist) {
   }
   // Workspace peers (an optional @inkoxide/tailwind, imported only when installed) take the
   // versions released with this one and later compatible ones.
+  // A framework peer (vue, svelte, @angular/core) keeps the range it gives.
   const peers = {};
   for (const [dep, spec] of Object.entries(pkg.peerDependencies ?? {})) {
-    peers[dep] = `^${resolveVersion(dep, spec)}`;
+    peers[dep] = spec.startsWith('workspace:') ? `^${resolveVersion(dep, spec)}` : spec;
   }
   // A dev dependency that the emitted code or declarations import (types such as
   // @inkoxide/schema in @inkoxide/tailwind's .d.ts) is a runtime dependency of the published copy.
@@ -283,7 +304,7 @@ function readme({ name, extras = [] }, pkg) {
 const PUBLISHABLE = ['media', 'GUIDE.md'];
 
 async function stage(entry) {
-  const { name, assets, extras = [] } = entry;
+  const { name, assets, extras = [], svelte = false } = entry;
   const pkgDir = join(ROOT, 'packages', name);
   const pkg = readJson(join(pkgDir, 'package.json'));
   readmePath(name);
@@ -292,7 +313,7 @@ async function stage(entry) {
       fail(`packages/${name}/${f} exists but is not published: add it to the package's extras in PACKAGES.`);
     }
   }
-  const dist = build(name);
+  const dist = build(name, svelte);
   const stageDir = join(OUT, name);
   rmSync(stageDir, { recursive: true, force: true });
   mkdirSync(stageDir, { recursive: true });
