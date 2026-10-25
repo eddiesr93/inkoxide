@@ -1,4 +1,4 @@
-import type { Instance } from '../reconciler/instance.ts';
+import type { Instance } from '../nodes.ts';
 
 /** Splits an engine path (`pages[0].children[3].runs[1].font`) into keys. */
 export function parsePath(path: string): Array<string | number> {

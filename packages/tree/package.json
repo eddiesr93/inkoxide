@@ -1,0 +1,27 @@
+{
+  "name": "@inkoxide/tree",
+  "version": "0.10.1",
+  "private": true,
+  "type": "module",
+  "description": "What every Inkoxide front end shares: the components' host types and props, where each may go, and the conversion of host nodes into an Inkoxide document tree.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@inkoxide/schema": "workspace:*",
+    "@inkoxide/style": "workspace:*",
+    "ajv-formats": "3.0.1"
+  },
+  "devDependencies": {
+    "@inkoxide/tailwind": "workspace:*",
+    "ajv": "8.20.0"
+  },
+  "peerDependencies": {
+    "@inkoxide/tailwind": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@inkoxide/tailwind": {
+      "optional": true
+    }
+  }
+}

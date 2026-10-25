@@ -1,12 +1,11 @@
+import { type Container, formatStack, type HostType, hostName, TemplateError } from '@inkoxide/tree';
 import type { ReactNode } from 'react';
 import Reconciler from 'react-reconciler';
 import { ConcurrentRoot } from 'react-reconciler/constants.js';
 
-import type { HostType } from '../components/index.ts';
-import { TemplateError } from '../errors.ts';
 import { RenderCall } from '../page.ts';
+import { fiberNames, nameOf } from './fiber.ts';
 import { hostConfig } from './host-config.ts';
-import { type Container, componentNames, formatStack, hostName, nameOf } from './instance.ts';
 
 // oxlint-disable-next-line typescript/no-explicit-any -- the reconciler's generic host-config typing is not worth replicating.
 const reconciler = Reconciler(hostConfig as any);
@@ -95,7 +94,7 @@ function suspension(
     const at = innermost(root.current.alternate?.child ?? null, (f) => (f.flags & INCOMPLETE) !== 0);
     if (!at) return undefined;
     const { what, missing } = suspender(at, parent);
-    const names = componentNames({ fiber: at });
+    const names = [...fiberNames(at)];
     if (missing !== undefined) names.unshift(missing);
     return new TemplateError(`${what} suspended. ${advice}`, {
       kind: 'render',
@@ -109,7 +108,7 @@ function suspension(
   if (!boundary) return undefined;
   return new TemplateError(
     `A component inside <Suspense> suspended, so the document would show its fallback. ${advice}`,
-    { kind: 'render', componentStack: formatStack(['Suspense', ...componentNames({ fiber: boundary })]) },
+    { kind: 'render', componentStack: formatStack(['Suspense', ...fiberNames(boundary)]) },
   );
 }
 

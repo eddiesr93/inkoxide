@@ -1,0 +1,1153 @@
+import type {
+  Bookmark,
+  Break,
+  Color,
+  Meta,
+  PageFilter,
+  Role as SchemaRole,
+  ShapeOutside,
+  TransformOp,
+} from '@inkoxide/schema';
+import type {
+  BorderStyle,
+  FlatStyle,
+  FontFeatureSettings,
+  FontStretch,
+  FontVariationSettings,
+} from '@inkoxide/style';
+
+import type { PdfALevel, PdfUaPart } from '../tree/output.ts';
+
+/**
+ * Host element types. Components are host elements, not function components: one fiber per
+ * element and no wrapper overhead, which matters for a 100-page report.
+ */
+export const HOST = {
+  Document: 'ink-document',
+  Page: 'ink-page',
+  Header: 'ink-header',
+  Footer: 'ink-footer',
+  View: 'ink-view',
+  Text: 'ink-text',
+  Link: 'ink-link',
+  Image: 'ink-image',
+  ImageBackground: 'ink-image-background',
+  Table: 'ink-table',
+  Row: 'ink-row',
+  Cell: 'ink-cell',
+  PageNumber: 'ink-page-number',
+  TotalPages: 'ink-total-pages',
+  PageBreak: 'ink-page-break',
+  Spacer: 'ink-spacer',
+  Field: 'ink-field',
+  FieldSet: 'ink-field-set',
+  Note: 'ink-note',
+  Attachment: 'ink-attachment',
+  Canvas: 'ink-canvas',
+  Svg: 'ink-svg',
+  G: 'ink-svg-g',
+  Path: 'ink-svg-path',
+  Rect: 'ink-svg-rect',
+  Circle: 'ink-svg-circle',
+  Ellipse: 'ink-svg-ellipse',
+  Line: 'ink-svg-line',
+  Polyline: 'ink-svg-polyline',
+  Polygon: 'ink-svg-polygon',
+  Defs: 'ink-svg-defs',
+  ClipPath: 'ink-svg-clip-path',
+  Marker: 'ink-svg-marker',
+  Tspan: 'ink-svg-tspan',
+  TextPath: 'ink-svg-text-path',
+  LinearGradient: 'ink-svg-linear-gradient',
+  RadialGradient: 'ink-svg-radial-gradient',
+  Stop: 'ink-svg-stop',
+} as const;
+
+export type HostType = (typeof HOST)[keyof typeof HOST];
+
+/** Component name for a host type, for error messages and component stacks. */
+export const HOST_NAME = Object.fromEntries(
+  Object.entries(HOST).map(([name, type]) => [type, name]),
+) as Record<HostType, string>;
+
+/** A value for every side, or one per side (`{ top: 8, bottom: 4 }`). */
+export type Edges<T> = T | { top?: T; right?: T; bottom?: T; left?: T };
+
+/**
+ * A length that needs no context: points as a number, or a string with a unit (`'20mm'`,
+ * `'1.5cm'`, `'1in'`, `'12pt'`, `'16px'`, `'1pc'` = 12pt, `'1rem'` = 12pt as in Tailwind).
+ */
+export type AbsoluteLength = number | `${number}${'pt' | 'mm' | 'cm' | 'in' | 'px' | 'pc' | 'rem'}`;
+/**
+ * A length, or one relative to the font size (`'1.5em'`) or the page width or height (`'50vw'`,
+ * `'10vh'`), or a CSS `calc()` of them (`'calc(10mm + 1em)'`).
+ */
+export type Length = AbsoluteLength | `${number}${'em' | 'vw' | 'vh'}` | `calc(${string})`;
+/** A length or a percentage of the containing block. */
+export type LengthPercent = Length | `${number}%`;
+export type LengthAuto = LengthPercent | 'auto';
+
+type BorderLineStyle = BorderStyle;
+
+/** CSS `text-decoration-line` values. `lineThrough` is the Tailwind builder's spelling. */
+type TextDecorationLine =
+  | 'none'
+  | 'underline'
+  | 'line-through'
+  | 'lineThrough'
+  | 'underline line-through'
+  | 'line-through underline';
+
+/**
+ * Inline styles: the same properties as Tailwind produces, applied after `className`. Colours
+ * may be CSS strings (`'#1e4a99'`, `'oklch(…)'`) or RGBA float tuples; lengths are points or
+ * strings with a unit (`'20mm'`).
+ */
+export interface StyleProp extends Omit<
+  FlatStyle,
+  | 'fontWeight'
+  | 'fontStretch'
+  | 'color'
+  | 'backgroundColor'
+  | 'lineHeight'
+  | 'letterSpacing'
+  | `padding${string}`
+  | `margin${string}`
+  | `inset${string}`
+  | `border${'Top' | 'Right' | 'Bottom' | 'Left'}${'Width' | 'Color' | 'Style'}`
+  | `border${string}Radius`
+  | 'borderStyle'
+  | 'fontFamily'
+  | 'fontSize'
+  | 'width'
+  | 'height'
+  | 'minWidth'
+  | 'minHeight'
+  | 'maxWidth'
+  | 'maxHeight'
+  | 'flexBasis'
+  | 'rowGap'
+  | 'columnGap'
+  | 'borderSpacing'
+  | 'textIndent'
+  | 'textDecoration'
+  | 'decorationColor'
+  | 'decorationThickness'
+  | 'translate'
+  | 'transform'
+  | 'transformOrigin'
+  | 'shapeOutside'
+  | 'shapeMargin'
+  | 'objectPosition'
+  | 'fontFeatureSettings'
+  | 'fontVariationSettings'
+  | 'fontVariantNumeric'
+  | 'textWrap'
+  | 'verticalAlign'
+> {
+  fontFamily?: string | string[];
+  /** 1–1000, or a CSS name (`'bold'`, `'light'`, `'semibold'`). */
+  fontWeight?: number | FontWeightName;
+  /**
+   * A width, as a percentage of the normal one (`75`, `'75%'`) or a CSS keyword
+   * (`'condensed'`): the face registered for it, or a variable font's `wdth`.
+   */
+  fontStretch?: FontStretch;
+  fontSize?: Length;
+  color?: string | Color;
+  backgroundColor?: string | Color;
+  /**
+   * A multiplier of the text size (`1.5`, `'150%'`, `'1.5em'`) or a length (`'14pt'`). `em` is
+   * the size of the text it applies to, as in `leading-[1.5em]`.
+   */
+  lineHeight?: number | `${number}` | `${number}%` | Length;
+  /** Points, or a length; `em` is the size of the text it applies to, as in `tracking-[0.1em]`. */
+  letterSpacing?: Length;
+  width?: LengthAuto;
+  height?: LengthAuto;
+  minWidth?: LengthAuto;
+  minHeight?: LengthAuto;
+  maxWidth?: LengthAuto;
+  maxHeight?: LengthAuto;
+  flexBasis?: LengthAuto;
+  gap?: LengthPercent;
+  rowGap?: LengthPercent;
+  columnGap?: LengthPercent;
+  padding?: Edges<LengthPercent>;
+  /** Per side, and `paddingHorizontal` / `paddingVertical`; these win over `padding`. */
+  paddingTop?: LengthPercent;
+  paddingRight?: LengthPercent;
+  paddingBottom?: LengthPercent;
+  paddingLeft?: LengthPercent;
+  paddingHorizontal?: LengthPercent;
+  paddingVertical?: LengthPercent;
+  margin?: Edges<LengthAuto>;
+  marginTop?: LengthAuto;
+  marginRight?: LengthAuto;
+  marginBottom?: LengthAuto;
+  marginLeft?: LengthAuto;
+  marginHorizontal?: LengthAuto;
+  marginVertical?: LengthAuto;
+  inset?: Edges<LengthAuto>;
+  /** Offsets of a `position: 'absolute'` or `'relative'` box. */
+  top?: LengthAuto;
+  right?: LengthAuto;
+  bottom?: LengthAuto;
+  left?: LengthAuto;
+  /** `flex: 1` grows, shrinks and starts from 0; strings are CSS's `'1 0 auto'`, `'none'`, `'auto'`. */
+  flex?: number | string;
+  /**
+   * CSS border shorthands: width, style and colour in any order (`'1px solid #e5e7eb'`,
+   * `'2pt dashed red'`, `'none'`). A missing style is solid, a missing colour the text colour.
+   * The keys below win over them, and a side (`borderTop`) wins over `border`.
+   */
+  border?: string | number;
+  borderTop?: string | number;
+  borderRight?: string | number;
+  borderBottom?: string | number;
+  borderLeft?: string | number;
+  borderWidth?: Edges<Length>;
+  borderColor?: Edges<string | Color>;
+  /** One side at a time (`borderBottomWidth: 0.5, borderBottomColor: '#ddd'`). */
+  borderTopWidth?: Length;
+  borderRightWidth?: Length;
+  borderBottomWidth?: Length;
+  borderLeftWidth?: Length;
+  borderTopColor?: string | Color;
+  borderRightColor?: string | Color;
+  borderBottomColor?: string | Color;
+  borderLeftColor?: string | Color;
+  borderTopStyle?: BorderLineStyle;
+  borderRightStyle?: BorderLineStyle;
+  borderBottomStyle?: BorderLineStyle;
+  borderLeftStyle?: BorderLineStyle;
+  /** One style, or one per side. */
+  borderStyle?: Edges<BorderLineStyle>;
+  /** One radius, or one per corner. */
+  borderRadius?: Length | { topLeft?: Length; topRight?: Length; bottomRight?: Length; bottomLeft?: Length };
+  borderSpacing?: Length;
+  /** First-line indent; negative for a hanging indent. */
+  textIndent?: Length;
+  /** Both lines (`'underline line-through'`) draw a line-through: a run has one decoration line. */
+  textDecoration?: TextDecorationLine;
+  decorationColor?: string | Color;
+  decorationThickness?: Length;
+  /** CSS names for `decorationColor`, `decorationStyle` and `decorationThickness`. */
+  textDecorationColor?: string | Color;
+  textDecorationStyle?: FlatStyle['decorationStyle'];
+  textDecorationThickness?: Length;
+  /** `'ellipsis'` is `ellipsis: true` (with `maxLines`); `'clip'` is `ellipsis: false`. */
+  textOverflow?: 'ellipsis' | 'clip';
+  /**
+   * OpenType features: a CSS string (`"'tnum' 1, 'smcp'"`), a list of tags to turn on
+   * (`['tnum', 'smcp']`) or tags with a value (`{ tnum: 1, liga: false }`). Inherited, and a
+   * `Text` that sets its own replaces them.
+   */
+  fontFeatureSettings?: FontFeatureSettings;
+  /** CSS `font-variant-numeric` (`'tabular-nums slashed-zero'`): turns on the features it names. */
+  fontVariantNumeric?: string;
+  /**
+   * A variable font's axis values: a CSS string (`"'wght' 650, 'wdth' 75"`) or tags with values
+   * (`{ wdth: 75 }`). The text draws with an instance of its font at those values; `wght` wins
+   * over `fontWeight`. Inherited, and an element that sets its own replaces them.
+   */
+  fontVariationSettings?: FontVariationSettings;
+  /**
+   * How lines break: `'wrap'` (the default) fills each line in turn; `'pretty'` chooses the
+   * breaks over the whole paragraph for even lines; `'balance'` makes the lines of a heading or a
+   * caption about as long as each other. Inherited.
+   */
+  textWrap?: FlatStyle['textWrap'];
+  translate?: [LengthPercent, LengthPercent];
+  /** Transform functions (`[{ rotate: 10 }, { scale: [1.2, 1.2] }]`) or a CSS transform string. */
+  transform?: TransformOp[] | string;
+  /** `[x, y]` or a CSS value (`'top left'`, `'50% 0'`). */
+  transformOrigin?: [LengthPercent, LengthPercent] | string;
+  /**
+   * Floats only: the shape the lines beside the float wrap around, in its margin box, as CSS
+   * `shape-outside` (`'circle(50%)'`, `'ellipse(40% 50% at left)'`, `'inset(0 0 20% 0 round 8pt)'`,
+   * `'polygon(0 0, 100% 0, 0 100%)'`) or the schema's object (`{ circle: {} }`). Only lines follow
+   * it: the float is placed, and boxes beside it narrowed, by its margin box.
+   */
+  shapeOutside?: ShapeOutside | string;
+  /** Floats with a `shapeOutside` only: how far lines keep from the shape, within the margin box. */
+  shapeMargin?: number | string;
+  /**
+   * `Image` and `ImageBackground` only: where a `contain`, `cover` or `none` image sits in its
+   * box, as CSS `object-position` (`'left top'`, `'right'`, `'25% 75%'`, `'10pt 20pt'`). Default
+   * centred.
+   */
+  objectPosition?: string;
+  /**
+   * A `Cell`'s content (`top`, `middle`, `bottom`), a run of a `Text` on its line (`super`,
+   * `sub`, `baseline`), or an `Image` in a `Text` (also `text-top`, `text-bottom` and a number of
+   * points its bottom sits above the baseline).
+   */
+  verticalAlign?: FlatStyle['verticalAlign'] | 'text-top' | 'text-bottom';
+}
+
+/**
+ * A style object with `@media` blocks: styles for the page the element is on, applied when it
+ * matches the query. A query reads the page's width and height (the whole sheet, margins
+ * included), `aspect-ratio`, `orientation` and `print`: `'@media (orientation: landscape)'`,
+ * `'@media (width < 150mm)'`. Blocks apply after the object's own properties, in the order
+ * written; they may nest, and nested queries must all match.
+ */
+export type MediaStyle = StyleProp & { [query: `@media ${string}`]: MediaStyle | undefined };
+
+/** One style object, or a list of them merged left to right (falsy entries are skipped). */
+export type Style = StyleProp | MediaStyle | ReadonlyArray<StyleProp | MediaStyle | false | null | undefined>;
+
+/** Named styles, typed once (`StyleSheet.create({ title: { fontSize: 18 } })`). */
+export const StyleSheet = {
+  create<T extends Record<string, StyleProp | MediaStyle>>(styles: T): T {
+    return styles;
+  },
+};
+
+export type { FontStretch } from '@inkoxide/style';
+
+/** A CSS font weight name, for `fontWeight` in place of its number (`'bold'` is 700). */
+export type FontWeightName =
+  | 'thin'
+  | 'hairline'
+  | 'ultralight'
+  | 'extralight'
+  | 'light'
+  | 'normal'
+  | 'regular'
+  | 'medium'
+  | 'semibold'
+  | 'demibold'
+  | 'bold'
+  | 'ultrabold'
+  | 'extrabold'
+  | 'heavy'
+  | 'black';
+
+/**
+ * `break="avoid"` keeps the element on one page; `"page-before"` / `"page-after"` start a new page
+ * when content follows. They are errors inside a `flex-row`, grid, wrapping or reversed `View` and
+ * inside an absolutely positioned, rotated or transformed element. On the element itself only
+ * absolute positioning makes them an error: on a rotated or transformed element they work.
+ */
+export type BreakProp = 'avoid' | 'page-before' | 'page-after' | Break;
+
+/**
+ * An entry of the PDF outline at this element: its title, or `{ title, level, expanded, zoom }`.
+ * `level` nests it (default 1), `expanded: false` starts it closed, and `zoom` is how the viewer
+ * shows the element: a scale (`1.5`), the whole page (`'page'`) or the page's width (`'width'`).
+ */
+export type BookmarkProp = string | Bookmark;
+
+/**
+ * Splits a word into the parts a line may break between: `'hyphenation'` →
+ * `['hy', 'phen', 'ation']`. `[word]` keeps the word from being hyphenated; a word wider than its
+ * line still breaks between any two characters. The word is as displayed, after `textTransform`
+ * (`uppercase` gives `'HYPHENATION'`).
+ */
+export type HyphenationCallback = (word: string) => string[];
+
+interface Common {
+  className?: string;
+  style?: Style;
+  /** Node id: the target of `href="#id"` links. */
+  id?: string;
+  /**
+   * Draws the element's boxes over the page: margin (orange), border (yellow), padding (green),
+   * content box (blue outline) and its size in points. A development aid; it changes the output.
+   * Not on a `<Text>` or `<Link>` inside a `<Text>`: a run of the paragraph has no box of its own,
+   * so put it on the outer `<Text>`.
+   */
+  debug?: boolean;
+  children?: unknown;
+}
+
+interface Flow extends Common {
+  /** `true` is the same as `'page-before'`. */
+  break?: BreakProp | boolean;
+  /** `wrap={false}` is the same as `break="avoid"`. */
+  wrap?: boolean;
+  /** The same as `break={{ minPresenceAhead }}`, in points. */
+  minPresenceAhead?: number;
+  /**
+   * Repeats the element on every page of its `Page`: a watermark, a page border, a stamp. Only
+   * for an element placed directly in the `Page`, with `position: 'absolute'`: it is placed
+   * against the page content box (inside the margins) and takes no space. `render` and `pages`
+   * work inside it; `break`, `wrap` and `minPresenceAhead` do not, on it or inside it. For content
+   * that needs room on every page, use `<Header>` or `<Footer>`.
+   */
+  fixed?: boolean;
+  /**
+   * Pages that paint this element (it keeps its layout space on the others): `'first'`,
+   * `'last'`, `'notFirst'`, `'notLast'`, `'odd'`, `'even'`, or page numbers (negative from the
+   * end, `[-1]` is the last page).
+   */
+  pages?: PageFilter;
+  /** Makes the element a link: `https://…`, `mailto:…` or `#id`. */
+  href?: string;
+  /** Adds an entry to the PDF outline. */
+  bookmark?: BookmarkProp;
+}
+
+/**
+ * What a reader who opens an encrypted PDF without the owner password may do. Every permission
+ * is off unless set, except `contentAccessibility`, which is on. Readers enforce them.
+ */
+export interface Permissions {
+  printing?: 'lowResolution' | 'highResolution';
+  modifying?: boolean;
+  copying?: boolean;
+  annotating?: boolean;
+  fillingForms?: boolean;
+  contentAccessibility?: boolean;
+  documentAssembly?: boolean;
+}
+
+/** The part of a level b (`'2'` of `'2b'`). */
+type PartOf<L> = L extends `${infer Part}b` ? Part : never;
+
+/** A PDF/A part and conformance level; a bare part (`'PDF/A-2'`) is level b. */
+export type Conformance = `PDF/A-${PdfALevel}` | `PDF/A-${PartOf<PdfALevel>}`;
+
+export interface DocumentProps {
+  title?: string;
+  author?: string;
+  subject?: string;
+  keywords?: string;
+  creator?: string;
+  /** The PDF producer. Default: `Inkoxide <version>`. */
+  producer?: string;
+  /** BCP-47 language of the document (`"en-US"`); also selects hyphenation patterns. */
+  lang?: string;
+  /** RFC 3339 timestamp written to the PDF. Omit it for deterministic output. */
+  creationDate?: string;
+  /**
+   * What the viewer shows when it opens the PDF: no panel, the bookmarks, page thumbnails or
+   * the pages full screen. Default: `'useOutlines'` when there are bookmarks, else `'useNone'`.
+   */
+  pageMode?: Meta['pageMode'];
+  /**
+   * How the viewer lays out the pages: one at a time, one scrolling column, two columns or two
+   * pages side by side (odd pages on the left or the right). Default: the viewer's setting.
+   */
+  pageLayout?: Meta['pageLayout'];
+  /**
+   * Font ids tried for characters missing from a run's font, at most 256; an id listed again is
+   * skipped. Default: `['NotoSans-Regular']`.
+   */
+  fallbackFonts?: string[];
+  /** Outlines the boxes of every element on every page (`debug` on each `<Page>`). */
+  debug?: boolean;
+  /**
+   * Write PDF/A, for archiving: `'PDF/A-2b'` (or `'PDF/A-2'`), `'PDF/A-3b'`, `'PDF/A-1b'`, or
+   * `'PDF/A-2a'` and `'PDF/A-3a'`, which are tagged. PDF/A-1b has no transparency: a render
+   * fails with `PDFA_CONFLICT` at the first colour with alpha, `opacity`, image with partial
+   * alpha (see `flattenAlpha`) or `debug` outline; an image whose alpha is only clear or opaque,
+   * such as a GIF's, is drawn with a stencil mask. The render option `pdfA` wins over this prop.
+   * Default: plain PDF.
+   */
+  conformance?: Conformance;
+  /**
+   * At PDF/A-1b, draw images whose alpha is partial on white instead of failing with
+   * `PDFA_CONFLICT`. Other levels and plain PDF keep the alpha. The render option
+   * `flattenAlpha` wins over this prop.
+   */
+  flattenAlpha?: boolean;
+  /**
+   * Encrypts the PDF (AES-256): the password that opens it. Any text SASLprep (RFC 4013)
+   * accepts, at most 127 bytes of UTF-8 once prepared. Not part of the document tree, and never
+   * in the render result. The render option `encryption` replaces these four props.
+   */
+  userPassword?: string;
+  /** The password that lifts `permissions`. Default: the user password. */
+  ownerPassword?: string;
+  /** What a reader without the owner password may do; needs an `ownerPassword` other than `userPassword`. */
+  permissions?: Permissions;
+  /**
+   * Random bytes (16 to 256) mixed into the encryption keys, so each render of the same document
+   * gets other keys; `true`: 32 drawn for each render. Default: none, and the same document and
+   * passwords give the same file.
+   */
+  entropy?: boolean | Uint8Array;
+  /**
+   * Write tagged PDF: a structure tree with the reading order (the order of the template) and
+   * what each element is (headings, paragraphs, figures with their `alt`, tables, lists), for
+   * screen readers and reflow. `pdfUA` and `'PDF/A-2a'` or `'PDF/A-3a'` imply it.
+   */
+  tagged?: boolean;
+  /**
+   * Write PDF/UA, the standard for accessible PDF: tagged, with a `title`, a `lang`, `alt` on
+   * every image that is not decoration and `label` on every field; without them the render
+   * fails with `UA_CONFLICT`. `true` or `'1'` writes PDF/UA-1, on PDF 1.7; `'2'` writes
+   * PDF/UA-2, on PDF 2.0, which does not combine with `conformance`.
+   */
+  pdfUA?: boolean | PdfUaPart;
+  /**
+   * Files the PDF carries, listed in the viewer's attachments panel; `<Attachment file>` shows
+   * an icon that opens one. Under PDF/A, only `'PDF/A-3b'` and `'PDF/A-3a'` allow them.
+   */
+  attachments?: readonly AttachmentFile[];
+  /**
+   * XMP schemas the PDF/A metadata declares and fills in, such as `facturX()`'s for an
+   * e-invoice. Needs PDF/A: `conformance`, or the render option `pdfA`.
+   */
+  xmpExtensions?: Meta['xmpExtensions'];
+  children?: unknown;
+}
+
+/** A file `<Document attachments>` carries. */
+export interface AttachmentFile {
+  /** The file name viewers show and save it under, unique in the document. */
+  name: string;
+  /** Its bytes; a string is its text, in UTF-8. */
+  data: Uint8Array | string;
+  /** Its MIME type (`'text/xml'`). Default `'application/octet-stream'`. */
+  mimeType?: string;
+  /** What it is; viewers show it in their attachments panel. */
+  description?: string;
+  /** How it relates to the document, as PDF/A-3 asks: `'data'` for an e-invoice's XML. */
+  relationship?: 'source' | 'data' | 'alternative' | 'supplement' | 'unspecified';
+  /** When it was last changed (RFC 3339). Default: the creation date, if any. */
+  modified?: string;
+}
+
+type Series<P extends string> = `${P}${0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10}`;
+
+export type PagePreset =
+  | '4A0'
+  | '2A0'
+  | Series<'A' | 'B' | 'C'>
+  | `${'RA' | 'SRA'}${0 | 1 | 2 | 3 | 4}`
+  | 'Letter'
+  | 'Legal'
+  | 'Tabloid'
+  | 'Executive'
+  | 'Folio'
+  | 'ID1';
+
+/** A preset name in any case (`'A4'`, `'letter'`, `'LEGAL'`). */
+type PresetName = PagePreset | Lowercase<PagePreset> | Uppercase<PagePreset>;
+
+export type PageSize =
+  | PresetName
+  | `${PresetName}-landscape`
+  | AbsoluteLength
+  | [width: AbsoluteLength, height: AbsoluteLength]
+  | [side: AbsoluteLength]
+  | {
+      width: AbsoluteLength;
+      height: AbsoluteLength;
+    };
+
+export interface PageProps {
+  /**
+   * A preset (`'A4'`, `'letter'`, `'A5-landscape'`), `[width, height]`, `{ width, height }`, or
+   * `[width]` or a single length for a square page. Lengths are points or strings with a unit
+   * (`'210mm'`). Default `A4`.
+   */
+  size?: PageSize;
+  /** Turns the size sideways (`landscape`) or upright (`portrait`). */
+  orientation?: 'portrait' | 'landscape';
+  /** One length for all sides or per side (points, or `'15mm'`). */
+  margin?: Edges<Length>;
+  /**
+   * Text utilities set the defaults inherited by the page's content; `bg-*` sets the page
+   * background, which is opaque: a colour with opacity is drawn on white.
+   */
+  className?: string;
+  style?: Style;
+  /** Outlines the page's margins and the boxes of every element on it, header and footer included. */
+  debug?: boolean;
+  children?: unknown;
+}
+
+export type HeaderProps = Common;
+export type FooterProps = Common;
+
+/** What a `render` prop receives. */
+export interface PageInfo {
+  /** Physical page number, from 1. */
+  pageNumber: number;
+  /** Pages in the document. */
+  totalPages: number;
+}
+
+/**
+ * Content computed per page: called once for every page the document has (after a first pass
+ * that counts them), and painted only on that page. Pages with identical output share one node.
+ */
+export type RenderProp<Content = unknown> = (page: PageInfo) => Content;
+
+/**
+ * What an element is in tagged output (`<Document tagged>` or `pdfUA`): a heading, a paragraph,
+ * a section, a quote, a caption, a figure, a list (`list` holds `listItem`s, each a `label` and a
+ * `listBody`), or decoration (`artifact`), which screen readers skip.
+ */
+export type Role = SchemaRole;
+
+export interface ViewProps extends Flow {
+  render?: RenderProp;
+  /** What the view is in tagged output; by default it is not an element of its own. */
+  role?: Role;
+  /** A `role="figure"` view's alternative text: what screen readers say for it. */
+  alt?: string;
+}
+
+export interface TextProps extends Flow {
+  /** What the text is in tagged output: `'h1'`–`'h6'`, `'caption'`, `'label'`…; default a paragraph. */
+  role?: Role;
+  /**
+   * Hyphenate this text (same as `hyphens-auto`). Needs patterns for its language, so set `lang` on
+   * the text or the Document: without one, nothing is hyphenated and a warning says so. `false`
+   * (`hyphens-none`) also turns off the registered `hyphenationCallback`.
+   */
+  hyphenate?: boolean;
+  /** Language of this text, when it differs from the document's. */
+  lang?: string;
+  /**
+   * Breaks words where this function says, instead of the built-in patterns (`hyphenate`), which
+   * then leave this text alone. Overrides the registered callback
+   * (`Font.registerHyphenationCallback`); `null` turns it off for this text, which goes back to
+   * `hyphenate`.
+   */
+  hyphenationCallback?: HyphenationCallback | null;
+  /** Base direction: `rtl` for Arabic or Hebrew paragraphs, `auto` from the first strong letter. */
+  dir?: 'ltr' | 'rtl' | 'auto';
+  /** Minimum lines left at the bottom of a page before a break (default 1). */
+  orphans?: number;
+  /** Minimum lines carried to the top of the next page (default 1). */
+  widows?: number;
+  /**
+   * How much `textWrap: 'pretty'` avoids breaking at a hyphenation point: 0 to 10 000, default
+   * 50 (TeX's `\hyphenpenalty`). Higher values give fewer hyphens and looser lines; 10 000 never
+   * breaks a word at one, whatever `textWrap`. Inherited, and `style` takes it too.
+   */
+  hyphenationPenalty?: number;
+  render?: RenderProp;
+}
+
+/** A `Link` needs a target: `href`, or `src`, which is the same. */
+export type LinkProps = Flow &
+  (
+    | { href: string; src?: string }
+    | {
+        /** The same as `href`. */
+        src: string;
+      }
+  );
+
+/**
+ * A request for a remote image: `<Image src={{ uri, method, headers, body }} />`. The `uri` must
+ * be allowed by the remote image policy, like a URL string.
+ */
+export interface ImageRequest {
+  uri: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string | Uint8Array;
+}
+
+/**
+ * What a function or promise `src` resolves to: bytes (a `Uint8Array`, `Buffer` or
+ * `ArrayBuffer`), a `Blob` (a `File` the page's user picked, say), any string `src`, or a request.
+ */
+export type ImageSrcValue = Uint8Array | ArrayBuffer | Blob | string | ImageRequest;
+
+/**
+ * An image `src`: bytes, a `Blob`, a string (an image id, a `data:` URL, a file path or `file:` URL, an
+ * allowed remote URL), a request, or a function or promise resolving to one of those.
+ */
+export type ImageSrc =
+  | ImageSrcValue
+  | Promise<ImageSrcValue>
+  | (() => ImageSrcValue | Promise<ImageSrcValue>);
+
+export interface ImageProps extends Omit<Flow, 'children'> {
+  /**
+   * Bytes (JPEG, PNG, GIF, WebP, SVG; a `Uint8Array`, `Buffer` or `ArrayBuffer`), a `Blob` (a
+   * `File` from a file input, read when the render starts), a `data:` URL, the id of an image passed in the render options, a file path (`./logo.png`,
+   * `/srv/img/logo.png`) or `file:` URL in a folder allowed by the render option `localImages`, an
+   * `https:` URL or a request allowed by the render option `remoteImages`, or a function or
+   * promise resolving to one of those. A string naming an image in the render options is that
+   * image, path or not.
+   */
+  src: ImageSrc;
+  fit?: 'fill' | 'contain' | 'cover' | 'none';
+  /**
+   * The text the image copies and searches as: its alternative text, at most 1024 characters. In
+   * tagged output `""` makes it decoration; PDF/UA requires `alt` on every other image.
+   */
+  alt?: string;
+  /** `'artifact'`: decoration in tagged output, as `alt=""`. */
+  role?: 'figure' | 'artifact';
+}
+
+export interface ImageBackgroundProps extends Flow {
+  /** The image, in any form `<Image src>` takes. */
+  src: ImageSrc;
+  /**
+   * How the image fills the padding box: `fill` (default) stretches it, `contain` and `cover`
+   * keep its aspect ratio, `none` keeps its size. Wins over `objectFit`.
+   */
+  fit?: 'fill' | 'contain' | 'cover' | 'none';
+}
+
+export interface TableProps extends Flow {
+  /** Column widths: points, `'1fr'`-style fractions, or `'auto'`. */
+  columns: Array<number | string>;
+  /** Rows repeated at the top of every page the table spans. */
+  headerRows?: number;
+}
+
+export interface RowProps {
+  /** `bg-*`, `min-h-*` and text utilities (inherited by the cells). */
+  className?: string;
+  style?: Style;
+  id?: string;
+  minHeight?: number;
+  /** Outlines the row's box. */
+  debug?: boolean;
+  children?: unknown;
+}
+
+export interface CellProps extends Common {
+  colSpan?: number;
+  rowSpan?: number;
+  verticalAlign?: 'top' | 'middle' | 'bottom';
+  /** In tagged output, a header of its row; the cells of header rows head their columns. */
+  header?: boolean;
+}
+
+export interface SpacerProps {
+  /** Height in points. */
+  h?: number;
+  /** Width in points. */
+  w?: number;
+  className?: string;
+  style?: Style;
+  id?: string;
+  /** Outlines the spacer's box. */
+  debug?: boolean;
+}
+
+export interface PageBreakProps {
+  id?: string;
+}
+
+interface FieldCommon extends Omit<Flow, 'children' | 'href' | 'bookmark' | 'fixed'> {
+  /**
+   * Field name, unique in the document (radio buttons of one group share it). A `<FieldSet>`
+   * puts its name in front; dots make groups the same way (`address.street`).
+   */
+  name: string;
+  readOnly?: boolean;
+  required?: boolean;
+  /** What the field is for: what screen readers say, and the tooltip. PDF/UA requires it. */
+  label?: string;
+}
+
+/** Where a text, select or list field puts its value in the box; default `'left'`. */
+type FieldAlign = 'left' | 'center' | 'right';
+
+export interface TextFieldProps extends FieldCommon {
+  value?: string;
+  multiline?: boolean;
+  /** The value is neither shown nor stored. */
+  password?: boolean;
+  maxLength?: number;
+  /** How the value shows and is typed: a number, a date, a phone number… */
+  format?: TextFormat;
+  /** Viewers do not check the spelling of what is typed. */
+  noSpell?: boolean;
+  align?: FieldAlign;
+}
+
+/**
+ * The format of a single-line `TextField`. `value` must fit it: a number or percent as digits
+ * (`'-1234.5'`, `'0.125'` for 12.50 %), a date as `'2026-10-14'` (a time may follow,
+ * `T18:30`), a time as `'18:30'` or a date with a time, and a zip code, phone or social security
+ * number as its digits.
+ *
+ * The second key of each pair is its other name. A number or percent format with any of
+ * `nDec`, `sepComma`, `negStyle`, `currencyPrepend` and `param` defaults to no decimals and no
+ * thousands separator (`nDec: 0`, `sepComma: false`); one without them, to 2 decimals and
+ * `'1,234.56'`.
+ */
+export interface TextFormat {
+  /** What the value is; `'zip4'` is another name for `'zipPlus4'`. */
+  type: 'number' | 'percent' | 'date' | 'time' | 'zip' | 'zipPlus4' | 'zip4' | 'phone' | 'ssn';
+  /** Number and percent: digits after the decimal separator; default 2. */
+  decimals?: number;
+  nDec?: number;
+  /** Number and percent: the separators, by example; default `'1,234.56'`. */
+  separators?: '1,234.56' | '1234.56' | '1.234,56' | '1234,56';
+  /** `true` is `'1,234.56'`, `false` `'1234.56'`. */
+  sepComma?: boolean;
+  /** Number: how negative numbers show; default `'minus'`. */
+  negative?: 'minus' | 'red' | 'parens' | 'parensRed';
+  negStyle?: 'MinusBlack' | 'Red' | 'ParensBlack' | 'ParensRed';
+  /** Number: a currency symbol, as it shows (`'$'`, `' €'`). */
+  currency?: string;
+  /** Number: the currency goes before the number; default `true`. */
+  currencyBefore?: boolean;
+  currencyPrepend?: boolean;
+  /** Date and time: how the value shows, as `'dd/mm/yyyy'` or `'HH:MM'`. */
+  pattern?: string;
+  /**
+   * Date: the pattern. Time: one of four styles, `0` `'HH:MM'`, `1` `'h:MM tt'`, `2`
+   * `'HH:MM:ss'` and `3` `'h:MM:ss tt'`.
+   */
+  param?: string | number;
+}
+
+export interface CheckboxProps extends FieldCommon {
+  checked?: boolean;
+}
+
+export interface RadioProps extends FieldCommon {
+  /** The value the group exports when this button is selected. */
+  value: string;
+  /** Initially selected; at most one button of a group. */
+  checked?: boolean;
+}
+
+/** The choices of a `Select` or a `List`: `options`, or its other name `select`. */
+type Choices = { options: string[]; select?: never } | { select: string[]; options?: never };
+
+export type SelectProps = FieldCommon &
+  Choices & {
+    /** The selected option; with `edit`, any text. */
+    value?: string;
+    /** The options in alphabetical order. */
+    sort?: boolean;
+    /** A value can be typed besides the options. */
+    edit?: boolean;
+    /** With `edit`: viewers do not check the spelling of what is typed. */
+    noSpell?: boolean;
+    align?: FieldAlign;
+  };
+
+export type ListProps = FieldCommon &
+  Choices & {
+    /** The options in alphabetical order. */
+    sort?: boolean;
+    align?: FieldAlign;
+  } & (
+    | {
+        multiSelect?: false;
+        /** The selected option. */
+        value?: string;
+      }
+    | {
+        /** Several options can be selected at once. */
+        multiSelect: true;
+        /** The selected options, or one. */
+        value?: string | string[];
+      }
+  );
+
+export interface NoteProps extends Omit<Flow, 'href' | 'bookmark'> {
+  /** Who wrote the note; viewers show it as its title. */
+  author?: string;
+  /** Shows the note's text when the document opens. */
+  open?: boolean;
+  /** The icon: a note (the default), a speech bubble, a key, a question mark, a new paragraph, a pilcrow or a caret. */
+  icon?: 'note' | 'comment' | 'key' | 'help' | 'newParagraph' | 'paragraph' | 'insert';
+  /** The note's text: strings and numbers only. */
+  children?: unknown;
+}
+
+export interface AttachmentProps extends Omit<Flow, 'href' | 'bookmark'> {
+  /** The `name` of a file in `<Document attachments>`. */
+  file: string;
+  /** The icon: a push pin (the default), a paper clip, a bar chart or a tag. */
+  icon?: 'pushPin' | 'paperclip' | 'graph' | 'tag';
+  /** The text viewers show for the icon: strings and numbers. Default: the file's description or name. */
+  children?: unknown;
+}
+
+export interface FieldSetProps extends ViewProps {
+  /** The group's name, put in front of the name of every field inside it: `address.street`. */
+  name: string;
+}
+
+/** Any field; `kind` picks the type. The font, size and colour come from the text utilities. */
+export type FieldProps =
+  | ({ kind: 'text' } & TextFieldProps)
+  | ({ kind: 'checkbox' } & CheckboxProps)
+  | ({ kind: 'radio' } & RadioProps)
+  | ({ kind: 'select' } & SelectProps)
+  | ({ kind: 'list' } & ListProps);
+
+type SvgPaint = string;
+/** SVG presentation attributes, camelCase (`strokeWidth`), as in React DOM. */
+export interface SvgPresentation {
+  fill?: SvgPaint;
+  fillOpacity?: number | string;
+  fillRule?: 'nonzero' | 'evenodd';
+  stroke?: SvgPaint;
+  strokeWidth?: number | string;
+  strokeOpacity?: number | string;
+  strokeLinecap?: 'butt' | 'round' | 'square';
+  strokeLinejoin?: 'miter' | 'round' | 'bevel';
+  strokeDasharray?: string | number[];
+  strokeDashoffset?: number | string;
+  strokeMiterlimit?: number | string;
+  opacity?: number | string;
+  transform?: string;
+  clipPath?: string;
+  clipRule?: 'nonzero' | 'evenodd';
+  /** A `<Marker>` drawn at the first vertex of a path, line or poly shape: `url(#id)`. */
+  markerStart?: string;
+  /** A `<Marker>` drawn at every vertex between the first and the last: `url(#id)`. */
+  markerMid?: string;
+  /** A `<Marker>` drawn at the last vertex: `url(#id)`. */
+  markerEnd?: string;
+  visibility?: 'visible' | 'hidden' | 'collapse';
+  /** Text inside: the font, as in CSS. A family list (`"Inter, sans-serif"`) is a stack. */
+  fontFamily?: string;
+  fontSize?: number | string;
+  fontWeight?: number | FontWeightName;
+  fontStyle?: 'normal' | 'italic';
+  /** Text inside: its width, as `fontStretch` on a `Text`. */
+  fontStretch?: FontStretch;
+  /** Text inside: where its position is on the text (`start`, `middle`, `end`). */
+  textAnchor?: 'start' | 'middle' | 'end';
+  /** Text inside: which line of the text sits at its `y`. */
+  dominantBaseline?:
+    | 'auto'
+    | 'alphabetic'
+    | 'middle'
+    | 'central'
+    | 'hanging'
+    | 'mathematical'
+    | 'ideographic'
+    | 'text-before-edge'
+    | 'text-after-edge';
+  id?: string;
+  children?: unknown;
+}
+
+/**
+ * The presentation of an element inside an `<Svg>` as a `style` object: the SVG attributes CSS
+ * can set, which win over the element's own and its `className`'s (`{ fill: 'teal' }`).
+ */
+export type SvgStyle = Partial<
+  Omit<
+    SvgTextProps,
+    | 'x'
+    | 'y'
+    | 'dx'
+    | 'dy'
+    | 'rotate'
+    | 'textLength'
+    | 'lengthAdjust'
+    | 'id'
+    | 'children'
+    | 'className'
+    | 'style'
+  >
+>;
+
+/** What an element inside an `<Svg>` takes besides its SVG attributes. */
+export interface SvgElementProps extends SvgPresentation {
+  /**
+   * Tailwind classes, over the SVG attributes: `fill-*`, `stroke-*`, `stroke-<n>`, `opacity-*`, a
+   * text colour (`currentColor`) and the font utilities.
+   */
+  className?: string;
+  /** SVG presentation, over the attributes and `className`. */
+  style?: SvgStyle;
+}
+
+/** Numbers for each character in turn: a number, a list, or SVG list syntax. */
+type SvgNumberList = number | string | readonly number[];
+
+/** A `Text` inside an `<Svg>`: SVG text, positioned in the drawing's coordinates. */
+export interface SvgTextProps extends SvgElementProps {
+  /** Where the text starts (with `textAnchor`); a list positions each character. */
+  x?: SvgNumberList;
+  y?: SvgNumberList;
+  /** Shifts from where each character would be. */
+  dx?: SvgNumberList;
+  dy?: SvgNumberList;
+  /** Degrees each character is turned; the last value repeats. */
+  rotate?: SvgNumberList;
+  letterSpacing?: number | string;
+  wordSpacing?: number | string;
+  /** `underline`, `overline`, `line-through`, or several. */
+  textDecoration?: string;
+  /** The width to fit the text to, by its spacing or (`lengthAdjust`) its glyphs too. */
+  textLength?: number | string;
+  lengthAdjust?: 'spacing' | 'spacingAndGlyphs';
+  direction?: 'ltr' | 'rtl';
+  /**
+   * The direction of the line: `vertical-rl` and `vertical-lr` (the same for one line) go down,
+   * `sideways-rl` down with every character turned, `sideways-lr` up. Read on the `Text`.
+   */
+  writingMode?: 'horizontal-tb' | 'vertical-rl' | 'vertical-lr' | 'sideways-rl' | 'sideways-lr';
+  /**
+   * How characters stand in vertical text: `mixed` (the default) stands CJK upright and turns
+   * Latin sideways, `upright` stands every character, `sideways` turns every one.
+   */
+  textOrientation?: 'mixed' | 'upright' | 'sideways';
+  /** OpenType features, as in CSS: `"'tnum', 'liga' off"`. */
+  fontFeatureSettings?: string;
+  /** `small-caps`, `tabular-nums`, `no-common-ligatures`, … as in CSS. */
+  fontVariant?: string;
+  /** `none` turns kerning off. */
+  fontKerning?: 'auto' | 'normal' | 'none';
+}
+
+/**
+ * Text along a path: a `TextPath` directly inside a `Text` in an `<Svg>`. Its characters take
+ * no positions of their own (a `Tspan` inside it can shift them).
+ */
+export interface TextPathProps extends Omit<
+  SvgTextProps,
+  'x' | 'y' | 'dx' | 'dy' | 'rotate' | 'writingMode'
+> {
+  /** The path or basic shape to follow, by id: `#curve`. */
+  href?: string;
+  /** Path data to follow instead of an element (SVG 2). */
+  path?: string;
+  /** Where the text starts along the path: a length, or a percentage of the path's length. */
+  startOffset?: number | string;
+  /** `right` follows the path the other way. */
+  side?: 'left' | 'right';
+  /** Accepted, as in SVG 2; glyphs are not warped. */
+  method?: 'align' | 'stretch';
+  /** Accepted, as in SVG 2; the font's spacing is kept. */
+  spacing?: 'auto' | 'exact';
+}
+
+/** A span of SVG text: a `Tspan` inside a `Text` in an `<Svg>`. */
+export interface TspanProps extends Omit<SvgTextProps, 'writingMode'> {
+  /** Raises (positive, `super`) or lowers (`sub`) the span from the baseline. */
+  baselineShift?: number | string;
+  alignmentBaseline?: SvgPresentation['dominantBaseline'];
+}
+
+export interface SvgProps extends SvgPresentation {
+  /** Width and height of the drawing in the layout (points or units); also the SVG viewport. */
+  width: Length;
+  height: Length;
+  viewBox?: string;
+  preserveAspectRatio?: string;
+  /** Box utilities for the image the drawing becomes (margins, position, `pages`…). */
+  className?: string;
+  style?: Style;
+  pages?: PageFilter;
+  break?: BreakProp;
+  href?: string;
+  /** Repeats the drawing on every page, like `fixed` on a `View`. */
+  fixed?: boolean;
+  /** Outlines the drawing's box. */
+  debug?: boolean;
+  /** The text the drawing copies and searches as: its alternative text, at most 1024 characters. */
+  alt?: string;
+  /** `'artifact'`: decoration in tagged output. */
+  role?: 'figure' | 'artifact';
+}
+
+export interface PathProps extends SvgElementProps {
+  d: string;
+}
+export interface RectProps extends SvgElementProps {
+  x?: number | string;
+  y?: number | string;
+  width: number | string;
+  height: number | string;
+  rx?: number | string;
+  ry?: number | string;
+}
+export interface CircleProps extends SvgElementProps {
+  cx?: number | string;
+  cy?: number | string;
+  r: number | string;
+}
+export interface EllipseProps extends SvgElementProps {
+  cx?: number | string;
+  cy?: number | string;
+  rx: number | string;
+  ry: number | string;
+}
+export interface LineProps extends SvgElementProps {
+  x1: number | string;
+  y1: number | string;
+  x2: number | string;
+  y2: number | string;
+}
+export interface PolyProps extends SvgElementProps {
+  points: string | number[];
+}
+export interface DefsProps {
+  children?: unknown;
+}
+export interface ClipPathProps {
+  /** Referenced as `clipPath="url(#id)"`. */
+  id: string;
+  /** What the contents' coordinates are in: the user space (default) or the clipped shape's bounding box. */
+  clipPathUnits?: 'userSpaceOnUse' | 'objectBoundingBox';
+  children?: unknown;
+}
+export interface MarkerProps extends SvgElementProps {
+  /** Referenced as `markerStart="url(#id)"` (or `markerMid`, `markerEnd`). */
+  id: string;
+  viewBox?: string;
+  preserveAspectRatio?: string;
+  /** The point of the marker's contents placed on the vertex, in `viewBox` units. */
+  refX?: number | string;
+  refY?: number | string;
+  /** The size of the marker's viewport; 3 × 3 by default. */
+  markerWidth?: number | string;
+  markerHeight?: number | string;
+  /**
+   * Turns the marker with the path's direction at the vertex (`'auto'`), the same but reversed at
+   * the start (`'auto-start-reverse'`, for arrows at both ends), or by a fixed angle in degrees.
+   */
+  orient?: 'auto' | 'auto-start-reverse' | number | string;
+  /** `strokeWidth` (default) scales the marker by the shape's stroke width; `userSpaceOnUse` does not. */
+  markerUnits?: 'strokeWidth' | 'userSpaceOnUse';
+}
+export interface GradientProps {
+  id: string;
+  x1?: number | string;
+  y1?: number | string;
+  x2?: number | string;
+  y2?: number | string;
+  cx?: number | string;
+  cy?: number | string;
+  r?: number | string;
+  fx?: number | string;
+  fy?: number | string;
+  /** Radius of the focal circle of a radial gradient. */
+  fr?: number | string;
+  gradientUnits?: 'userSpaceOnUse' | 'objectBoundingBox';
+  gradientTransform?: string;
+  children?: unknown;
+}
+export interface StopProps {
+  offset: number | string;
+  stopColor: string;
+  stopOpacity?: number | string;
+}
+
+export interface CanvasProps extends Omit<
+  SvgProps,
+  keyof SvgPresentation | 'viewBox' | 'preserveAspectRatio'
+> {
+  /** Draws with a pdfkit-style painter; `width` and `height` are the canvas size in points. */
+  paint: (painter: import('../canvas.ts').Painter, width: number, height: number) => void;
+}
+
+/** The field components: each is a `Field` of one `kind`. */
+export const FIELD_KINDS = {
+  TextField: 'text',
+  TextInput: 'text',
+  Checkbox: 'checkbox',
+  Radio: 'radio',
+  Select: 'select',
+  List: 'list',
+} as const satisfies Record<string, FieldProps['kind']>;

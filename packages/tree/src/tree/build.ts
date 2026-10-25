@@ -23,7 +23,6 @@ import type {
   TextRun,
 } from '@inkoxide/schema';
 import { round, SVG_ONLY, type FlatStyle, type Units } from '@inkoxide/style';
-import { createElement } from 'react';
 
 import { type DrawingFont, Painter } from '../canvas.ts';
 import {
@@ -36,22 +35,13 @@ import {
   HOST_NAME,
   type HyphenationCallback,
   type Length,
+  type PageInfo,
   type PageSize,
-  type RenderProp,
   type Style as StyleInput,
 } from '../components/index.ts';
 import { type Fail, TemplateError, type TemplateErrorInit } from '../errors.ts';
 import type { FontRegistry } from '../fonts/registry.ts';
-import { PageContext, RenderCall } from '../page.ts';
-import {
-  type Container,
-  componentNames,
-  componentStack,
-  formatStack,
-  type Instance,
-  type Node,
-} from '../reconciler/instance.ts';
-import { renderToInstances } from '../reconciler/render.ts';
+import { type Container, componentNames, componentStack, type Instance, type Node } from '../nodes.ts';
 import { classStyle, defaultFamily, isUnsupportedClass } from '../tailwind.ts';
 import { textFieldFormat } from './formats.ts';
 import { ImageTable, type ImageTableOptions, type PendingImage } from './images.ts';
@@ -104,7 +94,16 @@ export interface BuildOptions {
   pageCount?: number;
   /** The caller's image ids and policies, and the id table shared with the tree's rebuilds. */
   images: ImageTableOptions;
+  /**
+   * The front end's own: renders the `render` prop of an element for one page, in a root of its
+   * own inside the element's host type, and gives the nodes it made. Without it a `render` prop is
+   * an error.
+   */
+  renderPage?: RenderPage;
 }
+
+/** See {@link BuildOptions.renderPage}. */
+export type RenderPage = (inst: Instance, page: PageInfo) => Node[];
 
 /**
  * Render options a `<Document>` sets that are not part of the document tree, for the caller to
@@ -152,9 +151,6 @@ function sameColor(a: Color | undefined, b: Color | undefined): boolean {
   if (!a || !b) return false;
   return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
 }
-
-/** The end of the component stack of an error inside a `render` prop's own root. */
-const RENDER_CALL = formatStack([RenderCall.name]);
 
 /** An emoji sequence (Unicode's RGI emoji); the `v` flag is built at run time for the ES2023 target. */
 const EMOJI = new RegExp('\\p{RGI_Emoji}', 'gv');
@@ -1595,26 +1591,14 @@ class Builder {
    */
   private perPage(inst: Instance, ctx: TextCtx): SchemaNode {
     this.dynamic = true;
-    const fn = inst.props.render as RenderProp;
+    const renderPage = this.opts.renderPage;
+    if (!renderPage)
+      this.fail(inst, `The render prop of <${HOST_NAME[inst.type]}> needs a front end that renders it.`);
     const total = this.opts.pageCount ?? 1;
     const groups = new Map<string, { node: SchemaNode; pages: number[] }>();
     for (let n = 1; n <= total; n++) {
-      const page = { pageNumber: n, totalPages: total };
-      let node: SchemaNode;
-      try {
-        const content = renderToInstances(
-          createElement(PageContext.Provider, { value: page }, createElement(RenderCall, { fn, page })),
-          inst.type,
-        ).children;
-        node = inst.type === HOST.Text ? this.text(inst, ctx, content) : this.box(inst, ctx, content);
-      } catch (e) {
-        // The content is rendered in a root of its own, whose stack ends at the call of `fn`: the
-        // components around the element carry it on.
-        if (e instanceof TemplateError && e.componentStack?.endsWith(RENDER_CALL)) {
-          e.componentStack = e.componentStack.slice(0, -RENDER_CALL.length) + componentStack(inst);
-        }
-        throw e;
-      }
+      const content = renderPage(inst, { pageNumber: n, totalPages: total });
+      const node = inst.type === HOST.Text ? this.text(inst, ctx, content) : this.box(inst, ctx, content);
       const key = JSON.stringify(node);
       const g = groups.get(key);
       if (g) g.pages.push(n);

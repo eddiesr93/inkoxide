@@ -125,12 +125,9 @@ importers:
       '@inkoxide/schema':
         specifier: workspace:*
         version: link:../schema
-      '@inkoxide/style':
+      '@inkoxide/tree':
         specifier: workspace:*
-        version: link:../style
-      ajv-formats:
-        specifier: 3.0.1
-        version: 3.0.1(ajv@8.20.0)
+        version: link:../tree
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -147,9 +144,6 @@ importers:
       '@types/react-reconciler':
         specifier: 0.33.1
         version: 0.33.1(@types/react@19.3.0)
-      ajv:
-        specifier: 8.20.0
-        version: 8.20.0
 
   packages/render:
     dependencies:
@@ -230,6 +224,25 @@ importers:
       webpack:
         specifier: 5.111.1
         version: 5.111.1(esbuild@0.28.2)(postcss@8.5.29)
+
+  packages/tree:
+    dependencies:
+      '@inkoxide/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@inkoxide/style':
+        specifier: workspace:*
+        version: link:../style
+      ajv-formats:
+        specifier: 3.0.1
+        version: 3.0.1(ajv@8.20.0)
+    devDependencies:
+      '@inkoxide/tailwind':
+        specifier: workspace:*
+        version: link:../tailwind
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
 
   packages/wasm:
     devDependencies:

@@ -22,6 +22,8 @@
     "packages/style/test",
     "packages/tailwind/src",
     "packages/tailwind/test",
+    "packages/tree/src",
+    "packages/tree/test",
     "packages/react/src",
     "packages/react/test",
     "packages/render/src",

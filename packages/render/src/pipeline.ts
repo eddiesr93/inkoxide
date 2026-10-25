@@ -258,7 +258,7 @@ export async function generate<S extends z.ZodType>(
     pdf,
     timings: {
       // Rebuilds reuse the first React render: they count as tree time, not engine time.
-      reactMs: first.timings.reactMs,
+      templateMs: first.timings.templateMs,
       treeMs: first.timings.treeMs + settled.treeMs,
       validateMs,
       engineMs: e1 - e0 - fetchMs - settled.treeMs,

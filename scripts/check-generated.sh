@@ -72,7 +72,7 @@ if [[ $python_only == 0 ]]; then
   pnpm exec tsx examples/render.ts --readme >/dev/null
   generated+=(
     packages/schema/index.d.ts
-    packages/react/src/tree/schema-validator.ts
+    packages/tree/src/tree/schema-validator.ts
     packages/react/src/version.ts
     packages/tailwind/src/tailwind-theme.ts
     docs/TAILWIND_SUPPORT.md

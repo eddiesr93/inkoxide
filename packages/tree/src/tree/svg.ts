@@ -3,7 +3,7 @@ import { parseFontFamily } from '@inkoxide/style/internal';
 
 import { type DrawingFont, escapeXml, quotedFamily } from '../canvas.ts';
 import { HOST, HOST_NAME, type SvgPresentation, type SvgProps } from '../components/index.ts';
-import type { Instance, Node } from '../reconciler/instance.ts';
+import type { Instance, Node } from '../nodes.ts';
 import { stretchOf, weightOf } from './style.ts';
 
 /**

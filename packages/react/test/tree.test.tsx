@@ -5,6 +5,7 @@ import type { BoxNode, TableNode, TextNode } from '@inkoxide/schema';
 import { createContext, lazy, type ReactNode, Suspense, use, useContext } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
 
+import { transformText } from '../../tree/src/tree/text.ts';
 import {
   Cell,
   Document,
@@ -24,7 +25,6 @@ import {
   View,
 } from '../src/index.ts';
 import { hostConfig } from '../src/reconciler/host-config.ts';
-import { transformText } from '../src/tree/text.ts';
 import { body, first, registry, setup, thrown } from './helpers.ts';
 
 beforeAll(setup);

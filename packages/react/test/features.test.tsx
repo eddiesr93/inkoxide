@@ -11,6 +11,7 @@ import { parseColor } from '@inkoxide/tailwind';
 import type { ReactNode } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
 
+import { boxStyle } from '../../tree/src/tree/style.ts';
 import {
   Attachment,
   Canvas,
@@ -72,7 +73,6 @@ import {
   usePage,
   View,
 } from '../src/index.ts';
-import { boxStyle } from '../src/tree/style.ts';
 import { body, first, registry, setup, thrown } from './helpers.ts';
 
 beforeAll(setup);

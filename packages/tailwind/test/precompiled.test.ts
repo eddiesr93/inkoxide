@@ -23,6 +23,7 @@ const SOURCES = [
   'examples',
   'benchmarks',
   'packages/react/test',
+  'packages/tree/test',
   'packages/render/test',
   'packages/tailwind/test',
 ].map((d) => `${ROOT}${d}`);

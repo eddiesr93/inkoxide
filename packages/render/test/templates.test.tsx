@@ -231,8 +231,8 @@ describe('generate', () => {
     expect(timings.validateMs).toBe(0);
     // The first build and the rebuild call the render prop once per page: 1 + 2 times.
     expect(timings.treeMs).toBeGreaterThanOrEqual(30);
-    const { reactMs, treeMs, validateMs, engineMs, fetchMs, totalMs } = timings;
-    expect(reactMs + treeMs + validateMs + engineMs + fetchMs).toBeLessThanOrEqual(totalMs + 0.5);
+    const { templateMs, treeMs, validateMs, engineMs, fetchMs, totalMs } = timings;
+    expect(templateMs + treeMs + validateMs + engineMs + fetchMs).toBeLessThanOrEqual(totalMs + 0.5);
   });
 });
 

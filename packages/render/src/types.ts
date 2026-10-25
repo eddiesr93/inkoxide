@@ -116,8 +116,8 @@ export interface RemoteImageOptions {
 }
 
 export interface Timings {
-  /** React render to host instances. */
-  reactMs: number;
+  /** The template rendered to host nodes, by React, Vue, Svelte or Angular. */
+  templateMs: number;
   /**
    * Instances to the schema tree, Tailwind resolution included, and the rebuilds for the page
    * count (`render` props).

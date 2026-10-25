@@ -1,7 +1,7 @@
+import { type PageInfo, TemplateError } from '@inkoxide/tree';
 import { createContext, type ReactNode, useContext } from 'react';
 
-import type { PageInfo, RenderProp } from './components/index.ts';
-import { TemplateError } from './errors.ts';
+import type { RenderProp } from './components/index.ts';
 
 /** The page a `render` prop is rendering for. */
 export const PageContext = createContext<PageInfo | undefined>(undefined);

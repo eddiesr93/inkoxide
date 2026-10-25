@@ -3,7 +3,7 @@
 import type { Bookmark, Break } from '@inkoxide/schema';
 
 import type { BookmarkProp, BreakProp } from '../components/index.ts';
-import type { Instance, Node } from '../reconciler/instance.ts';
+import type { Instance, Node } from '../nodes.ts';
 
 /**
  * Props of a `Text` or `Link` that need a node of its own: an inline run inside a `Text` has

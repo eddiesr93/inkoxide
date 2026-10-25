@@ -1,214 +1,19 @@
+import {
+  checkElement,
+  checkText,
+  childContext,
+  type Container,
+  type HostContext,
+  type Instance,
+  type Node,
+  rootContext,
+  type TextInstance,
+} from '@inkoxide/tree';
 import { createContext } from 'react';
 import { DefaultEventPriority, NoEventPriority } from 'react-reconciler/constants.js';
 
-import { HOST, type HostType } from '../components/index.ts';
-import { TemplateError } from '../errors.ts';
-import { SVG_TAGS } from '../tree/svg.ts';
 import { VERSION } from '../version.ts';
-import {
-  type Container,
-  hostName,
-  type Instance,
-  isHostType,
-  type Node,
-  type TextInstance,
-} from './instance.ts';
-
-interface HostContext {
-  /**
-   * Host type of the nearest host ancestor (`'root'` at the top). React asks for the context of an
-   * element's children before it creates the element, so this can be an unknown type (`div`):
-   * its children fail first, against it.
-   */
-  parent: HostType | 'root' | (string & {});
-}
-
-const ROOT_CONTEXT: HostContext = { parent: 'root' };
-const contexts = new Map<string, HostContext>();
-const contextFor = (parent: string): HostContext => {
-  let c = contexts.get(parent);
-  if (!c) {
-    c = { parent };
-    contexts.set(parent, c);
-  }
-  return c;
-};
-
-const FLOW = new Set<string>([
-  HOST.View,
-  HOST.Text,
-  HOST.Link,
-  HOST.Image,
-  HOST.ImageBackground,
-  HOST.Table,
-  HOST.PageBreak,
-  HOST.Spacer,
-  HOST.Field,
-  HOST.FieldSet,
-  HOST.Note,
-  HOST.Attachment,
-  HOST.Svg,
-  HOST.Canvas,
-]);
-const INLINE = new Set<string>([
-  HOST.Text,
-  HOST.Link,
-  HOST.Image,
-  HOST.Note,
-  HOST.Attachment,
-  HOST.PageNumber,
-  HOST.TotalPages,
-]);
-const SVG_SHAPES = new Set<string>([
-  HOST.Path,
-  HOST.Rect,
-  HOST.Circle,
-  HOST.Ellipse,
-  HOST.Line,
-  HOST.Polyline,
-  HOST.Polygon,
-]);
-/**
- * What goes in an `<Svg>`, `<G>`, `<Defs>`, `<ClipPath>` or `<Marker>`: every SVG primitive but
- * `<Stop>`, `<Tspan>` and `<TextPath>`, and `<Text>`.
- */
-const SVG_CONTENT = new Set<string>(
-  Object.keys(SVG_TAGS).filter((t) => t !== HOST.Stop && t !== HOST.Tspan && t !== HOST.TextPath),
-);
-/** The context inside SVG text (a `Tspan` or a `TextPath`): strings and `Tspan`. */
-const SVG_TEXT = 'ink-svg-text';
-/** The context of a `Text` in an `<Svg>`: strings, `Tspan` and `TextPath`. */
-const SVG_TEXT_ROOT = 'ink-svg-text-root';
-const LEAF = new Set<string>([
-  HOST.Image,
-  HOST.PageBreak,
-  HOST.Spacer,
-  HOST.PageNumber,
-  HOST.TotalPages,
-  HOST.Field,
-  HOST.Canvas,
-  HOST.Stop,
-  ...SVG_SHAPES,
-]);
-
-/** Which host types may appear directly inside which. Strings: see TEXT_PARENTS. */
-function allowed(parent: HostContext['parent'], child: HostType): boolean {
-  switch (parent) {
-    case 'root':
-      return child === HOST.Document;
-    case HOST.Document:
-      return child === HOST.Page;
-    case HOST.Page:
-      return FLOW.has(child) || child === HOST.Header || child === HOST.Footer;
-    case HOST.Text:
-      return INLINE.has(child);
-    case HOST.Table:
-      return child === HOST.Row;
-    case HOST.Row:
-      return child === HOST.Cell;
-    case HOST.Header:
-    case HOST.Footer:
-    case HOST.View:
-    case HOST.ImageBackground:
-    case HOST.Link:
-    case HOST.FieldSet:
-    case HOST.Cell:
-      return FLOW.has(child);
-    case HOST.Svg:
-    case HOST.G:
-    case HOST.Defs:
-    case HOST.ClipPath:
-    case HOST.Marker:
-      return SVG_CONTENT.has(child) || child === HOST.Text;
-    case SVG_TEXT:
-      return child === HOST.Tspan;
-    case SVG_TEXT_ROOT:
-      return child === HOST.Tspan || child === HOST.TextPath;
-    case HOST.LinearGradient:
-    case HOST.RadialGradient:
-      return child === HOST.Stop;
-    default:
-      return false;
-  }
-}
-
-/** Containers where bare strings are allowed (they become an anonymous text node). */
-const TEXT_PARENTS = new Set<string>([
-  HOST.Text,
-  HOST.View,
-  HOST.ImageBackground,
-  HOST.Link,
-  HOST.FieldSet,
-  HOST.Note,
-  HOST.Attachment,
-  HOST.Cell,
-  HOST.Header,
-  HOST.Footer,
-  HOST.Page,
-]);
-
-/** Where a string placed in `parent`, which takes no strings, belongs instead. */
-function textAdvice(parent: HostContext['parent']): string {
-  switch (parent) {
-    case 'root':
-      return 'render a <Document> with a <Page>, and put it in the page';
-    case HOST.Document:
-      return 'put it in a <Page>';
-    case HOST.Table:
-      return 'put it in a <Cell> of a <Row>';
-    case HOST.Row:
-      return 'put it in a <Cell>';
-    default:
-      return 'wrap it in <Text>';
-  }
-}
-
-const name = (type: string): string => (type === 'root' ? 'the root' : `<${hostName(type)}>`);
-
-function placementError(parent: HostContext['parent'], child: string): TemplateError {
-  if (!isHostType(child)) {
-    return new TemplateError(
-      `<${child}> is not an Inkoxide component. Templates use only @inkoxide/react components (View, Text, Table, …), not HTML elements.`,
-    );
-  }
-  if (LEAF.has(parent)) return new TemplateError(`${name(parent)} cannot have children.`);
-  if (child === HOST.TextPath) {
-    return new TemplateError('<TextPath> goes directly inside a <Text> in an <Svg>.');
-  }
-  if (parent === SVG_TEXT || parent === SVG_TEXT_ROOT) {
-    return new TemplateError(
-      `${name(child)} cannot be inside SVG text; a <Text> in an <Svg> holds strings, <Tspan> and <TextPath>.`,
-    );
-  }
-  if (child === HOST.Tspan) {
-    return new TemplateError('<Tspan> goes inside a <Text> in an <Svg>.');
-  }
-  if (parent === HOST.Note || parent === HOST.Attachment) {
-    const article = parent === HOST.Note ? 'A' : 'An';
-    return new TemplateError(
-      `${article} ${name(parent)} contains only text: ${name(child)} cannot be inside it.`,
-    );
-  }
-  if (parent === HOST.Text) {
-    return new TemplateError(
-      `${name(child)} cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <Link>, <Image>, <Note>, <Attachment>, <PageNumber> and <TotalPages>.`,
-    );
-  }
-  if (child === HOST.PageNumber || child === HOST.TotalPages) {
-    return new TemplateError(`${name(child)} must be inside a <Text>.`);
-  }
-  if (Object.hasOwn(SVG_TAGS, child)) {
-    return new TemplateError(`${name(child)} is an SVG primitive: it goes inside <Svg>.`);
-  }
-  if (parent === HOST.Svg || SVG_CONTENT.has(parent)) {
-    return new TemplateError(`${name(child)} cannot be inside ${name(parent)}; only SVG primitives can.`);
-  }
-  if (child === HOST.Header || child === HOST.Footer) {
-    return new TemplateError(`${name(child)} must be a direct child of <Page>.`);
-  }
-  if (parent === 'root') return new TemplateError('A template must render one <Document> at the top.');
-  return new TemplateError(`${name(child)} cannot be inside ${name(parent)}.`);
-}
+import { fiberNames } from './fiber.ts';
 
 let currentPriority: number = NoEventPriority;
 
@@ -247,17 +52,8 @@ export const hostConfig = {
   HostTransitionContext: createContext(null),
 
   // A nested root (a `render` prop's output) starts inside its owner's host type.
-  getRootHostContext: (root: Container): HostContext =>
-    root.parent ? contextFor(root.parent) : ROOT_CONTEXT,
-  // A Link inside a Text is an inline run: its content follows the rules of Text. A Text in SVG
-  // content is SVG text, and so is a Tspan.
-  getChildHostContext: (parent: HostContext, type: string): HostContext => {
-    if (type === HOST.Link && parent.parent === HOST.Text) return contextFor(HOST.Text);
-    const inSvg = parent.parent === HOST.Svg || SVG_CONTENT.has(parent.parent);
-    if (type === HOST.Text && inSvg) return contextFor(SVG_TEXT_ROOT);
-    if (type === HOST.Tspan || type === HOST.TextPath) return contextFor(SVG_TEXT);
-    return contextFor(type);
-  },
+  getRootHostContext: (root: Container): HostContext => rootContext(root.parent),
+  getChildHostContext: childContext,
   getPublicInstance: (instance: Instance): Instance => instance,
   prepareForCommit: (): null => null,
   resetAfterCommit: (): void => {},
@@ -269,26 +65,13 @@ export const hostConfig = {
     _root: Container,
     ctx: HostContext,
     fiber: unknown,
-  ) {
-    if (!isHostType(type) || !allowed(ctx.parent, type)) throw placementError(ctx.parent, type);
-    const instance: Instance = { kind: 'element', type, props, children: [], fiber };
-    return instance;
+  ): Instance {
+    checkElement(ctx, type);
+    return { kind: 'element', type, props, children: [], origin: fiber, trace: fiberNames };
   },
   createTextInstance(text: string, _root: Container, ctx: HostContext, fiber: unknown): TextInstance {
-    if (ctx.parent === SVG_TEXT || ctx.parent === SVG_TEXT_ROOT) return { kind: 'text', text, fiber };
-    if (ctx.parent === HOST.Svg || SVG_CONTENT.has(ctx.parent)) {
-      throw new TemplateError('Text inside <Svg> goes in a <Text>: <Text x={10} y={20}>…</Text>.');
-    }
-    if (!TEXT_PARENTS.has(ctx.parent)) {
-      const shown = `Text "${text.length > 40 ? `${text.slice(0, 40)}…` : text}"`;
-      if (ctx.parent !== 'root' && !isHostType(ctx.parent)) throw placementError('root', ctx.parent);
-      if (LEAF.has(ctx.parent))
-        throw new TemplateError(`${shown}: ${name(ctx.parent)} cannot have children.`);
-      throw new TemplateError(
-        `${shown} cannot be directly inside ${name(ctx.parent)}; ${textAdvice(ctx.parent)}.`,
-      );
-    }
-    return { kind: 'text', text, fiber };
+    checkText(ctx, text);
+    return { kind: 'text', text, origin: fiber, trace: fiberNames };
   },
   appendInitialChild: append,
   appendChild: append,
