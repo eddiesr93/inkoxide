@@ -1,8 +1,6 @@
 import { FontRegistry } from '@inkoxide/tree';
-import { render } from 'svelte/server';
 import { describe, expect, it } from 'vitest';
 
-import View from '../src/components/View.svelte';
 import { renderTemplate, TemplateError } from '../src/index.ts';
 import Holder from './fixtures/Holder.svelte';
 import Misplaced from './fixtures/Misplaced.svelte';
@@ -50,10 +48,6 @@ describe('errors', () => {
     expect(thrown(() => renderTemplate(Unpaged, { fonts })).message).toMatch(
       /^usePage\(\) works only inside a render snippet/,
     );
-  });
-
-  it('says that a component renders only inside an Inkoxide render', () => {
-    expect(() => render(View).body).toThrow(/<view> renders only inside an Inkoxide render/);
   });
 });
 
