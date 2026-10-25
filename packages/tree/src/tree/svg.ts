@@ -83,9 +83,11 @@ const LAYOUT_ONLY = ['pages', 'break', 'fixed', 'debug', 'render', ...FLOW_ALIAS
 const attrName = (k: string): string =>
   CAMEL_ATTRS.has(k) ? k : k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 
+/** The attributes of `props`, by name: the same markup whatever order a front end set them in. */
 function attrs(props: Record<string, unknown>, skip: ReadonlySet<string>): string {
   let out = '';
-  for (const [k, v] of Object.entries(props)) {
+  for (const k of Object.keys(props).sort()) {
+    const v = props[k];
     if (skip.has(k) || v === undefined || v === null || v === false) continue;
     const value = Array.isArray(v) ? v.join(' ') : String(v);
     out += ` ${attrName(k)}="${escapeXml(value)}"`;

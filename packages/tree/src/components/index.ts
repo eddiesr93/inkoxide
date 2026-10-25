@@ -1177,3 +1177,24 @@ export const BOOLEAN_PROPS: ReadonlySet<string> = new Set([
   'tagged',
   'wrap',
 ]);
+
+const kebab = (name: string): string =>
+  name.replace(/[A-Z]/g, (c, i: number) => `${i ? '-' : ''}${c.toLowerCase()}`);
+
+/**
+ * The element names of the components, for template languages that write elements rather than
+ * components (Angular: `<ink-view>`, `<ink-path>`, `<ink-text-field>`): `ink-` and the component's
+ * name in kebab case. Each is a host type, and for the field components the kind they set.
+ */
+export const TAGS: ReadonlyMap<string, { type: HostType; kind?: FieldProps['kind'] }> = new Map([
+  ...Object.entries(HOST).map(([name, type]): [string, { type: HostType }] => [
+    `ink-${kebab(name)}`,
+    { type },
+  ]),
+  ...Object.entries(FIELD_KINDS).map(
+    ([name, kind]): [string, { type: HostType; kind: FieldProps['kind'] }] => [
+      `ink-${kebab(name)}`,
+      { type: HOST.Field, kind },
+    ],
+  ),
+]);

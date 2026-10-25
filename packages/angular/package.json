@@ -1,0 +1,44 @@
+{
+  "name": "@inkoxide/angular",
+  "version": "0.10.1",
+  "private": true,
+  "type": "module",
+  "description": "Angular templates to PDF with the Inkoxide engine, in Node and in the browser: components, renderToBuffer, renderToFile, Font.register.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts",
+    "./templates": "./src/templates.ts"
+  },
+  "dependencies": {
+    "@inkoxide/render": "workspace:*",
+    "@inkoxide/schema": "workspace:*",
+    "@inkoxide/tree": "workspace:*",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@angular/common": "22.2.3",
+    "@angular/compiler": "22.2.3",
+    "@angular/core": "22.2.3",
+    "@angular/platform-browser": "22.2.3",
+    "@inkoxide/tailwind": "workspace:*",
+    "@inkoxide/wasm": "workspace:*",
+    "rxjs": "7.8.2"
+  },
+  "peerDependencies": {
+    "@angular/core": ">=21.0.0 <23.0.0",
+    "@angular/platform-browser": ">=21.0.0 <23.0.0",
+    "@inkoxide/tailwind": "workspace:*",
+    "@inkoxide/wasm": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@angular/platform-browser": {
+      "optional": true
+    },
+    "@inkoxide/tailwind": {
+      "optional": true
+    },
+    "@inkoxide/wasm": {
+      "optional": true
+    }
+  }
+}

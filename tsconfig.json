@@ -28,6 +28,7 @@
     "packages/vue/src",
     "packages/vue/test",
     "packages/conformance",
+    "packages/angular/src",
     "packages/react/test",
     "packages/render/src",
     "packages/render/test",
