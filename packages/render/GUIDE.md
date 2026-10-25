@@ -643,7 +643,17 @@ component: inside a `Text` it is a linked run, elsewhere a box like a `View`. A 
 style it is given and adds no colour or underline of its own. `href="#id"` jumps to the element
 with that `id`.
 
-Bookmarks become the PDF outline in the viewer's sidebar.
+Bookmarks become the PDF outline in the viewer's sidebar. A bookmark is a title, or `{ title,
+level, expanded, zoom }`: `level` nests it under the nearest earlier bookmark of a lower level
+(default 1), `expanded: false` starts it closed, its children hidden until it is opened, and
+`zoom` is how the viewer shows the element. By default the viewer goes to the element's top-left
+corner and keeps its zoom; a number is a scale (`1.5` is 150%, at most 64), `'page'` fits the
+whole page and `'width'` the page's width, from the element's top:
+
+```tsx
+<Text bookmark={{ title: 'Appendix', expanded: false }}>Appendix</Text>
+<Image src={chart} bookmark={{ title: 'Chart', level: 2, zoom: 'page' }} />
+```
 
 `Document` writes `title`, `author`, `subject`, `keywords`, `creator` (the application that
 made the file) and `producer` (the software that wrote the PDF, by default `Inkoxide <version>`)

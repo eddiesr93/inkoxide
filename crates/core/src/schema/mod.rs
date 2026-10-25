@@ -523,6 +523,26 @@ pub struct Bookmark {
     /// entry of a lower level.
     #[serde(default = "one_u8", deserialize_with = "de::int")]
     pub level: u8,
+    /// Whether the entry starts open, showing the entries under it.
+    #[serde(default = "yes")]
+    pub expanded: bool,
+    /// How the viewer shows the node; `None` keeps the viewer's zoom.
+    pub zoom: Option<BookmarkZoom>,
+}
+
+/// The view a bookmark opens.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BookmarkZoom {
+    /// The node's top-left corner at this scale (1 is 100%).
+    Scale(f32),
+    /// The whole page.
+    Page,
+    /// The page's width, from the node's top.
+    Width,
+}
+
+fn yes() -> bool {
+    true
 }
 
 fn one_u8() -> u8 {

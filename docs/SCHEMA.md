@@ -115,6 +115,8 @@ Document outline entry pointing at the top of its node. Entries appear in docume
 |---|---|---|---|
 | `title` | `string` | yes | min length 1, max length 1024 |
 | `level` | `integer` |  | ≥ 1, ≤ 32, default `1` |
+| `expanded` | `boolean` |  | default `true`; Whether the entry starts open in the viewer's outline, showing the entries under it. Default `true`. |
+| `zoom` | `number` (> 0, ≤ 64) or `"page"` \| `"width"` |  | How the viewer shows the node: at a scale (`1` is 100%) with the node's top-left corner at the top-left of the window, the whole page (`page`), or the page's width from the node's top (`width`). Default: the node at the top-left, at the viewer's current zoom. |
 
 ### Debug
 

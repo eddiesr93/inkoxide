@@ -2511,10 +2511,19 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
     }
     if linkable && (s.flow || s.chaos) && s.chance(20) {
         let level = if s.chaos { s.below(40) } else { 1 + s.below(4) };
-        m.insert(
-            "bookmark".into(),
-            json!({"title": format!("B{}", text(s)), "level": level}),
-        );
+        let mut b = json!({"title": format!("B{}", text(s)), "level": level});
+        if s.chance(30) {
+            b["expanded"] = json!(false);
+        }
+        if s.chance(30) {
+            b["zoom"] = match s.below(4) {
+                0 => json!("page"),
+                1 => json!("width"),
+                2 if s.chaos => json!(-1),
+                _ => json!((1 + s.below(400)) as f64 / 100.0),
+            };
+        }
+        m.insert("bookmark".into(), b);
     }
     if kind != "pageBreak" && s.chance(8) {
         m.insert("debug".into(), json!(true));

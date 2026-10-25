@@ -2,9 +2,11 @@
 
 use std::collections::HashMap;
 
-use super::{collect_anchors, Checker, MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_LINK};
+use super::{
+    collect_anchors, Checker, MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_BOOKMARK_ZOOM, MAX_LINK,
+};
 use crate::error::ValidationCode as Code;
-use crate::schema::Bookmark;
+use crate::schema::{Bookmark, BookmarkZoom};
 
 impl Checker<'_> {
     pub(super) fn link(&mut self, link: &str) {
@@ -97,6 +99,15 @@ impl Checker<'_> {
                     Some("level"),
                     format!("must be within 1..={MAX_BOOKMARK_LEVEL}"),
                 );
+            }
+            if let Some(BookmarkZoom::Scale(z)) = b.zoom {
+                if !(z > 0.0 && z <= MAX_BOOKMARK_ZOOM) {
+                    c.err(
+                        Code::OutOfRange,
+                        Some("zoom"),
+                        format!("a scale must be above 0 and at most {MAX_BOOKMARK_ZOOM}"),
+                    );
+                }
             }
         });
     }

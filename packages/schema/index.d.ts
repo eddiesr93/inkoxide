@@ -1060,6 +1060,14 @@ export interface Break {
 export interface Bookmark {
   title: string;
   level?: number;
+  /**
+   * Whether the entry starts open in the viewer's outline, showing the entries under it. Default `true`.
+   */
+  expanded?: boolean;
+  /**
+   * How the viewer shows the node: at a scale (`1` is 100%) with the node's top-left corner at the top-left of the window, the whole page (`page`), or the page's width from the node's top (`width`). Default: the node at the top-left, at the viewer's current zoom.
+   */
+  zoom?: number | ('page' | 'width');
 }
 /**
  * An image painted behind the box's children and over its `backgroundColor`, under its borders. It fills the padding box (inside the borders), placed by `fit` and `objectPosition`, and is clipped to that box, rounded by `borderRadius`. A box split across pages is sliced, like its background colour.

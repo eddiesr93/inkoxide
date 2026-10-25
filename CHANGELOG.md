@@ -7,6 +7,15 @@ All notable changes to the packages in this repository. The format follows
 together, and so does `@inkoxide/wasm` from its first release. The document schema has its own version and
 [changelog](packages/schema/CHANGELOG.md).
 
+## Unreleased
+
+### Added
+
+- Bookmarks take `expanded` and `zoom`: `bookmark={{ title, expanded: false }}` starts the entry
+  closed in the viewer's outline, its children hidden, and `zoom` is the view it opens: a scale
+  (`1.5`), the whole page (`'page'`) or the page's width from the element's top (`'width'`).
+  Without `zoom` it goes to the element's top-left corner and keeps the viewer's zoom, as before.
+
 ## 0.10.0 - 2026-10-22
 
 ### Added

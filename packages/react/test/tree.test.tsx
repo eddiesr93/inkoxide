@@ -187,6 +187,22 @@ describe('text inheritance and runs', () => {
     expect(more?.runs[0]?.link).toBeUndefined();
   });
 
+  it("passes a bookmark's view and whether it starts open, and the schema checks the scale", () => {
+    const bookmark = { title: 'Appendix', level: 2, expanded: false, zoom: 'page' } as const;
+    expect(first<BoxNode>(render(<View bookmark={bookmark} />)).bookmark).toEqual(bookmark);
+    const scaled = renderTemplate(
+      <Document>
+        <Page>
+          <View bookmark={{ title: 'Far', zoom: 65 }} />
+        </Page>
+      </Document>,
+    );
+    expect(scaled.validate()[0]).toMatchObject({
+      path: 'pages[0].children[0].bookmark.zoom',
+      component: 'View',
+    });
+  });
+
   it('turns bare strings in a View into an anonymous text node', () => {
     const r = render(<View className="text-center">Hello</View>);
     const t = first<BoxNode>(r).children?.[0] as TextNode;

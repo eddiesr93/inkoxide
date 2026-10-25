@@ -401,12 +401,12 @@ type Make<'a> = Box<dyn Fn(f64) -> String + 'a>;
 fn named_bounds_match_schema() {
     use crate::forms::format::{MAX_CURRENCY, MAX_DECIMALS, MAX_PATTERN};
     use crate::validate::rules::{
-        MAX_ALT, MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_DECORATION_THICKNESS,
-        MAX_FEATURE_VALUE, MAX_FIELD_NAME, MAX_FIELD_OPTIONS, MAX_FIELD_OPTION_LEN,
-        MAX_FIELD_VALUE, MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_HYPHENATION_PENALTY,
-        MAX_LETTER_SPACING, MAX_LINE_HEIGHT, MAX_LINK, MAX_NOTE, MAX_NOTE_AUTHOR, MAX_NUMBER,
-        MAX_ORPHANS, MAX_PAGE_EDGE, MAX_POLYGON_POINTS, MAX_STRETCH, MAX_TEXT_INDENT,
-        MAX_VARIATIONS, MAX_VARIATION_VALUE, MAX_WEIGHT, MIN_STRETCH,
+        MAX_ALT, MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_BOOKMARK_ZOOM,
+        MAX_DECORATION_THICKNESS, MAX_FEATURE_VALUE, MAX_FIELD_NAME, MAX_FIELD_OPTIONS,
+        MAX_FIELD_OPTION_LEN, MAX_FIELD_VALUE, MAX_FONT_FEATURES, MAX_FONT_SIZE,
+        MAX_HYPHENATION_PENALTY, MAX_LETTER_SPACING, MAX_LINE_HEIGHT, MAX_LINK, MAX_NOTE,
+        MAX_NOTE_AUTHOR, MAX_NUMBER, MAX_ORPHANS, MAX_PAGE_EDGE, MAX_POLYGON_POINTS, MAX_STRETCH,
+        MAX_TEXT_INDENT, MAX_VARIATIONS, MAX_VARIATION_VALUE, MAX_WEIGHT, MIN_STRETCH,
     };
     let s = schema();
     let doc = |fonts: &str, child: &str| {
@@ -696,6 +696,19 @@ fn named_bounds_match_schema() {
             f64::from(MAX_BOOKMARK_LEVEL) + 1.0,
             "OUT_OF_RANGE",
             "pages[0].children[0].bookmark.level".into(),
+        ),
+        (
+            "/$defs/Bookmark/properties/zoom/oneOf/0/maximum",
+            f64::from(MAX_BOOKMARK_ZOOM),
+            Box::new(|v| {
+                doc(
+                    "",
+                    &format!(r#"{{"type":"box","bookmark":{{"title":"t","zoom":{v}}}}}"#),
+                )
+            }),
+            f64::from(MAX_BOOKMARK_ZOOM) + 0.5,
+            "OUT_OF_RANGE",
+            "pages[0].children[0].bookmark.zoom".into(),
         ),
         (
             "/$defs/TextRun/properties/decorationThickness/maximum",

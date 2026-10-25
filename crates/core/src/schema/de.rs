@@ -10,11 +10,11 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::Deserialize;
 
 use super::{
-    Attachment, AttachmentDecl, BackgroundImage, Bookmark, BorderRadius, BorderStyle, BorderStyles,
-    Break, ColumnSpec, ColumnWidth, Corners, Field, FieldValue, FontFeature, FontVariation,
-    ImageFit, ImageSource, InlineData, Node, NodeKind, Note, ObjectPosition, OptEdges, PageFilter,
-    PagePattern, Relationship, Role, RunAlign, RunImage, ShapeOutside, Style, Table, TableRow,
-    TextRun, TransformOp,
+    Attachment, AttachmentDecl, BackgroundImage, Bookmark, BookmarkZoom, BorderRadius, BorderStyle,
+    BorderStyles, Break, ColumnSpec, ColumnWidth, Corners, Field, FieldValue, FontFeature,
+    FontVariation, ImageFit, ImageSource, InlineData, Node, NodeKind, Note, ObjectPosition,
+    OptEdges, PageFilter, PagePattern, Relationship, Role, RunAlign, RunImage, ShapeOutside, Style,
+    Table, TableRow, TextRun, TransformOp,
 };
 
 /// A length: points, a fraction of the containing block, or `auto`.
@@ -1077,6 +1077,20 @@ impl TryFrom<RawRunImage> for RunImage {
         })
     }
 }
+
+num_or_str_visitor!(
+    BookmarkZoom,
+    "page, width or a number",
+    // Bounded by validation.
+    |v| Ok(BookmarkZoom::Scale(v as f32)),
+    |s| @result match s {
+        "page" => Ok(BookmarkZoom::Page),
+        "width" => Ok(BookmarkZoom::Width),
+        _ => Err(format!(
+            "[INVALID_VALUE] a bookmark's `zoom` must be page, width or a number, found \"{s}\""
+        )),
+    }
+);
 
 num_or_str_visitor!(
     RunAlign,

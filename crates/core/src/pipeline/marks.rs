@@ -20,6 +20,8 @@ pub(crate) struct Dest {
 pub(crate) struct OutlineEntry<'d> {
     pub title: &'d str,
     pub level: u8,
+    pub expanded: bool,
+    pub zoom: Option<crate::schema::BookmarkZoom>,
     pub dest: Dest,
     /// The node with the bookmark.
     pub node: &'d crate::schema::Node,
@@ -31,6 +33,8 @@ impl std::fmt::Debug for OutlineEntry<'_> {
         f.debug_struct("OutlineEntry")
             .field("title", &self.title)
             .field("level", &self.level)
+            .field("expanded", &self.expanded)
+            .field("zoom", &self.zoom)
             .field("dest", &self.dest)
             .finish_non_exhaustive()
     }
@@ -99,6 +103,8 @@ pub(super) fn subtree_marks<'d>(
             out.outline.push(OutlineEntry {
                 title: &b.title,
                 level: b.level,
+                expanded: b.expanded,
+                zoom: b.zoom,
                 dest,
                 node,
             });
