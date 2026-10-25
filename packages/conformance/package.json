@@ -11,6 +11,7 @@
     "@inkoxide/react": "workspace:*",
     "@inkoxide/render": "workspace:*",
     "@inkoxide/schema": "workspace:*",
+    "@inkoxide/svelte": "workspace:*",
     "@inkoxide/tailwind": "workspace:*",
     "@inkoxide/tree": "workspace:*",
     "@inkoxide/vue": "workspace:*",
@@ -18,6 +19,7 @@
     "@vitejs/plugin-vue": "6.0.10",
     "react": "19.3.0",
     "rxjs": "7.8.2",
+    "svelte": "5.57.2",
     "vue": "3.5.44"
   }
 }

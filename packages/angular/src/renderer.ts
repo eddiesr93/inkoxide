@@ -273,7 +273,7 @@ function templateError(error: unknown): TemplateError {
 /** Reads a finished render: host elements of components replaced, white space trimmed, checked. */
 function finish(nodes: readonly AnyNode[], parent?: HostType): Container {
   const container: Container = parent === undefined ? { children: [] } : { children: [], parent };
-  container.children = trimTemplateText(read(nodes));
+  container.children = trimTemplateText(read(nodes), parent);
   checkTree(container);
   return container;
 }

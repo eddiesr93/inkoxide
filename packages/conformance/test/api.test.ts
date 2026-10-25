@@ -62,3 +62,19 @@ describe('Angular', () => {
     expect(names(templates)).toEqual(names(reactTemplates));
   });
 });
+
+describe('Svelte', () => {
+  // Svelte's way to keep state in a function: `createPdf`, with runes, for React's hook.
+  const svelteNames = (list: string[]) => list.map((n) => (n === 'usePdf' ? 'createPdf' : n)).sort();
+
+  it('exports the names of @inkoxide/react, from each entry', async () => {
+    const [main, browser, templates] = await Promise.all([
+      import('@inkoxide/svelte'),
+      import('@inkoxide/svelte/browser'),
+      import('@inkoxide/svelte/templates'),
+    ]);
+    expect(names(main)).toEqual(names(react));
+    expect(names(browser)).toEqual(svelteNames(names(reactBrowser)));
+    expect(names(templates)).toEqual(names(reactTemplates));
+  });
+});

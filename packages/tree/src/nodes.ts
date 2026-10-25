@@ -1,4 +1,4 @@
-import { HOST_NAME, type HostType } from './components/index.ts';
+import { HOST, HOST_NAME, type HostType } from './components/index.ts';
 
 /**
  * The components above a host node, innermost first: its own name (`Text`), then the names of
@@ -77,17 +77,47 @@ export function dedupe(names: Iterable<string>): string[] {
 }
 
 /**
- * Text as JSX would give it, for front ends whose templates keep the white space around content
- * (Vue, Svelte, Angular): strings that are only the indentation of the template (white space
- * with a line break) are dropped, and white space at the start and the end of an element's
- * content is trimmed. Empty strings go too.
+ * The elements whose strings are runs of text, where a space between two elements is content
+ * (`<Text>a <Link>b</Link></Text>`). Elsewhere white space between elements is the layout of the
+ * template.
  */
-export function trimTemplateText(nodes: Node[]): Node[] {
-  const out = nodes.filter((n) => n.kind === 'element' || (n.text !== '' && !/^\s*\n\s*$/.test(n.text)));
+const RUNS = new Set<string>([HOST.Text, HOST.Link, HOST.Tspan, HOST.TextPath, HOST.Note, HOST.Attachment]);
+
+/**
+ * A string that spans lines of the template, as JSX joins them: white space around each line
+ * break goes, and the lines that are left are joined with one space.
+ */
+function jsxLines(text: string): string {
+  const lines = text.split(/\r\n|\r|\n/);
+  const last = lines.length - 1;
+  return lines
+    .map((line, i) => {
+      let l = line;
+      if (i > 0) l = l.trimStart();
+      if (i < last) l = l.trimEnd();
+      return l;
+    })
+    .filter((l, i) => l !== '' || (i === 0 && last === 0))
+    .join(' ');
+}
+
+/**
+ * Text as JSX would give it, for front ends whose templates keep the white space around content
+ * (Vue, Svelte, Angular): the lines of a string are joined as JSX joins them; strings of white
+ * space are dropped, but for a space between the runs of a text; and white space at the start and
+ * the end of an element's content is trimmed. `parent` is the element of `nodes`.
+ */
+export function trimTemplateText(nodes: Node[], parent?: string): Node[] {
+  for (const n of nodes) if (n.kind === 'text' && n.text.includes('\n')) n.text = jsxLines(n.text);
+  const runs = parent !== undefined && RUNS.has(parent);
+  const out = nodes.filter(
+    (n) =>
+      n.kind === 'element' || (n.text !== '' && !(/^\s*$/.test(n.text) && (!runs || n.text.includes('\n')))),
+  );
   const first = out[0];
   if (first?.kind === 'text') first.text = first.text.trimStart();
   const last = out[out.length - 1];
   if (last?.kind === 'text') last.text = last.text.trimEnd();
-  for (const n of out) if (n.kind === 'element') n.children = trimTemplateText(n.children);
+  for (const n of out) if (n.kind === 'element') n.children = trimTemplateText(n.children, n.type);
   return out.filter((n) => n.kind === 'element' || n.text !== '');
 }

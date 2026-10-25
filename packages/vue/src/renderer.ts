@@ -248,7 +248,7 @@ export function mount(root: object, parent?: HostType): Container {
   const top = (app as unknown as { _instance: ComponentInternalInstance | null })._instance;
   const suspended = suspension(top?.subTree as unknown as VNodeLike);
   if (suspended) throw suspended;
-  container.children = trimTemplateText(uncomment(container.children));
+  container.children = trimTemplateText(uncomment(container.children), parent);
   checkTree(container);
   return container;
 }
