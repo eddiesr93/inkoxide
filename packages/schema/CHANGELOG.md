@@ -5,7 +5,9 @@ documents that were valid stay valid and render the same way, except to fix beha
 clearly wrong; such fixes are listed under **Fixed**. A breaking change would start schema
 version 2.
 
-## Unreleased
+## 2.7.0 - 2026-10-25
+
+Still document schema version 1.
 
 ### Added
 

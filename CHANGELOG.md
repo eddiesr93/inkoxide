@@ -7,7 +7,7 @@ All notable changes to the packages in this repository. The format follows
 together, and so does `@inkoxide/wasm` from its first release. The document schema has its own version and
 [changelog](packages/schema/CHANGELOG.md).
 
-## Unreleased
+## 0.10.1 - 2026-10-25
 
 ### Added
 

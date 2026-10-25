@@ -1,6 +1,6 @@
 {
   "name": "@inkoxide/style",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "private": true,
   "type": "module",
   "description": "Style values for Inkoxide: CSS units, colours and transforms read into the style object that @inkoxide/react and @inkoxide/tailwind build.",
