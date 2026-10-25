@@ -5,6 +5,7 @@ use pdf_writer::{Name, Rect as PdfRect, Ref, Str};
 
 use crate::geom::Rect;
 use crate::pipeline::{Dest, Marks};
+use crate::schema::BookmarkZoom;
 
 use super::out::written_len;
 use super::{round_pt, LinkArea, Profile, Writer};
@@ -55,7 +56,7 @@ pub(super) fn write_link(
             // A structure destination (ISO 32000-2, 12.6.4.2): the
             // element, then the same view as the page destination.
             if let Some(e) = sd {
-                sd_array(action.insert(Name(b"SD")).array(), e, d);
+                sd_array(action.insert(Name(b"SD")).array(), e, d, None);
             }
         }
         None => {
@@ -68,13 +69,38 @@ pub(super) fn write_link(
 }
 
 /// `[element /XYZ left top null]`: a structure destination, with the view
-/// of page destination `d`.
-fn sd_array(mut a: pdf_writer::Array<'_>, elem: Ref, d: Dest) {
-    a.item(elem)
-        .item(Name(b"XYZ"))
-        .item(round_pt(d.x))
-        .item(round_pt(d.y))
-        .item(pdf_writer::Null);
+/// of page destination `d` (at `zoom`, see [`view`]).
+fn sd_array(mut a: pdf_writer::Array<'_>, elem: Ref, d: Dest, zoom: Option<BookmarkZoom>) {
+    a.item(elem);
+    match zoom {
+        None => {
+            a.item(Name(b"XYZ"))
+                .item(round_pt(d.x))
+                .item(round_pt(d.y))
+                .item(pdf_writer::Null);
+        }
+        Some(z) => view(&mut a, d, z),
+    }
+}
+
+/// The view of destination `d` at `zoom`, after its page or element: its
+/// top-left corner at a scale (`/XYZ`), the whole page (`/Fit`), or the
+/// page's width from its top (`/FitH`).
+fn view(a: &mut pdf_writer::Array<'_>, d: Dest, zoom: BookmarkZoom) {
+    match zoom {
+        BookmarkZoom::Scale(z) => {
+            a.item(Name(b"XYZ"))
+                .item(round_pt(d.x))
+                .item(round_pt(d.y))
+                .item(z);
+        }
+        BookmarkZoom::Page => {
+            a.item(Name(b"Fit"));
+        }
+        BookmarkZoom::Width => {
+            a.item(Name(b"FitH")).item(round_pt(d.y));
+        }
+    }
 }
 
 /// What a link's `/Contents` says: where it goes.
@@ -97,6 +123,19 @@ pub(super) fn annot_rect(r: Rect, page_h: f32) -> PdfRect {
 pub(super) fn xyz(d: pdf_writer::writers::Destination<'_>, dest: Dest, pages: &[Ref]) {
     d.page(pages[dest.page as usize])
         .xyz(round_pt(dest.x), round_pt(dest.y), None);
+}
+
+/// A page destination at `zoom` ([`view`]), or else as [`xyz`].
+fn page_view(
+    d: pdf_writer::writers::Destination<'_>,
+    dest: Dest,
+    pages: &[Ref],
+    zoom: Option<BookmarkZoom>,
+) {
+    match zoom {
+        None => xyz(d, dest, pages),
+        Some(z) => view(&mut d.page(pages[dest.page as usize]), dest, z),
+    }
 }
 
 /// Most bytes URI `uri` takes in the file once written by [`write_link`],
@@ -124,7 +163,8 @@ pub(super) fn uri_bytes(uri: &str) -> Vec<u8> {
 }
 
 /// Writes the document outline; returns its root. Each entry nests under
-/// the nearest earlier entry of a lower level; all entries start open.
+/// the nearest earlier entry of a lower level, and starts open unless it
+/// is not `expanded`.
 /// An entry with an element in `sd` goes to it as well.
 pub(super) fn write_outline(
     w: &mut Writer,
@@ -159,13 +199,16 @@ pub(super) fn write_outline(
             None => top.push(i),
         }
     }
-    // Descendants of each entry (entries are in pre-order).
-    let mut count = vec![0i32; n];
+    // The entries under each one that show when it is open: its children,
+    // and theirs under an open child (entries are in pre-order). `/Count`
+    // is that number, negative for a closed entry (ISO 32000-2, 12.3.3).
+    let mut shown = vec![0i32; n];
     for i in (0..n).rev() {
         if let Some(p) = parent[i] {
-            count[p] += count[i] + 1;
+            shown[p] += 1 + if entries[i].expanded { shown[i] } else { 0 };
         }
     }
+    let visible = |i: usize| 1 + if entries[i].expanded { shown[i] } else { 0 };
     let (mut prev, mut next) = (vec![None; n], vec![None; n]);
     for sib in kids.iter().chain([&top]) {
         for w in sib.windows(2) {
@@ -185,7 +228,8 @@ pub(super) fn write_outline(
             item.next(refs[x]);
         }
         if let (Some(&f), Some(&l)) = (kids[i].first(), kids[i].last()) {
-            item.first(refs[f]).last(refs[l]).count(count[i]);
+            let count = if e.expanded { shown[i] } else { -shown[i] };
+            item.first(refs[f]).last(refs[l]).count(count);
         }
         match sd.get(i) {
             // An outline item has no structure destination of its own: a
@@ -195,16 +239,16 @@ pub(super) fn write_outline(
                     .insert(Name(b"A"))
                     .start::<pdf_writer::writers::Action>();
                 action.action_type(ActionType::GoTo);
-                xyz(action.destination(), e.dest, page_refs);
-                sd_array(action.insert(Name(b"SD")).array(), r, e.dest);
+                page_view(action.destination(), e.dest, page_refs, e.zoom);
+                sd_array(action.insert(Name(b"SD")).array(), r, e.dest, e.zoom);
             }
-            _ => xyz(item.dest(), e.dest, page_refs),
+            _ => page_view(item.dest(), e.dest, page_refs, e.zoom),
         }
     }
     let mut o = pdf.outline(root);
     if let (Some(&f), Some(&l)) = (top.first(), top.last()) {
         o.first(refs[f]).last(refs[l]);
     }
-    o.count(n as i32);
+    o.count(top.iter().map(|&i| visible(i)).sum());
     Some(root)
 }

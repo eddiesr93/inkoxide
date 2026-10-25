@@ -90,6 +90,27 @@
           "minimum": 1,
           "maximum": 32,
           "default": 1
+        },
+        "expanded": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether the entry starts open in the viewer's outline, showing the entries under it. Default `true`."
+        },
+        "zoom": {
+          "description": "How the viewer shows the node: at a scale (`1` is 100%) with the node's top-left corner at the top-left of the window, the whole page (`page`), or the page's width from the node's top (`width`). Default: the node at the top-left, at the viewer's current zoom.",
+          "oneOf": [
+            {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 64
+            },
+            {
+              "enum": [
+                "page",
+                "width"
+              ]
+            }
+          ]
         }
       }
     },

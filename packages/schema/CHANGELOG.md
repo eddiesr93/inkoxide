@@ -5,6 +5,13 @@ documents that were valid stay valid and render the same way, except to fix beha
 clearly wrong; such fixes are listed under **Fixed**. A breaking change would start schema
 version 2.
 
+## Unreleased
+
+### Added
+
+- **Bookmarks:** `expanded` (default `true`; `false` starts the entry closed in the outline) and
+  `zoom`, the view the entry opens: a scale (above 0, at most 64), `page` or `width`.
+
 ## 2.6.0 - 2026-10-22
 
 Still document schema version 1.

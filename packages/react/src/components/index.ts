@@ -1,4 +1,5 @@
 import type {
+  Bookmark,
   Break,
   Color,
   Meta,
@@ -333,7 +334,12 @@ export type FontWeightName =
  */
 export type BreakProp = 'avoid' | 'page-before' | 'page-after' | Break;
 
-export type BookmarkProp = string | { title: string; level?: number };
+/**
+ * An entry of the PDF outline at this element: its title, or `{ title, level, expanded, zoom }`.
+ * `level` nests it (default 1), `expanded: false` starts it closed, and `zoom` is how the viewer
+ * shows the element: a scale (`1.5`), the whole page (`'page'`) or the page's width (`'width'`).
+ */
+export type BookmarkProp = string | Bookmark;
 
 /**
  * Splits a word into the parts a line may break between: `'hyphenation'` →

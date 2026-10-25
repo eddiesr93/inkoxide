@@ -477,3 +477,60 @@ fn an_invisible_glyph_without_a_width_draws_nothing() {
         assert!(!out.contains("Tr"), "{width}: {out}");
     }
 }
+
+#[test]
+fn outline_entries_start_closed_and_open_the_view_they_ask_for() {
+    use crate::pipeline::{Dest, OutlineEntry};
+    use crate::schema::BookmarkZoom;
+    let node: crate::schema::Node = serde_json::from_str(r#"{"type":"box"}"#).unwrap();
+    let entry = |title, level, expanded, zoom| OutlineEntry {
+        title,
+        level,
+        expanded,
+        zoom,
+        dest: Dest {
+            page: 0,
+            x: 10.0,
+            y: 20.0,
+        },
+        node: &node,
+    };
+    // A (closed) holds B, which holds C; D (open) holds E and F.
+    let entries = [
+        entry("A", 1, false, None),
+        entry("B", 2, true, Some(BookmarkZoom::Page)),
+        entry("C", 3, true, Some(BookmarkZoom::Width)),
+        entry("D", 1, true, Some(BookmarkZoom::Scale(1.5))),
+        entry("E", 2, false, None),
+        entry("F", 2, true, None),
+    ];
+    let mut w = Writer::new(Out::plain());
+    let page = Ref::new(1000);
+    let root = super::nav::write_outline(&mut w, &entries, &[page], &[]).unwrap();
+    let out = String::from_utf8_lossy(&w.pdf.finish()).into_owned();
+    let object = |r: Ref| {
+        let start = out.find(&format!("\n{} 0 obj", r.get())).unwrap();
+        out[start..start + out[start..].find("endobj").unwrap()].to_string()
+    };
+    let item = |n: i32| object(Ref::new(root.get() + n));
+    // A closed entry counts what opening it shows, negated; the root
+    // counts the entries shown: A, D, E and F.
+    assert!(item(1).contains("/Count -2"), "{}", item(1));
+    assert!(item(2).contains("/Count 1"), "{}", item(2));
+    assert!(item(4).contains("/Count 2"), "{}", item(4));
+    assert!(!item(5).contains("/Count"), "{}", item(5));
+    assert!(object(root).contains("/Count 4"), "{}", object(root));
+    // Each opens its own view of the node's top-left corner.
+    assert!(
+        item(1).contains("/Dest [1000 0 R /XYZ 10 20 0]"),
+        "{}",
+        item(1)
+    );
+    assert!(item(2).contains("/Dest [1000 0 R /Fit]"), "{}", item(2));
+    assert!(item(3).contains("/Dest [1000 0 R /FitH 20]"), "{}", item(3));
+    assert!(
+        item(4).contains("/Dest [1000 0 R /XYZ 10 20 1.5]"),
+        "{}",
+        item(4)
+    );
+}

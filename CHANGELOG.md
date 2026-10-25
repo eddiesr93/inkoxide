@@ -15,6 +15,10 @@ together, and so does `@inkoxide/wasm` from its first release. The document sche
   child makes of the render's state (`blob`, `url`, `loading`, `error`).
 - `<PdfViewer showToolbar={false}>` asks the browser's viewer to hide its toolbar
   (`#toolbar=0`, which Chromium follows).
+- Bookmarks take `expanded` and `zoom`: `bookmark={{ title, expanded: false }}` starts the entry
+  closed in the viewer's outline, its children hidden, and `zoom` is the view it opens: a scale
+  (`1.5`), the whole page (`'page'`) or the page's width from the element's top (`'width'`).
+  Without `zoom` it goes to the element's top-left corner and keeps the viewer's zoom, as before.
 
 ### Changed
 
