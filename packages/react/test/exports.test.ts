@@ -3,16 +3,50 @@
  * `@inkoxide/react/templates`. A name added here is API under semver, so it needs its place in
  * GUIDE.md first.
  */
-import { readFileSync } from 'node:fs';
-
 import { describe, expect, it } from 'vitest';
 
+import { declared, sorted } from '../../tree/test/entries.ts';
 import pkg from '../package.json' with { type: 'json' };
 import * as browser from '../src/browser.ts';
 import * as main from '../src/index.ts';
 import * as templates from '../src/templates.ts';
 
+/** What @inkoxide/react exported before 1.0, kept for the code that uses it (core.ts). */
+const COMPAT_VALUES = [
+  'FontRegistry',
+  'HOST',
+  'HOST_NAME',
+  'assertValidTree',
+  'familyKey',
+  'fontStretchValue',
+  'fontVariationsValue',
+  'fontWeightValue',
+  'fonts',
+  'imageSource',
+  'innermostComponent',
+  'isImagePath',
+  'loadTailwind',
+  'parsePath',
+  'remoteAllowed',
+  'remoteRefused',
+  'validateTree',
+];
+const COMPAT_TYPES = [
+  'EncryptionOptions',
+  'FontFace',
+  'HostType',
+  'ImageSource',
+  'OutputOptions',
+  'PdfALevel',
+  'PdfUaPart',
+  'PendingImage',
+  'RemoteImagePolicy',
+  'ResolvedFont',
+  'SchemaProblem',
+];
+
 const MAIN_VALUES = [
+  ...COMPAT_VALUES,
   'Attachment',
   'Canvas',
   'Cell',
@@ -77,6 +111,7 @@ const MAIN_VALUES = [
 ];
 
 const MAIN_TYPES = [
+  ...COMPAT_TYPES,
   'AbsoluteLength',
   'AttachmentFile',
   'AttachmentProps',
@@ -208,52 +243,23 @@ const BROWSER_TYPES = [
   'UsePdfResult',
 ];
 
-const sorted = (names: Iterable<string>) => [...names].sort();
-
-/**
- * The names an entry file exports, values and types: it may only re-export, with
- * `export { … } from`, `export type { … } from` and `export * from` a file of this package, and
- * import its engine host (`import './node-host.ts';`).
- */
-function declared(file: string): string[] {
-  const src = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
-  const code = src.replace(/^\s*\/\/.*$/gm, '');
-  const names: string[] = [];
-  for (const m of code.matchAll(/^export \* from '\.\/([a-z-]+\.tsx?)';$/gm))
-    names.push(...declared(m[1] ?? ''));
-  for (const m of code.matchAll(/export\s+(?:type\s+)?\{([^}]*)\}\s*from\s*'[^']+';/g)) {
-    for (const part of (m[1] ?? '').split(',')) {
-      const name = part
-        .trim()
-        .replace(/^type\s+/, '')
-        .split(/\s+as\s+/)
-        .pop();
-      if (name) names.push(name);
-    }
-  }
-  const rest = code
-    .replace(/export\s+(?:type\s+)?\{[^}]*\}\s*from\s*'[^']+';/g, '')
-    .replace(/^import '\.\/[a-z-]+-host\.ts';$/m, '')
-    .replace(/^export \* from '\.\/[a-z-]+\.ts';$/gm, '')
-    .trim();
-  expect(rest, `${file} only re-exports`).toBe('');
-  return sorted(names);
-}
+const SRC = new URL('../src/', import.meta.url);
+const declaredIn = (file: string) => declared(SRC, file);
 
 describe('exports', () => {
   it('@inkoxide/react exports exactly the documented names', () => {
     expect(sorted(Object.keys(main))).toEqual(sorted(MAIN_VALUES));
-    expect(declared('index.ts')).toEqual(sorted([...MAIN_VALUES, ...MAIN_TYPES]));
+    expect(declaredIn('index.ts')).toEqual(sorted([...MAIN_VALUES, ...MAIN_TYPES]));
   });
 
   it('@inkoxide/react/templates exports exactly the template pipeline', () => {
     expect(sorted(Object.keys(templates))).toEqual(sorted(TEMPLATES_VALUES));
-    expect(declared('templates.ts')).toEqual(sorted([...TEMPLATES_VALUES, ...TEMPLATES_TYPES]));
+    expect(declaredIn('templates.ts')).toEqual(sorted([...TEMPLATES_VALUES, ...TEMPLATES_TYPES]));
   });
 
   it('@inkoxide/react/browser exports the main names that do not need Node', () => {
     expect(sorted(Object.keys(browser))).toEqual(sorted(BROWSER_VALUES));
-    expect(declared('browser.ts')).toEqual(sorted([...BROWSER_VALUES, ...BROWSER_TYPES]));
+    expect(declaredIn('browser.ts')).toEqual(sorted([...BROWSER_VALUES, ...BROWSER_TYPES]));
   });
 
   it('has an entry in package.json for each', () => {

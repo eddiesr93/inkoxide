@@ -2,7 +2,6 @@
  * What the browser entry adds to the shared pipeline: `init` with the host's options, a render
  * that can be stopped, and the PDF as a `Blob` or a web stream.
  */
-import type { TreeResult } from '@inkoxide/tree';
 import type { z } from 'zod';
 
 import { type BrowserOptions, configureBrowser } from './browser-host.ts';
@@ -13,10 +12,9 @@ import {
   init as start,
   renderToBuffer as render,
   type RenderToBufferOptions,
-  renderTree,
   type TemplateLike,
 } from './pipeline.ts';
-import type { Abortable, RenderOpts, RenderResult } from './types.ts';
+import type { Abortable, RenderResult } from './types.ts';
 
 export { type BrowserOptions, clearCaches } from './browser-host.ts';
 
@@ -63,8 +61,6 @@ export interface BrowserRenderer<Input, C> {
     data: unknown,
     opts?: GenerateOptions,
   ): Promise<RenderResult>;
-  /** Template + data → tree, without the engine (after `await init()`). */
-  renderTree<S extends z.ZodType>(t: TemplateLike<S, C>, data: unknown, opts?: RenderOpts): TreeResult;
 }
 
 /** The browser functions of the front end `fe`: `@inkoxide/react/browser` exports React's, and so on. */
@@ -99,6 +95,5 @@ export function createRenderer<Input, C>(fe: FrontEnd<Input, C>): BrowserRendere
       });
     },
     generate: (t, data, opts) => runTemplate(fe, t, data, opts),
-    renderTree: (t, data, opts) => renderTree(fe, t, data, opts),
   };
 }

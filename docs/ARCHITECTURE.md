@@ -37,7 +37,10 @@ The npm packages depend on each other like this:
 - `@inkoxide/tree` depends on `@inkoxide/schema` and `@inkoxide/style`.
 - `@inkoxide/render` depends on `@inkoxide/tree`, `@inkoxide/schema` and `inkoxide`.
 - `@inkoxide/react`, `@inkoxide/vue`, `@inkoxide/svelte` and `@inkoxide/angular` depend on
-  `@inkoxide/render` and `@inkoxide/tree`, and on their framework as a peer.
+  `@inkoxide/render`, `@inkoxide/tree`, `@inkoxide/schema` (types) and zod (templates served by
+  id). Their framework is a peer dependency of the published package (`react`, with
+  `react-reconciler` a dependency; `vue`; `svelte`; `@angular/core`); the workspace pins React as
+  a dependency, and `scripts/release/stage.mjs` makes it a peer.
 - `@inkoxide/tailwind` depends on `@inkoxide/style`. `@inkoxide/tree` loads it only when it is
   installed (an optional peer dependency), for classes.
 - `@inkoxide/wasm` is an optional peer dependency of `@inkoxide/render` and the front ends, for

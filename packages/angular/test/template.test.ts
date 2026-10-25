@@ -133,14 +133,39 @@ describe('templates', () => {
     );
   });
 
-  it('reports what a template throws', () => {
+  it('reports what a template throws, with the components it is in', () => {
     @Component({ selector: 'app-throws', template: '{{ boom() }}' })
     class Throws {
       boom(): string {
         throw new Error('boom');
       }
     }
-    expect(thrown(() => renderTemplate(Throws, { fonts })).message).toBe('The template threw: boom');
+    @Component({
+      selector: 'app-holder',
+      imports: [Throws],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      template: '<ink-document><ink-page><ink-text><app-throws /></ink-text></ink-page></ink-document>',
+    })
+    class Holder {}
+    const e = thrown(() => renderTemplate(Holder, { fonts }));
+    expect(e.message).toBe('The template threw: boom');
+    expect(e.componentStack).toBe('\n    in Throws\n    in Holder');
+  });
+
+  it('refuses a listener', () => {
+    @Component({
+      selector: 'app-clicks',
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      template: '<ink-document><ink-page><ink-view (click)="go()" /></ink-page></ink-document>',
+    })
+    class Clicks {
+      go(): void {}
+    }
+    const e = thrown(() => renderTemplate(Clicks, { fonts }));
+    expect(e.message).toBe(
+      '<View> takes no listener (click): nothing happens in a PDF. Remove the (click) binding.',
+    );
+    expect(e.componentStack).toBe('\n    in View\n    in Clicks');
   });
 });
 

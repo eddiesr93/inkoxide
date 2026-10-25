@@ -1,8 +1,7 @@
 import { createRenderer, type GenerateOptions, type RenderResult } from '@inkoxide/render/browser';
 import type { z } from 'zod';
 
-import { vue } from './front-end.ts';
-import type { TemplateLike } from './template-render.ts';
+import { vue, type TemplateLike } from './front-end.ts';
 
 /** Vue's functions in a browser: the engine in a Web Worker. */
 export const browserRenderer = createRenderer(vue);

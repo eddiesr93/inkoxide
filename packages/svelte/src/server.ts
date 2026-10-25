@@ -7,4 +7,5 @@ import { type Mounter, svelteTemplates } from './template.ts';
 const serverMounter: Mounter = (component, props, context, table) =>
   readHtml(render(component, { props, context }).body, table);
 
-export const { renderTemplate, renderToTree } = svelteTemplates(serverMounter);
+export const templates = svelteTemplates(serverMounter);
+export const { renderTemplate, renderToTree } = templates;

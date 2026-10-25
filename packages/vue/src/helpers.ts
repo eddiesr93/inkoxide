@@ -3,7 +3,7 @@
  * URL, a link that downloads it, a frame that shows it in the browser's own viewer, and a
  * component that hands the render's state to its slot.
  */
-import type { BrowserRenderOptions } from '@inkoxide/render/browser';
+import { type BrowserRenderOptions, PdfRun, sameProps } from '@inkoxide/render/browser';
 import {
   defineComponent,
   h,
@@ -38,13 +38,10 @@ export interface UsePdfResult {
  * Whether `next` renders as `prev` did: the same document, or a VNode of the same type and key
  * whose props are the same values (`h(Invoice, { invoice })` made again with the same `invoice`).
  */
-function sameDocument(prev: Renderable | undefined, next: Renderable | undefined): boolean {
+function sameDocument(prev: Renderable, next: Renderable): boolean {
   if (prev === next) return true;
   if (!isVNode(prev) || !isVNode(next) || prev.type !== next.type || prev.key !== next.key) return false;
-  const a = (prev.props ?? {}) as Record<string, unknown>;
-  const b = (next.props ?? {}) as Record<string, unknown>;
-  const keys = Object.keys(a);
-  return keys.length === Object.keys(b).length && keys.every((k) => Object.is(a[k], b[k]));
+  return sameProps(prev.props ?? {}, next.props ?? {});
 }
 
 /**
@@ -61,49 +58,29 @@ export function usePdf(
   const url = ref<string | null>(null);
   const loading = ref(false);
   const error = shallowRef<unknown>(null);
-  let last: Renderable | undefined;
-  let running: AbortController | undefined;
-
-  const update = (next?: Renderable): void => {
-    if (next !== undefined) last = next;
-    if (last === undefined) return;
-    running?.abort();
-    const controller = new AbortController();
-    running = controller;
-    const { signal } = controller;
-    loading.value = true;
-    browserRenderer.renderToBlob(last, { ...toValue(opts), signal }).then(
-      (pdf) => {
-        if (signal.aborted) return;
-        if (url.value) URL.revokeObjectURL(url.value);
-        blob.value = pdf;
-        url.value = URL.createObjectURL(pdf);
-        loading.value = false;
-        error.value = null;
-      },
-      (e: unknown) => {
-        if (signal.aborted) return;
-        loading.value = false;
-        error.value = e;
-      },
-    );
-  };
+  const run = new PdfRun<Renderable>(
+    browserRenderer.renderToBlob,
+    (state) => {
+      blob.value = state.blob;
+      url.value = state.url;
+      loading.value = state.loading;
+      error.value = state.error;
+    },
+    () => toValue(opts),
+  );
 
   watch(
     () => toValue(document),
     (next) => {
+      const last = run.document;
       if (next === undefined || (last !== undefined && sameDocument(last, next))) return;
-      update(next);
+      run.update(next);
     },
     { immediate: true },
   );
-  onScopeDispose(() => {
-    running?.abort();
-    if (url.value) URL.revokeObjectURL(url.value);
-    url.value = null;
-  });
+  onScopeDispose(() => run.stop());
 
-  return { blob, url, loading, error, update };
+  return { blob, url, loading, error, update: (next) => run.update(next) };
 }
 
 /** The state `usePdf` gives, unwrapped, as the slots of the components receive it. */

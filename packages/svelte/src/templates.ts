@@ -10,4 +10,5 @@ export {
   type Timings,
   type TreeResult,
 } from '@inkoxide/render/templates';
-export { generate, renderTree, type TemplateLike } from './template-render.ts';
+export type { TemplateLike } from './front-end.ts';
+export { generate, renderTree } from './node-render.ts';

@@ -47,9 +47,13 @@ describe('props', () => {
     });
   });
 
-  it('leaves out listeners', () => {
-    const tree = renderTemplate(page(h(View, { onClick: () => {} })), { fonts });
-    expect(JSON.stringify(tree.document)).not.toContain('onClick');
+  it('refuses a listener, with the components above the element', () => {
+    const Card = defineComponent({ name: 'Card', setup: () => () => h(View, { onClick: () => {} }) });
+    const e = thrown(() => renderTemplate(page(h(Card)), { fonts }));
+    expect(e.message).toBe(
+      '<View> takes no listener (onClick): nothing happens in a PDF. Remove the @click binding.',
+    );
+    expect(e.componentStack).toBe('\n    in View\n    in Card\n    in Page\n    in Document');
   });
 
   it('sets the kind of the field components', () => {
@@ -105,6 +109,12 @@ describe('errors', () => {
     });
     const e = thrown(() => renderTemplate(page(h(Suspense, null, { default: () => h(Slow) })), { fonts }));
     expect(e.message).toMatch(/Suspense|async setup/);
+  });
+
+  it('refuses a Vapor component', () => {
+    const Fast = { name: 'Fast', __vapor: true, setup: () => () => null };
+    const e = thrown(() => renderTemplate(page(h(Fast)), { fonts }));
+    expect(e.message).toMatch(/^Fast is a Vapor component/);
   });
 
   it('says where usePage() works', async () => {

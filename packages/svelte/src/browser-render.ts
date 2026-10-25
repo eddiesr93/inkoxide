@@ -1,12 +1,11 @@
 import { createRenderer, type GenerateOptions, type RenderResult } from '@inkoxide/render/browser';
 import type { z } from 'zod';
 
-import { renderTemplate } from './dom.ts';
-import { svelteFrontEnd } from './front-end.ts';
-import type { TemplateLike } from './template-render.ts';
+import { templates } from './dom.ts';
+import { svelteFrontEnd, type TemplateLike } from './front-end.ts';
 
 /** Svelte's functions in a browser: the templates mount in the page, the engine runs in a Web Worker. */
-export const browserRenderer = createRenderer(svelteFrontEnd(renderTemplate));
+export const browserRenderer = createRenderer(svelteFrontEnd(templates));
 
 /**
  * A document to PDF bytes, rendered in a Web Worker. A `signal` that aborts, or `timeoutMs` that

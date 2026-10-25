@@ -40,4 +40,4 @@ export {
   type UsePdfResult,
 } from './helpers.tsx';
 export { generate, renderToBlob, renderToBuffer, renderToStream } from './browser-render.ts';
-export type { TemplateLike } from './template-render.ts';
+export type { TemplateLike } from './front-end.ts';

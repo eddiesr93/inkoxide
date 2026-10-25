@@ -1,17 +1,14 @@
 // React templates to document trees: React renders once, synchronously, then the host nodes are
 // walked into the schema tree.
-import type { Document } from '@inkoxide/schema';
 import {
-  buildDocument,
   componentStack,
   type Instance,
-  loadTailwind,
   type Node,
   type PageInfo,
   type RenderPage,
   TemplateError,
-  type TreeOptions,
-  type TreeResult,
+  type TemplateFunctions,
+  templateFunctions,
 } from '@inkoxide/tree';
 import { createElement, type ReactNode } from 'react';
 
@@ -43,22 +40,8 @@ const renderPage: RenderPage = (inst: Instance, page: PageInfo): Node[] => {
   }
 };
 
-/**
- * Renders a template element to an Inkoxide document. Synchronous: React renders once, then the
- * host nodes are walked into the schema tree. Throws TemplateError with a component stack.
- */
-export function renderTemplate(element: ReactNode, opts: TreeOptions = {}): TreeResult {
-  const t0 = performance.now();
-  const container = renderToInstances(element);
-  return buildDocument(container, { renderPage }, opts, performance.now() - t0);
-}
-
-/**
- * The document tree of a template element (the simple API). Loads Tailwind first when it is
- * installed (`loadTailwind`). Building is synchronous; a template error is a rejected promise,
- * not a throw.
- */
-export async function renderToTree(element: ReactNode, opts: TreeOptions = {}): Promise<Document> {
-  await loadTailwind();
-  return renderTemplate(element, opts).document;
-}
+/** React's template functions: React renders an element once, synchronously, into host nodes. */
+export const { renderTemplate, renderToTree }: TemplateFunctions<ReactNode> = templateFunctions(
+  (element: ReactNode) => renderToInstances(element),
+  { renderPage },
+);

@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-// ajv is a dev dependency of @inkoxide/react.
+// ajv is a dev dependency of @inkoxide/tree.
 const require = createRequire(`${root}packages/tree/package.json`);
 const { Ajv2020 } = require('ajv/dist/2020.js');
 const standalone = require('ajv/dist/standalone').default;

@@ -1178,8 +1178,9 @@ export const BOOLEAN_PROPS: ReadonlySet<string> = new Set([
   'wrap',
 ]);
 
-const kebab = (name: string): string =>
-  name.replace(/[A-Z]/g, (c, i: number) => `${i ? '-' : ''}${c.toLowerCase()}`);
+/** The element name of a component: `ink-` and its name in kebab case (`TextField` → `ink-text-field`). */
+export const tagName = (name: string): string =>
+  `ink-${name.replace(/[A-Z]/g, (c, i: number) => `${i ? '-' : ''}${c.toLowerCase()}`)}`;
 
 /**
  * The element names of the components, for template languages that write elements rather than
@@ -1187,14 +1188,17 @@ const kebab = (name: string): string =>
  * name in kebab case. Each is a host type, and for the field components the kind they set.
  */
 export const TAGS: ReadonlyMap<string, { type: HostType; kind?: FieldProps['kind'] }> = new Map([
-  ...Object.entries(HOST).map(([name, type]): [string, { type: HostType }] => [
-    `ink-${kebab(name)}`,
-    { type },
-  ]),
+  ...Object.entries(HOST).map(([name, type]): [string, { type: HostType }] => [tagName(name), { type }]),
   ...Object.entries(FIELD_KINDS).map(
     ([name, kind]): [string, { type: HostType; kind: FieldProps['kind'] }] => [
-      `ink-${kebab(name)}`,
+      tagName(name),
       { type: HOST.Field, kind },
     ],
   ),
 ]);
+
+/**
+ * The name of every component, as each front end exports it (`View`, `TextField`): the host types'
+ * and the field components'. The front ends' tests check that each has them all.
+ */
+export const COMPONENTS: readonly string[] = [...Object.keys(HOST), ...Object.keys(FIELD_KINDS)];

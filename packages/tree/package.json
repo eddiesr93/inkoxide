@@ -5,7 +5,8 @@
   "type": "module",
   "description": "What every Inkoxide front end shares: the components' host types and props, where each may go, and the conversion of host nodes into an Inkoxide document tree.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./props": "./src/props.ts"
   },
   "dependencies": {
     "@inkoxide/schema": "workspace:*",

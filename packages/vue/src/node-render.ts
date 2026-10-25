@@ -1,8 +1,16 @@
-// Vue's render functions in Node.
-import { createRenderer, type NodeRenderer } from '@inkoxide/render';
+import {
+  createRenderer,
+  type GenerateOptions,
+  type NodeRenderer,
+  type RenderOpts,
+  type RenderResult,
+} from '@inkoxide/render';
+import type { TreeResult } from '@inkoxide/tree';
+// Vue's render functions in Node: documents, and templates served by id.
 import type { Component } from 'vue';
+import type { z } from 'zod';
 
-import { vue } from './front-end.ts';
+import { vue, type TemplateLike } from './front-end.ts';
 import type { Renderable } from './template.ts';
 
 type Renderer = NodeRenderer<Renderable, Component>;
@@ -25,3 +33,20 @@ export const renderToFile: Renderer['renderToFile'] = renderer.renderToFile;
  * file at once, so the stream starts when the PDF is ready.
  */
 export const renderToStream: Renderer['renderToStream'] = renderer.renderToStream;
+
+/**
+ * The whole pipeline: data → zod → Vue → tree (+ Tailwind) → ajv (dev) → engine → PDF, with
+ * per-stage timings.
+ */
+export const generate: <S extends z.ZodType>(
+  t: TemplateLike<S>,
+  data: unknown,
+  opts?: GenerateOptions,
+) => Promise<RenderResult> = renderer.generate;
+
+/** Template + data → tree, without the engine (after `await init()`). */
+export const renderTree: <S extends z.ZodType>(
+  t: TemplateLike<S>,
+  data: unknown,
+  opts?: RenderOpts,
+) => TreeResult = renderer.renderTree;

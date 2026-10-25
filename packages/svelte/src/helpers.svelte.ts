@@ -3,7 +3,7 @@
  * its URL, again whenever the document changes. `PdfViewer`, `PdfDownloadLink` and
  * `BlobProvider` are built on it.
  */
-import type { BrowserRenderOptions } from '@inkoxide/render/browser';
+import { type BrowserRenderOptions, PdfRun, type PdfSnapshot, sameProps } from '@inkoxide/render/browser';
 import { onDestroy, untrack } from 'svelte';
 
 import { browserRenderer } from './browser-render.ts';
@@ -26,10 +26,7 @@ export interface PdfState {
 function sameDocument(a: Renderable, b: Renderable): boolean {
   if (a === b) return true;
   if (typeof a === 'function' || typeof b === 'function' || a.component !== b.component) return false;
-  const x = a.props ?? {};
-  const y = b.props ?? {};
-  const keys = Object.keys(x);
-  return keys.length === Object.keys(y).length && keys.every((k) => Object.is(x[k], y[k]));
+  return sameProps(a.props, b.props);
 }
 
 /**
@@ -42,66 +39,36 @@ export function createPdf(
   document: () => Renderable | undefined,
   opts: () => BrowserRenderOptions | undefined = () => undefined,
 ): PdfState {
-  let blob = $state<Blob | null>(null);
-  let url = $state<string | null>(null);
-  let loading = $state(false);
-  let error = $state<unknown>(null);
-  let last: Renderable | undefined;
-  let running: AbortController | undefined;
-  let shown: string | null = null;
-
-  function update(next?: Renderable): void {
-    if (next !== undefined) last = next;
-    if (last === undefined) return;
-    running?.abort();
-    const controller = new AbortController();
-    running = controller;
-    const { signal } = controller;
-    loading = true;
-    browserRenderer.renderToBlob(last, { ...untrack(opts), signal }).then(
-      (pdf) => {
-        if (signal.aborted) return;
-        if (shown) URL.revokeObjectURL(shown);
-        shown = URL.createObjectURL(pdf);
-        blob = pdf;
-        url = shown;
-        loading = false;
-        error = null;
-      },
-      (e: unknown) => {
-        if (signal.aborted) return;
-        loading = false;
-        error = e;
-      },
-    );
-  }
+  let state = $state<PdfSnapshot>({ blob: null, url: null, loading: false, error: null });
+  const run = new PdfRun<Renderable>(
+    browserRenderer.renderToBlob,
+    (next) => (state = next),
+    () => untrack(opts),
+  );
 
   $effect.pre(() => {
     const next = document();
     untrack(() => {
+      const last = run.document;
       if (next === undefined || (last !== undefined && sameDocument(last, next))) return;
-      update(next);
+      run.update(next);
     });
   });
-  onDestroy(() => {
-    running?.abort();
-    if (shown) URL.revokeObjectURL(shown);
-    shown = null;
-  });
+  onDestroy(() => run.stop());
 
   return {
     get blob() {
-      return blob;
+      return state.blob;
     },
     get url() {
-      return url;
+      return state.url;
     },
     get loading() {
-      return loading;
+      return state.loading;
     },
     get error() {
-      return error;
+      return state.error;
     },
-    update,
+    update: (next) => run.update(next),
   };
 }

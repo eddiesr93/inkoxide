@@ -39,10 +39,10 @@ export {
   checkTree,
   childContext,
   type HostContext,
-  ROOT_CONTEXT,
   rootContext,
 } from './placement.ts';
 export { loadTailwind } from './tailwind.ts';
+export { finishTemplate, templateError, templateFunctions, type TemplateFunctions } from './template.ts';
 export type { EncryptionOptions, OutputOptions, PdfALevel, PdfUaPart, RenderPage } from './tree/build.ts';
 export {
   type ImageSource,
@@ -110,7 +110,7 @@ export interface TreeResult extends Omit<BuildResult, 'origin'> {
 }
 
 /** What a front end gives `buildDocument` besides the host nodes. */
-export interface FrontEnd {
+export interface BuildHooks {
   /** Renders an element's `render` prop for one page; see {@link RenderPage}. */
   renderPage?: RenderPage;
 }
@@ -122,7 +122,7 @@ export interface FrontEnd {
  */
 export function buildDocument(
   container: Container,
-  frontEnd: FrontEnd,
+  hooks: BuildHooks,
   opts: TreeOptions = {},
   templateMs = 0,
 ): TreeResult {
@@ -134,13 +134,13 @@ export function buildDocument(
     remoteElsewhere: opts.remoteImagesElsewhere,
     localImages: opts.localImages,
   };
-  return fromContainer(container, frontEnd, opts, templateMs, images);
+  return fromContainer(container, hooks, opts, templateMs, images);
 }
 
 /** `images` is shared with the rebuilds, so an image keeps its id on every pass. */
 function fromContainer(
   container: Container,
-  frontEnd: FrontEnd,
+  hooks: BuildHooks,
   opts: TreeOptions,
   templateMs: number,
   images: ImageTableOptions,
@@ -150,7 +150,7 @@ function fromContainer(
     fonts: opts.fonts ?? defaultFonts,
     pageCount: opts.pageCount,
     images,
-    renderPage: frontEnd.renderPage,
+    renderPage: hooks.renderPage,
   };
   const built = buildTree(container, build);
   const t2 = performance.now();
@@ -182,7 +182,7 @@ function fromContainer(
     timings: { templateMs, treeMs: t2 - t1 },
     locate: locateFn,
     validate: () => validateTree(built.document).map((p) => ({ ...p, ...locateFn(p.path) })),
-    rebuild: (pageCount) => fromContainer(container, frontEnd, { ...opts, pageCount }, 0, images),
+    rebuild: (pageCount) => fromContainer(container, hooks, { ...opts, pageCount }, 0, images),
   };
 }
 

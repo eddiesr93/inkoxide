@@ -1,15 +1,12 @@
 // Vue templates to document trees: Vue renders once, synchronously, then the host nodes are
 // walked into the schema tree.
-import type { Document } from '@inkoxide/schema';
 import {
-  buildDocument,
   type Instance,
-  loadTailwind,
   type Node,
   type PageInfo,
   type RenderPage,
-  type TreeOptions,
-  type TreeResult,
+  type TemplateFunctions,
+  templateFunctions,
 } from '@inkoxide/tree';
 import { type Component, h, isVNode, type VNode } from 'vue';
 
@@ -31,21 +28,8 @@ const renderPage: RenderPage = (inst: Instance, page: PageInfo): Node[] =>
     inst.type,
   ).children;
 
-/**
- * Renders a Vue template to an Inkoxide document. Synchronous: Vue renders once, then the host
- * nodes are walked into the schema tree. Throws TemplateError with a component stack.
- */
-export function renderTemplate(input: Renderable, opts: TreeOptions = {}): TreeResult {
-  const t0 = performance.now();
-  const container = mount(rootOf(input));
-  return buildDocument(container, { renderPage }, opts, performance.now() - t0);
-}
-
-/**
- * The document tree of a Vue template (the simple API). Loads Tailwind first when it is
- * installed. A template error is a rejected promise, not a throw.
- */
-export async function renderToTree(input: Renderable, opts: TreeOptions = {}): Promise<Document> {
-  await loadTailwind();
-  return renderTemplate(input, opts).document;
-}
+/** Vue's template functions: Vue renders a VNode or a component once, synchronously, into host nodes. */
+export const { renderTemplate, renderToTree }: TemplateFunctions<Renderable> = templateFunctions(
+  (input: Renderable) => mount(rootOf(input)),
+  { renderPage },
+);

@@ -3,7 +3,7 @@
  * a link that downloads it, a frame that shows it in the browser's own viewer, and a component
  * that hands the render's state to a function.
  */
-import type { BrowserRenderOptions } from '@inkoxide/render/browser';
+import { type BrowserRenderOptions, PdfRun, type PdfSnapshot, sameProps } from '@inkoxide/render/browser';
 import {
   type AnchorHTMLAttributes,
   type IframeHTMLAttributes,
@@ -16,8 +16,6 @@ import {
 } from 'react';
 
 import { browserRenderer } from './browser-render.ts';
-
-const { renderToBlob } = browserRenderer;
 
 export interface UsePdfResult {
   /** The PDF of the last render that finished, or null. */
@@ -45,7 +43,7 @@ export interface UsePdfResult {
  * ```
  */
 export function usePdf(element?: ReactElement, opts: BrowserRenderOptions = {}): UsePdfResult {
-  const [state, setState] = useState<Omit<UsePdfResult, 'update'>>({
+  const [state, setState] = useState<PdfSnapshot>({
     blob: null,
     url: null,
     loading: element !== undefined,
@@ -56,42 +54,18 @@ export function usePdf(element?: ReactElement, opts: BrowserRenderOptions = {}):
   useEffect(() => {
     latest.current.opts = opts;
   });
-  const running = useRef<AbortController | undefined>(undefined);
-  const url = useRef<string | null>(null);
+  const run = useRef<PdfRun<ReactElement> | undefined>(undefined);
+  run.current ??= new PdfRun(browserRenderer.renderToBlob, setState, () => latest.current.opts);
 
-  const update = useCallback((next?: ReactElement) => {
-    if (next !== undefined) latest.current.element = next;
-    const doc = latest.current.element;
-    if (doc === undefined) return;
-    running.current?.abort();
-    const controller = new AbortController();
-    running.current = controller;
-    const { signal } = controller;
-    setState((s) => ({ ...s, loading: true }));
-    renderToBlob(doc, { ...latest.current.opts, signal }).then(
-      (blob) => {
-        if (signal.aborted) return;
-        if (url.current) URL.revokeObjectURL(url.current);
-        url.current = URL.createObjectURL(blob);
-        setState({ blob, url: url.current, loading: false, error: null });
-      },
-      (error: unknown) => {
-        if (signal.aborted) return;
-        setState((s) => ({ ...s, loading: false, error }));
-      },
-    );
-  }, []);
+  const update = useCallback((next?: ReactElement) => run.current?.update(next), []);
 
   useEffect(() => {
-    update();
-    return () => {
-      running.current?.abort();
-      if (url.current) URL.revokeObjectURL(url.current);
-      url.current = null;
-      // React also cleans up without unmounting (a hidden `<Activity>`): no revoked URL to show.
-      setState((s) => ({ ...s, url: null }));
-    };
-  }, [update]);
+    const pdf = run.current;
+    pdf?.update(pdf.document ?? latest.current.element);
+    // React also cleans up without unmounting (a hidden `<Activity>`): stopped, it shows no
+    // revoked URL.
+    return () => pdf?.stop();
+  }, []);
 
   return { ...state, update };
 }
@@ -103,10 +77,7 @@ export function usePdf(element?: ReactElement, opts: BrowserRenderOptions = {}):
 function sameElement(prev: ReactElement, next: ReactElement): boolean {
   if (prev === next) return true;
   if (prev.type !== next.type || prev.key !== next.key) return false;
-  const a = prev.props as Record<string, unknown>;
-  const b = next.props as Record<string, unknown>;
-  const keys = Object.keys(a);
-  return keys.length === Object.keys(b).length && keys.every((k) => Object.is(a[k], b[k]));
+  return sameProps(prev.props as Record<string, unknown>, next.props as Record<string, unknown>);
 }
 
 /**

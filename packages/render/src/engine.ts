@@ -1,9 +1,7 @@
+// The engine boundary: everything else in this package talks to the engine through these
+// functions, which go through the entry's `EngineHost` (host.ts).
 import type { Document } from '@inkoxide/schema';
 import { SCHEMA_VERSION } from '@inkoxide/schema';
-/**
- * The engine boundary: everything else in this package talks to the engine through these
- * functions, which go through the entry's `EngineHost` (host.ts).
- */
 import { fonts, type OutputOptions } from '@inkoxide/tree';
 import type { RenderOptions } from 'inkoxide';
 

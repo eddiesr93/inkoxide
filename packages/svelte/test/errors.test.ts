@@ -4,9 +4,10 @@ import { describe, expect, it } from 'vitest';
 
 import View from '../src/components/View.svelte';
 import { renderTemplate, TemplateError } from '../src/index.ts';
+import Holder from './fixtures/Holder.svelte';
 import Misplaced from './fixtures/Misplaced.svelte';
 import Paged from './fixtures/Paged.svelte';
-import Throws from './fixtures/Throws.svelte';
+import Raw from './fixtures/Raw.svelte';
 import Unpaged from './fixtures/Unpaged.svelte';
 
 const fonts = new FontRegistry();
@@ -29,8 +30,20 @@ describe('errors', () => {
     expect(e.componentStack).toBe('\n    in View\n    in Text\n    in Page\n    in Document');
   });
 
-  it('reports what a template throws', () => {
-    expect(thrown(() => renderTemplate(Throws, { fonts })).message).toBe('The template threw: boom');
+  it('reports what a template throws, with the components it is in', () => {
+    const e = thrown(() => renderTemplate(Holder, { fonts }));
+    expect(e.message).toBe('The template threw: boom');
+    expect(e.componentStack).toBe(
+      '\n    in Throws\n    in Text\n    in Page\n    in Document\n    in Holder',
+    );
+  });
+
+  it('refuses an Inkoxide element its component did not render', () => {
+    const e = thrown(() => renderTemplate(Raw, { fonts }));
+    expect(e.message).toBe(
+      '<ink-view> is rendered by the View component: write <View>, not the element, and no Inkoxide markup in {@html}.',
+    );
+    expect(e.componentStack).toBe('\n    in Page\n    in Document');
   });
 
   it('says where usePage() works', () => {

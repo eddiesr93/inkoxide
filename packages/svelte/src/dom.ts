@@ -16,4 +16,5 @@ const domMounter: Mounter = (component, props, context, table) => {
   }
 };
 
-export const { renderTemplate, renderToTree } = svelteTemplates(domMounter);
+export const templates = svelteTemplates(domMounter);
+export const { renderTemplate, renderToTree } = templates;

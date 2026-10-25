@@ -6,11 +6,13 @@
  */
 import {
   BOOLEAN_PROPS,
+  formatStack,
   hostName,
   type HostType,
   type Instance,
   type Node,
   TAGS,
+  TemplateError,
   type Trace,
 } from '@inkoxide/tree';
 
@@ -65,6 +67,13 @@ function propsOf(table: Capture, tag: string, id: string | null): Record<string,
 /** An element: a component's, with its props, or another, kept as it is. */
 function element(table: Capture, tag: string, id: string | null, parent: Instance | undefined): Instance {
   const known = TAGS.get(tag);
+  if (known && (id === null || table.items[Number(id)]?.tag !== tag)) {
+    // Not rendered by its component: written in the template, or in markup `{@html}` inserts.
+    throw new TemplateError(
+      `<${tag}> is rendered by the ${hostName(known.type)} component: write <${hostName(known.type)}>, not the element, and no Inkoxide markup in {@html}.`,
+      { kind: 'structure', componentStack: formatStack(trace(parent)) },
+    );
+  }
   return {
     kind: 'element',
     type: (known?.type ?? tag) as HostType,

@@ -1,3 +1,7 @@
+// Angular's renderer for Inkoxide: a `RendererFactory2` whose renderers create and insert host
+// nodes of `@inkoxide/tree` instead of DOM nodes. A template component renders once: it is
+// created, its inputs set, and its view checked once, synchronously.
+
 import {
   createComponent,
   createEnvironmentInjector,
@@ -12,14 +16,12 @@ import {
   type TemplateRef,
   type Type,
 } from '@angular/core';
-// Angular's renderer for Inkoxide: a `RendererFactory2` whose renderers create and insert host
-// nodes of `@inkoxide/tree` instead of DOM nodes. A template component renders once: it is
-// created, its inputs set, and its view checked once, synchronously.
 import {
   BOOLEAN_PROPS,
-  checkTree,
   type Container,
   dedupe,
+  finishTemplate,
+  formatStack,
   hostName,
   type HostType,
   type Instance,
@@ -29,8 +31,8 @@ import {
   TAGS,
   TemplateError,
   type TextInstance,
+  templateError,
   type Trace,
-  trimTemplateText,
 } from '@inkoxide/tree';
 
 /** The page a `render` template renders for: `inject(INK_PAGE)` in a component inside it. */
@@ -212,11 +214,24 @@ class InkRenderer implements Renderer2 {
     if (node.kind === 'text') node.text = value;
   }
 
-  // Listeners mean nothing in a PDF.
-  listen(): () => void {
-    return () => {};
+  listen(target: AnyNode | string, event: string): () => void {
+    const name =
+      typeof target === 'string' || target.kind !== 'element' ? 'An element' : `<${hostName(target.type)}>`;
+    throw new TemplateError(
+      `${name} takes no listener (${event}): nothing happens in a PDF. Remove the (${event}) binding.`,
+      {
+        kind: 'props',
+        componentStack:
+          typeof target === 'string' || target.kind !== 'element'
+            ? undefined
+            : formatStack(elementTrace(target.type)(target.origin)),
+      },
+    );
   }
 }
+
+/** The last component of each name a render created, for the stacks of what templates throw. */
+const owners = new Map<string, Owner>();
 
 /** Gives each component's template a renderer that knows the component, for the stacks. */
 class InkRendererFactory implements RendererFactory2 {
@@ -225,6 +240,7 @@ class InkRendererFactory implements RendererFactory2 {
     if (host) componentHosts.add(host as AnyNode);
     const component = (type as { type?: { name?: string } }).type;
     const owner: Owner = { name: component?.name || undefined, host: (host as AnyNode | null) ?? undefined };
+    if (owner.name) owners.set(owner.name, owner);
     return new InkRenderer(owner);
   }
 }
@@ -263,20 +279,53 @@ function environmentInjector(): EnvironmentInjector {
   return environment;
 }
 
-/** Turns what a template threw into a TemplateError. */
-function templateError(error: unknown): TemplateError {
-  if (error instanceof TemplateError) return error;
-  const message = error instanceof Error ? error.message : String(error);
-  return new TemplateError(`The template threw: ${message}`, { kind: 'render', cause: error });
+/**
+ * The components of an Angular error's stack trace, innermost first: each component's template is
+ * a function named after it (`Invoice_Template`, `Invoice_For_3_Template`), and its constructor
+ * and methods are its class's. The templates of a component's `ng-template`s run inside the
+ * components they are given to, so each name keeps its outermost place. Empty when the code is
+ * bundled without names.
+ */
+export function angularStack(error: unknown): string | undefined {
+  const trace = error instanceof Error ? error.stack : undefined;
+  if (!trace) return undefined;
+  const names = [
+    ...trace.matchAll(
+      /\bat (?:new )?([A-Z][\w$]*?)(?:_[\w$]*)?(?:_Template|_Factory|\.[\w$]+)?\b(?= \(|$)/gm,
+    ),
+  ]
+    .map((m) => m[1] as string)
+    .filter(
+      (name) =>
+        !/^(?:Object|Array|Function|Promise|Reflect|R3Injector|ChainedInjector|NodeInjector|ComponentFactory|ViewRef|ApplicationRef|InkRenderer|InkRendererFactory|Module|ModuleJob|Error|TypeError)$/.test(
+          name,
+        ),
+    );
+  const outermost = names.filter((name, i) => !names.includes(name, i + 1));
+  const [innermost] = outermost;
+  if (innermost === undefined) return undefined;
+  // A component's template runs from its parent's check, not from its parent's template: the
+  // components around it are those around the element it was rendered in.
+  const around = ownerNames(owners.get(innermost));
+  return formatStack(dedupe([...outermost, ...around.filter((n) => !outermost.includes(n))]));
 }
 
-/** Reads a finished render: host elements of components replaced, white space trimmed, checked. */
-function finish(nodes: readonly AnyNode[], parent?: HostType): Container {
-  const container: Container = parent === undefined ? { children: [] } : { children: [], parent };
-  container.children = trimTemplateText(read(nodes), parent);
-  checkTree(container);
-  return container;
+/** Runs Angular, reading as many frames of what it throws as a stack needs. */
+function rendered<T>(run: () => T): T {
+  const limit = Error.stackTraceLimit;
+  Error.stackTraceLimit = Math.max(limit, 200);
+  try {
+    return run();
+  } catch (e) {
+    throw templateError(e, angularStack(e));
+  } finally {
+    Error.stackTraceLimit = limit;
+  }
 }
+
+/** Reads a finished render: host elements of components replaced, then as every template front end does. */
+const finish = (nodes: readonly AnyNode[], parent?: HostType): Container =>
+  finishTemplate(read(nodes), parent);
 
 /**
  * Renders a component into host nodes, synchronously: created with `inputs`, checked once, then
@@ -284,16 +333,15 @@ function finish(nodes: readonly AnyNode[], parent?: HostType): Container {
  */
 export function mount(component: Type<unknown>, inputs: Record<string, unknown> = {}): Container {
   const root: Foreign = { kind: 'element', type: 'root', props: {}, children: [], origin: undefined };
-  try {
+  owners.clear();
+  rendered(() => {
     const ref = createComponent(component, {
       environmentInjector: environmentInjector(),
       hostElement: root as unknown as Element,
     });
     for (const [name, value] of Object.entries(inputs)) ref.setInput(name, value);
     ref.changeDetectorRef.detectChanges();
-  } catch (e) {
-    throw templateError(e);
-  }
+  });
   return finish(root.children as AnyNode[]);
 }
 
@@ -311,12 +359,11 @@ export function renderPage(inst: Instance, page: PageInfo): Node[] {
       },
     );
   }
-  try {
+  const nodes = rendered(() => {
     const injector = Injector.create({ providers: [{ provide: INK_PAGE, useValue: page }] });
     const view = template.createEmbeddedView({ $implicit: page, ...page }, injector);
     view.detectChanges();
-    return finish(view.rootNodes as AnyNode[], inst.type).children;
-  } catch (e) {
-    throw templateError(e);
-  }
+    return view.rootNodes as AnyNode[];
+  });
+  return finish(nodes, inst.type).children;
 }

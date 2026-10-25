@@ -1,8 +1,6 @@
+// Every front end exports the same names, from the same entries: what the guide documents for
+// one is there in each.
 import * as react from '@inkoxide/react';
-/**
- * Every front end exports the same names, from the same entries: what the guide documents for
- * one is there in each.
- */
 // Angular's libraries are partially compiled; outside an Angular build they need the JIT compiler.
 import '@angular/compiler';
 import * as reactBrowser from '@inkoxide/react/browser';
@@ -12,7 +10,33 @@ import * as vueBrowser from '@inkoxide/vue/browser';
 import * as vueTemplates from '@inkoxide/vue/templates';
 import { describe, expect, it } from 'vitest';
 
-const names = (m: object) => Object.keys(m).sort();
+/** What only @inkoxide/react exports: what it exported before 1.0, for the code that uses it. */
+const REACT_COMPAT = new Set([
+  'FontRegistry',
+  'HOST',
+  'HOST_NAME',
+  'assertValidTree',
+  'familyKey',
+  'fontStretchValue',
+  'fontVariationsValue',
+  'fontWeightValue',
+  'fonts',
+  'imageSource',
+  'innermostComponent',
+  'isImagePath',
+  'loadTailwind',
+  'parsePath',
+  'remoteAllowed',
+  'remoteRefused',
+  'validateTree',
+]);
+
+const sorted = (list: string[]) => [...list].sort();
+
+const names = (m: object) =>
+  Object.keys(m)
+    .filter((n) => !REACT_COMPAT.has(n))
+    .sort();
 
 describe.each([['Vue', vue, vueBrowser, vueTemplates]] as const)('%s', (_, main, browser, templates) => {
   it('exports the names of @inkoxide/react', () => {
@@ -31,6 +55,8 @@ describe.each([['Vue', vue, vueBrowser, vueTemplates]] as const)('%s', (_, main,
 /** React's names that Angular writes its own way: components are elements, hooks are inject functions. */
 const ANGULAR_OWN = { usePage: 'injectPage', usePdf: 'injectPdf' } as const;
 const REACT_ONLY_IN_ANGULAR = new Set(['BlobProvider', 'PdfDownloadLink', 'PdfViewer']);
+/** Angular's browser components are directives on the elements they drive. */
+const ANGULAR_DIRECTIVES = ['InkBlobProvider', 'InkPdfDownload', 'InkPdfViewer'];
 
 describe('Angular', () => {
   const components = new Set(
@@ -58,7 +84,7 @@ describe('Angular', () => {
   it('does the same in its browser and templates entries', async () => {
     const browser = await import('@inkoxide/angular/browser');
     const templates = await import('@inkoxide/angular/templates');
-    expect(names(browser)).toEqual(angularNames(names(reactBrowser)));
+    expect(names(browser)).toEqual(sorted([...angularNames(names(reactBrowser)), ...ANGULAR_DIRECTIVES]));
     expect(names(templates)).toEqual(names(reactTemplates));
   });
 });
@@ -76,5 +102,18 @@ describe('Svelte', () => {
     expect(names(main)).toEqual(names(react));
     expect(names(browser)).toEqual(svelteNames(names(reactBrowser)));
     expect(names(templates)).toEqual(names(reactTemplates));
+  });
+});
+
+describe('components', () => {
+  it('every front end has every component of @inkoxide/tree', async () => {
+    const { COMPONENTS, TAGS } = await import('@inkoxide/tree');
+    const svelte = await import('@inkoxide/svelte');
+    for (const entry of [react, vue, svelte]) {
+      expect(COMPONENTS.filter((name) => !(name in entry))).toEqual([]);
+    }
+    // Angular writes them as elements.
+    const { tagName } = await import('@inkoxide/tree');
+    expect(COMPONENTS.filter((name) => !TAGS.has(tagName(name)))).toEqual([]);
   });
 });

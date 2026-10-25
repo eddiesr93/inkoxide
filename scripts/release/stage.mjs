@@ -28,8 +28,8 @@ const fail = failer('stage');
  * - `sideEffects`: false for a package with no import-time side effects (module state only, no
  *   I/O or globals);
  * - `assets`: the fonts and hyphenation patterns of @inkoxide/render;
- * - `svelte`: the package ships Svelte components (`.svelte` files, copied as they are, with their
- *   imports of `.ts` files pointed at the emitted `.js`);
+ * - `svelte`: the package ships Svelte components (`.svelte` files and their `.svelte.d.ts`,
+ *   copied as they are, with their imports of `.ts` files pointed at the emitted `.js`);
  * - `extras`: files and directories of packages/<name> published next to `dist`, which its
  *   README links through jsDelivr.
  *
@@ -108,7 +108,8 @@ function build(name, svelte = false) {
   execFileSync(process.execPath, [TSC, '-p', join(dir, 'tsconfig.build.json')], { stdio: 'inherit' });
   const src = join(dir, 'src');
   for (const file of walk(src)) {
-    if (/\.(ts|tsx|md)$/.test(file)) continue;
+    // The types of Svelte components are written by hand or generated, next to them.
+    if (/\.(ts|tsx|md)$/.test(file) && !file.endsWith('.svelte.d.ts')) continue;
     const target = join(dist, relative(src, file));
     if (existsSync(target)) continue;
     mkdirSync(dirname(target), { recursive: true });

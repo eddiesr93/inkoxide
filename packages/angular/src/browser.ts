@@ -29,5 +29,6 @@ export {
   version,
 } from '@inkoxide/render/browser';
 export { generate, renderToBlob, renderToBuffer, renderToStream } from './browser-render.ts';
+export { type BlobProviderContext, InkBlobProvider, InkPdfDownload, InkPdfViewer } from './directives.ts';
 export { injectPdf, type InjectPdfResult } from './helpers.ts';
-export type { TemplateLike } from './template-render.ts';
+export type { TemplateLike } from './front-end.ts';

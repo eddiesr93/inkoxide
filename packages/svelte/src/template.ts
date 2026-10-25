@@ -1,20 +1,17 @@
 // Svelte templates to document trees: the component renders once, then what it rendered is read
 // into host nodes and walked into the schema tree.
-import type { Document } from '@inkoxide/schema';
 import {
-  buildDocument,
-  checkTree,
   type Container,
+  finishTemplate,
+  formatStack,
   type HostType,
   type Instance,
-  loadTailwind,
   type Node,
   type PageInfo,
   type RenderPage,
-  TemplateError,
-  type TreeOptions,
-  type TreeResult,
-  trimTemplateText,
+  templateError,
+  type TemplateFunctions,
+  templateFunctions,
 } from '@inkoxide/tree';
 import type { Component, Snippet } from 'svelte';
 
@@ -48,10 +45,32 @@ export const componentName = (input: Renderable): string => {
   return (c?.name && c.name.replace(/^_?/, '')) || 'document';
 };
 
-function templateError(error: unknown): TemplateError {
-  if (error instanceof TemplateError) return error;
-  const message = error instanceof Error ? error.message : String(error);
-  return new TemplateError(`The template threw: ${message}`, { kind: 'render', cause: error });
+/**
+ * The components of a Svelte error's stack trace, innermost first: Svelte keeps no component stack,
+ * but each component is the function of its file (`Invoice.svelte`). A component's snippets run
+ * inside the components it gives them to, so a file's frames come before those of the components
+ * around it too: each name keeps its outermost place. Empty when the code is bundled without file
+ * names.
+ */
+export function svelteStack(error: unknown): string | undefined {
+  const trace = error instanceof Error ? error.stack : undefined;
+  if (!trace) return undefined;
+  const files = [...trace.matchAll(/([^/\\\s()]+)\.svelte(?:\?[^:\s)]*)?:\d+/g)].map((m) => m[1] as string);
+  const names = files.filter((name, i) => name !== 'PageRoot' && !files.includes(name, i + 1));
+  return names.length ? formatStack(names) : undefined;
+}
+
+/** Renders `component` with Svelte, reading as many frames of what it throws as a stack needs. */
+function rendered<T>(render: () => T): T {
+  const limit = Error.stackTraceLimit;
+  Error.stackTraceLimit = Math.max(limit, 200);
+  try {
+    return render();
+  } catch (e) {
+    throw templateError(e, svelteStack(e));
+  } finally {
+    Error.stackTraceLimit = limit;
+  }
 }
 
 /** Renders and reads, then checks the nodes inside `parent` (the host type of a `render` snippet). */
@@ -66,20 +85,14 @@ function run(
   const table: Capture = { items: [] };
   const context = new Map(contexts);
   context.set(CAPTURE, table);
-  let nodes: Node[];
-  try {
-    nodes = mounter(component, props, context, table);
-  } catch (e) {
-    throw templateError(e);
-  }
-  const container: Container = parent === undefined ? { children: [] } : { children: [], parent };
-  container.children = trimTemplateText(nodes, parent);
-  checkTree(container);
-  return container;
+  return finishTemplate(
+    rendered(() => mounter(component, props, context, table)),
+    parent,
+  );
 }
 
 /** The functions of the Svelte front end, for the way renders run where it runs. */
-export function svelteTemplates(mounter: Mounter) {
+export function svelteTemplates(mounter: Mounter): TemplateFunctions<Renderable> {
   const renderPage: RenderPage = (inst: Instance, page: PageInfo): Node[] => {
     const { snippet, contexts } = inst.props.render as {
       snippet: Snippet<[PageInfo]>;
@@ -88,25 +101,11 @@ export function svelteTemplates(mounter: Mounter) {
     return run(mounter, PageRoot, { snippet, page }, contexts, inst.type).children;
   };
 
-  /**
-   * Renders a Svelte template to an Inkoxide document. Synchronous: the component renders once,
-   * then what it made is walked into the schema tree. Throws TemplateError.
-   */
-  function renderTemplate(input: Renderable, opts: TreeOptions = {}): TreeResult {
-    const t0 = performance.now();
-    const { component, props = {} } = parts(input);
-    const container = run(mounter, component, props, new Map());
-    return buildDocument(container, { renderPage }, opts, performance.now() - t0);
-  }
-
-  /**
-   * The document tree of a Svelte template (the simple API). Loads Tailwind first when it is
-   * installed. A template error is a rejected promise, not a throw.
-   */
-  async function renderToTree(input: Renderable, opts: TreeOptions = {}): Promise<Document> {
-    await loadTailwind();
-    return renderTemplate(input, opts).document;
-  }
-
-  return { renderTemplate, renderToTree };
+  return templateFunctions(
+    (input: Renderable) => {
+      const { component, props = {} } = parts(input);
+      return run(mounter, component, props, new Map());
+    },
+    { renderPage },
+  );
 }

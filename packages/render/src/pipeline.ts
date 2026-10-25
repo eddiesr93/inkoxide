@@ -46,11 +46,11 @@ export interface TemplateLike<S extends z.ZodType = z.ZodType, C = unknown> {
  */
 export interface FrontEnd<Input, C> {
   /** The tree of `input`, built with `opts`. Throws TemplateError for a problem in the template. */
-  tree(input: Input, opts: TreeOptions): TreeResult;
+  renderTemplate(input: Input, opts: TreeOptions): TreeResult;
   /** What renders the template component `Template` with `{ data }`. */
   withData(Template: C, data: unknown): Input;
   /** The name of the component `input` renders, for errors (`Invoice`); `'document'` when unknown. */
-  name(input: Input): string;
+  componentName(input: Input): string;
 }
 
 /** The options of `generate`: those of `renderToBuffer`. */
@@ -146,7 +146,7 @@ function templateTree<S extends z.ZodType, I, C>(
 ): TreeResult {
   const imageOptions = treeImageOptions(policies);
   try {
-    return fe.tree(fe.withData(t.Template, data), {
+    return fe.renderTemplate(fe.withData(t.Template, data), {
       ...imageOptions,
       imageIds: Object.keys({ ...t.images, ...opts.images }),
     });
@@ -485,13 +485,13 @@ export async function renderToBuffer<I, C>(
   opts: RenderToBufferOptions = {},
 ): Promise<Uint8Array> {
   await init();
-  const name = fe.name(input);
+  const name = fe.componentName(input);
   // Outside the try: a bad option is not a template error.
   const policies = imagePolicies(opts);
   const imageOptions = treeImageOptions(policies);
   let tree: TreeResult;
   try {
-    tree = fe.tree(input, {
+    tree = fe.renderTemplate(input, {
       ...imageOptions,
       imageIds: Object.keys(opts.images ?? {}),
     });

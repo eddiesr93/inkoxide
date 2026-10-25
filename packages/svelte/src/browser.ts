@@ -35,4 +35,4 @@ export { default as PdfViewer } from './browser/PdfViewer.svelte';
 export { generate, renderToBlob, renderToBuffer, renderToStream } from './browser-render.ts';
 export { renderTemplate, renderToTree } from './dom.ts';
 export { createPdf, type PdfState } from './helpers.svelte.ts';
-export type { TemplateLike } from './template-render.ts';
+export type { TemplateLike } from './front-end.ts';

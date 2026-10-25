@@ -1,11 +1,18 @@
-import { DestroyRef, effect, inject, isSignal, type Signal, signal, untracked } from '@angular/core';
+// The Angular helper of the browser entry: `injectPdf`, which renders a document to a PDF blob and
+// its URL, again whenever the document changes, as signals a template binds to an `<iframe>` or a
+// link.
+import {
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  isSignal,
+  type Signal,
+  signal,
+  untracked,
+} from '@angular/core';
 import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
-/**
- * The Angular helper of the browser entry: `injectPdf`, which renders a document to a PDF blob and
- * its URL, again whenever the document changes, as signals a template binds to an `<iframe>` or a
- * link.
- */
-import type { BrowserRenderOptions } from '@inkoxide/render/browser';
+import { type BrowserRenderOptions, PdfRun, type PdfSnapshot, sameProps } from '@inkoxide/render/browser';
 
 import { browserRenderer } from './browser-render.ts';
 import type { Renderable } from './template.ts';
@@ -29,10 +36,7 @@ export interface InjectPdfResult {
 function sameDocument(a: Renderable, b: Renderable): boolean {
   if (a === b) return true;
   if (typeof a === 'function' || typeof b === 'function' || a.component !== b.component) return false;
-  const x = a.inputs ?? {};
-  const y = b.inputs ?? {};
-  const keys = Object.keys(x);
-  return keys.length === Object.keys(y).length && keys.every((k) => Object.is(x[k], y[k]));
+  return sameProps(a.inputs, b.inputs);
 }
 
 /**
@@ -47,43 +51,13 @@ export function injectPdf(
   opts: BrowserRenderOptions | (() => BrowserRenderOptions | undefined) = {},
 ): InjectPdfResult {
   const sanitizer = inject(DomSanitizer);
-  const blob = signal<Blob | null>(null);
-  const url = signal<string | null>(null);
-  const safeUrl = signal<SafeResourceUrl | null>(null);
-  const loading = signal(false);
-  const error = signal<unknown>(null);
-  let last: Renderable | undefined;
-  let running: AbortController | undefined;
+  const state = signal<PdfSnapshot>({ blob: null, url: null, loading: false, error: null });
   const options = (): BrowserRenderOptions | undefined => (typeof opts === 'function' ? opts() : opts);
-
-  const update = (next?: Renderable): void => {
-    if (next !== undefined) last = next;
-    if (last === undefined) return;
-    running?.abort();
-    const controller = new AbortController();
-    running = controller;
-    const { signal: aborted } = controller;
-    loading.set(true);
-    browserRenderer.renderToBlob(last, { ...untracked(options), signal: aborted }).then(
-      (pdf) => {
-        if (aborted.aborted) return;
-        const old = url();
-        if (old) URL.revokeObjectURL(old);
-        const made = URL.createObjectURL(pdf);
-        blob.set(pdf);
-        url.set(made);
-        safeUrl.set(sanitizer.bypassSecurityTrustResourceUrl(made));
-        loading.set(false);
-        error.set(null);
-      },
-      (e: unknown) => {
-        if (aborted.aborted) return;
-        loading.set(false);
-        error.set(e);
-      },
-    );
-  };
-
+  const run = new PdfRun<Renderable>(
+    browserRenderer.renderToBlob,
+    (next) => state.set(next),
+    () => untracked(options),
+  );
   const read = (): Renderable | undefined =>
     isSignal(document)
       ? document()
@@ -94,24 +68,22 @@ export function injectPdf(
   effect(() => {
     const next = read();
     untracked(() => {
+      const last = run.document;
       if (next === undefined || (last !== undefined && sameDocument(last, next))) return;
-      update(next);
+      run.update(next);
     });
   });
-  inject(DestroyRef).onDestroy(() => {
-    running?.abort();
-    const old = url();
-    if (old) URL.revokeObjectURL(old);
-    url.set(null);
-    safeUrl.set(null);
-  });
+  inject(DestroyRef).onDestroy(() => run.stop());
 
   return {
-    blob: blob.asReadonly(),
-    url: url.asReadonly(),
-    safeUrl: safeUrl.asReadonly(),
-    loading: loading.asReadonly(),
-    error: error.asReadonly(),
-    update,
+    blob: computed(() => state().blob),
+    url: computed(() => state().url),
+    safeUrl: computed(() => {
+      const url = state().url;
+      return url === null ? null : sanitizer.bypassSecurityTrustResourceUrl(url);
+    }),
+    loading: computed(() => state().loading),
+    error: computed(() => state().error),
+    update: (next) => run.update(next),
   };
 }

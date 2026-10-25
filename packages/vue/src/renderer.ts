@@ -3,19 +3,20 @@
 // for completeness.
 import {
   BOOLEAN_PROPS,
-  checkTree,
+  finishTemplate,
   componentNames,
   type Container,
   dedupe,
   formatStack,
+  hostName,
   type HostType,
   type Instance,
   type Node,
   type PageInfo,
   TemplateError,
   type TextInstance,
+  templateError,
   type Trace,
-  trimTemplateText,
 } from '@inkoxide/tree';
 import {
   camelize,
@@ -125,14 +126,19 @@ const { createApp } = createRenderer<HostNode, Parent>({
     const list = childrenOf(p);
     return list[list.indexOf(node) + 1] ?? null;
   },
-  patchProp(el, key, _prev, next) {
+  patchProp(el, key, _prev, next, _namespace, parentComponent) {
     if (!('kind' in el)) return;
     if (key === OWNER) {
       el.origin = next;
       return;
     }
-    // Listeners mean nothing in a PDF.
-    if (/^on[A-Z]/.test(key)) return;
+    if (/^on[A-Z]/.test(key) && next !== undefined && next !== null) {
+      const stack = [hostName(el.type), ...(parentComponent ? vueNames(parentComponent) : [])];
+      throw new TemplateError(
+        `<${hostName(el.type)}> takes no listener (${key}): nothing happens in a PDF. Remove the @${key.slice(2, 3).toLowerCase()}${key.slice(3)} binding.`,
+        { kind: 'props', componentStack: formatStack(dedupe(stack)) },
+      );
+    }
     const name = key === 'class' ? 'className' : camelize(key);
     if (next === undefined || next === null) delete el.props[name];
     else el.props[name] = next === '' && BOOLEAN_PROPS.has(name) ? true : next;
@@ -183,9 +189,26 @@ function suspension(
 ): TemplateError | undefined {
   if (!vnode || seen.has(vnode)) return undefined;
   seen.add(vnode);
-  const type = vnode.type as { __isSuspense?: boolean; __asyncLoader?: unknown; __asyncResolved?: unknown };
+  const type = vnode.type as {
+    __isSuspense?: boolean;
+    __asyncLoader?: unknown;
+    __asyncResolved?: unknown;
+    __vapor?: boolean;
+    name?: string;
+    __name?: string;
+  };
   if (type && typeof type === 'object' && type.__isSuspense) {
     return new TemplateError(`A component used <Suspense>. ${advice}`, { kind: 'render' });
+  }
+  if (type && typeof type === 'object' && type.__vapor) {
+    const name = type.name ?? type.__name ?? 'A component';
+    return new TemplateError(
+      `${name} is a Vapor component, which renders without VNodes, so Inkoxide's renderer never sees it. Write PDF templates as ordinary components (no <script setup vapor>).`,
+      {
+        kind: 'render',
+        componentStack: vnode.component ? formatStack(vueNames(vnode.component)) : undefined,
+      },
+    );
   }
   const c = vnode.component;
   if (c) {
@@ -219,7 +242,7 @@ function suspension(
  * renders into. Throws a TemplateError with the component stack.
  */
 export function mount(root: object, parent?: HostType): Container {
-  const container: Container = parent === undefined ? { children: [] } : { children: [], parent };
+  const container: Container = { children: [] };
   let captured: { error: unknown; instance: ComponentInternalInstance | null } | undefined;
   const app = createApp(root);
   app.config.errorHandler = (error: unknown, instance: ComponentPublicInstance | null) => {
@@ -233,22 +256,10 @@ export function mount(root: object, parent?: HostType): Container {
   }
   if (captured) {
     const { error, instance } = captured;
-    const componentStack = instance ? formatStack(vueNames(instance)) : undefined;
-    if (error instanceof TemplateError) {
-      error.componentStack ??= componentStack;
-      throw error;
-    }
-    const message = error instanceof Error ? error.message : String(error);
-    throw new TemplateError(`The template threw: ${message}`, {
-      kind: 'render',
-      componentStack,
-      cause: error,
-    });
+    throw templateError(error, instance ? formatStack(vueNames(instance)) : undefined);
   }
   const top = (app as unknown as { _instance: ComponentInternalInstance | null })._instance;
   const suspended = suspension(top?.subTree as unknown as VNodeLike);
   if (suspended) throw suspended;
-  container.children = trimTemplateText(uncomment(container.children), parent);
-  checkTree(container);
-  return container;
+  return finishTemplate(uncomment(container.children), parent);
 }

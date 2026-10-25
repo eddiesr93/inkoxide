@@ -499,3 +499,164 @@ export class Report {
   max = () => Math.max(...this.monthly.map((d) => d.revenue));
   bar = () => this.w / this.monthly.length;
 }
+
+@Component({
+  selector: 'app-section',
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `
+    <ink-view class="mb-6">
+      <ink-text class="mb-3 text-[7.5pt] font-bold uppercase tracking-widest text-sky-700">{{
+        title
+      }}</ink-text>
+      <ng-content />
+    </ink-view>
+  `,
+})
+export class Section {
+  @Input() title = '';
+}
+
+@Component({
+  selector: 'app-resume',
+  imports: [Section],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `
+    <ink-document [title]="name + ' — Résumé'" [author]="name">
+      <ink-page size="A4" class="text-[8.5pt] leading-snug text-slate-800">
+        <ink-view class="grid flex-1 grid-cols-[170pt_1fr]">
+          <ink-view class="bg-slate-900 px-8 py-12 text-slate-300">
+            <ink-view class="mb-5 h-16 w-16 items-center justify-center rounded-full bg-sky-500">
+              <ink-text class="text-xl font-bold text-white">{{ initials() }}</ink-text>
+            </ink-view>
+            <ink-text class="text-xl font-bold leading-tight text-white">{{ name }}</ink-text>
+            <ink-text class="mb-8 text-sky-300">{{ title }}</ink-text>
+            <ink-text class="mb-2 text-[7.5pt] font-bold uppercase tracking-widest text-slate-400"
+              >Contact</ink-text
+            >
+            <ink-view class="mb-8 gap-1">
+              @for (c of contact; track c) {
+                <ink-text>{{ c }}</ink-text>
+              }
+            </ink-view>
+            @for (s of skills; track s.group) {
+              <ink-view class="mb-5">
+                <ink-text class="mb-2 text-[7.5pt] font-bold uppercase tracking-widest text-slate-400">{{
+                  s.group
+                }}</ink-text>
+                <ink-view class="flex-row flex-wrap gap-1">
+                  @for (it of s.items; track it) {
+                    <ink-text class="rounded bg-slate-800 px-1.5 py-0.5 text-[7.5pt] text-slate-200">{{
+                      it
+                    }}</ink-text>
+                  }
+                </ink-view>
+              </ink-view>
+            }
+          </ink-view>
+          <ink-view class="px-10 py-12">
+            <app-section title="Profile">
+              <ink-text class="text-[9pt] leading-relaxed text-slate-600">{{ summary }}</ink-text>
+            </app-section>
+            <app-section title="Experience">
+              @for (j of jobs; track j.company) {
+                <ink-view class="mb-4" break="avoid">
+                  <ink-view class="flex-row items-baseline justify-between">
+                    <ink-text class="text-[10pt] font-bold text-slate-900">{{ j.role }}</ink-text>
+                    <ink-text class="text-slate-400">{{ j.period }}</ink-text>
+                  </ink-view>
+                  <ink-text class="mb-1.5 text-sky-700">{{ j.company }}</ink-text>
+                  @for (p of j.points; track p) {
+                    <ink-view class="mb-0.5 flex-row gap-2">
+                      <ink-text class="text-sky-500">•</ink-text>
+                      <ink-text class="flex-1 text-slate-600">{{ p }}</ink-text>
+                    </ink-view>
+                  }
+                </ink-view>
+              }
+            </app-section>
+            <app-section title="Education">
+              @for (e of education; track e.degree) {
+                <ink-view class="flex-row justify-between">
+                  <ink-view>
+                    <ink-text class="font-bold text-slate-900">{{ e.degree }}</ink-text>
+                    <ink-text class="text-slate-500">{{ e.school }}</ink-text>
+                  </ink-view>
+                  <ink-text class="text-slate-400">{{ e.year }}</ink-text>
+                </ink-view>
+              }
+            </app-section>
+          </ink-view>
+        </ink-view>
+      </ink-page>
+    </ink-document>
+  `,
+})
+export class Resume {
+  @Input() name = '';
+  @Input() title = '';
+  @Input() contact: string[] = [];
+  @Input() summary = '';
+  @Input() skills: { group: string; items: string[] }[] = [];
+  @Input() jobs: { role: string; company: string; period: string; points: string[] }[] = [];
+  @Input() education: { degree: string; school: string; year: string }[] = [];
+  initials = () =>
+    this.name
+      .split(' ')
+      .map((n) => n[0])
+      .join('');
+}
+
+@Component({
+  selector: 'app-features',
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `
+    <ink-document [title]="title">
+      <ink-page size="A5" [style]="{ padding: 30 }">
+        <ink-footer>
+          <ink-text [render]="footer" />
+          <ng-template #footer let-page>Page {{ page.pageNumber }} of {{ page.totalPages }}</ng-template>
+        </ink-footer>
+        <ink-text [inkStyle]="{ fontSize: 12, '@media (min-width: 400pt)': { fontSize: 18 } }">{{
+          title
+        }}</ink-text>
+        <ink-view class="flex-row gap-2">
+          @for (item of items; track item; let i = $index) {
+            <ink-text [class]="i === 0 ? 'font-bold' : 'text-gray-500'">{{ item }}</ink-text>
+          }
+        </ink-view>
+        <ink-text
+          >A <ink-link href="https://example.com">link</ink-link> and a note
+          <ink-note>Read me</ink-note>.</ink-text
+        >
+        <ink-image src="logo" [style]="{ width: 24, height: 24 }" />
+        <ink-svg [width]="60" [height]="30" viewBox="0 0 60 30">
+          <ink-circle [cx]="15" [cy]="15" [r]="10" fill="#0ea5e9" />
+          <ink-text [x]="30" [y]="20" [fontSize]="10">S<ink-tspan fill="red">vg</ink-tspan></ink-text>
+        </ink-svg>
+        <ink-canvas [width]="40" [height]="20" [paint]="paint" />
+        <ink-view class="flex-row gap-2">
+          <ink-text-field name="name" value="Ada" class="h-5 w-24 border border-gray-300" />
+          <ink-checkbox name="agree" checked class="h-3 w-3 border border-gray-400" />
+        </ink-view>
+      </ink-page>
+    </ink-document>
+  `,
+})
+export class Features {
+  @Input() title = '';
+  @Input() items: string[] = [];
+  readonly paint = (
+    p: { rect(x: number, y: number, w: number, h: number): { fill(c: string): void } },
+    w: number,
+    h: number,
+  ) => {
+    p.rect(0, 0, w, h).fill('#fde68a');
+  };
+}
+
+@Component({
+  selector: 'app-misplaced',
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: '<ink-document><ink-page><ink-text>Hi <ink-view /></ink-text></ink-page></ink-document>',
+})
+export class Misplaced {}

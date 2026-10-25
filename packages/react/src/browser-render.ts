@@ -1,8 +1,7 @@
 import { createRenderer, type GenerateOptions, type RenderResult } from '@inkoxide/render/browser';
 import type { z } from 'zod';
 
-import { react } from './front-end.ts';
-import type { TemplateLike } from './template-render.ts';
+import { react, type TemplateLike } from './front-end.ts';
 
 /** React's functions in a browser: the engine in a Web Worker. */
 export const browserRenderer = createRenderer(react);
@@ -28,4 +27,4 @@ export const generate: <S extends z.ZodType>(
   t: TemplateLike<S>,
   data: unknown,
   opts?: GenerateOptions,
-) => Promise<RenderResult> = browserRenderer.generate as never;
+) => Promise<RenderResult> = browserRenderer.generate;

@@ -38,4 +38,4 @@ export {
   usePdf,
   type UsePdfResult,
 } from './helpers.ts';
-export type { TemplateLike } from './template-render.ts';
+export type { TemplateLike } from './front-end.ts';

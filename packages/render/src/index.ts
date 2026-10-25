@@ -1,6 +1,6 @@
 // `@inkoxide/render`: the engine with its bundled fonts and assets, for every front end. It renders
 // documents (`renderDocument`), and `createRenderer` gives a front end (`@inkoxide/react`,
-// `@inkoxide/vue`, …) the functions it exports. Every name here is documented in GUIDE.md;
+// `@inkoxide/vue`, …) the functions it exports. Every name here is documented in README.md;
 // test/exports.test.ts pins the list. Templates served by id: `@inkoxide/render/templates`.
 // In Node: the native binding, and the bundled assets from disk.
 import './node-host.ts';

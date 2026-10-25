@@ -1,12 +1,10 @@
+// Where each component may go: the rules every front end checks as it creates host nodes
+// (`checkElement`, `checkText`), or after, on the whole tree (`checkTree`).
+
 import { HOST, type HostType } from './components/index.ts';
 import { TemplateError } from './errors.ts';
 import { componentStack, type Container, hostName, isHostType, type Node } from './nodes.ts';
 import { SVG_TAGS } from './tree/svg.ts';
-
-/**
- * Where each component may go: the rules every front end checks as it creates host nodes
- * (`checkElement`, `checkText`), or after, on the whole tree (`checkTree`).
- */
 
 export interface HostContext {
   /**
@@ -17,7 +15,7 @@ export interface HostContext {
   parent: HostType | 'root' | (string & {});
 }
 
-export const ROOT_CONTEXT: HostContext = { parent: 'root' };
+const ROOT_CONTEXT: HostContext = { parent: 'root' };
 const contexts = new Map<string, HostContext>();
 export const contextFor = (parent: string): HostContext => {
   let c = contexts.get(parent);
