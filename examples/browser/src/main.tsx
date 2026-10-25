@@ -1,6 +1,6 @@
 // The page: the invoice in the browser's PDF viewer and a link that downloads it, both rendered
 // in the engine's Web Worker; and a few hooks for the tests.
-import { engineStatus, PdfDownloadLink, PdfViewer, renderToBuffer } from '@inkoxide/render/browser';
+import { engineStatus, PdfDownloadLink, PdfViewer, renderToBuffer } from '@inkoxide/react/browser';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 

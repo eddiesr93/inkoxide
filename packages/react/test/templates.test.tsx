@@ -9,6 +9,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
+import { assetsDir } from '../../render/src/node-host.ts';
 import {
   countPages,
   Document,
@@ -25,7 +26,6 @@ import {
   version,
   View,
 } from '../src/index.ts';
-import { assetsDir } from '../src/node-host.ts';
 import {
   generate,
   parseData,

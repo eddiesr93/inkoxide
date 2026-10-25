@@ -14,7 +14,7 @@ import {
   fontStretchValue,
   fontWeightValue,
   type HyphenationCallback,
-} from '@inkoxide/react';
+} from '@inkoxide/tree';
 
 import { sameBytes } from './bytes.ts';
 import { registerEngineFont } from './engine.ts';

@@ -10,7 +10,7 @@ import {
   remoteAllowed,
   remoteRefused,
   type TreeResult,
-} from '@inkoxide/react';
+} from '@inkoxide/tree';
 
 import { base64Bytes } from './bytes.ts';
 import { engineHost, NO_FILES } from './host.ts';

@@ -15,7 +15,7 @@ import {
   Text,
   TotalPages,
   View,
-} from '@inkoxide/render';
+} from '@inkoxide/react';
 
 interface Sale {
   region: string;

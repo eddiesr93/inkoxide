@@ -1,6 +1,6 @@
-# @inkoxide/render guide
+# @inkoxide/react guide
 
-The reference for @inkoxide/render. The [README](README.md) covers installing, the quick start
+The reference for @inkoxide/react. The [README](README.md) covers installing, the quick start
 and the examples.
 
 - [Components](#components)
@@ -152,7 +152,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 ### Tailwind
 
 Write the classes you would write on the web. They are resolved by the Tailwind v4 compiler, in
-`@inkoxide/tailwind`, which you install next to `@inkoxide/render` when you use `className`:
+`@inkoxide/tailwind`, which you install next to `@inkoxide/react` when you use `className`:
 
 ```sh
 npm install @inkoxide/tailwind
@@ -207,7 +207,7 @@ pass to `initTailwind({ css })` from `@inkoxide/tailwind`.
 Add your own fonts with `Font.register`:
 
 ```ts
-import { Font } from '@inkoxide/render';
+import { Font } from '@inkoxide/react';
 
 Font.register({ family: 'Lora', src: './fonts/Lora-Regular.ttf' });
 
@@ -722,7 +722,7 @@ supported: they fail with `TEMPLATE_ERROR`.
 
 `conformance` and `flattenAlpha` are not part of the document tree: to render a stored
 `result.document` again at the same level, pass `pdfA` (and `flattenAlpha`) to
-[`renderDocument`](#serving-templates), from `@inkoxide/render/templates`.
+[`renderDocument`](#serving-templates), from `@inkoxide/react/templates`.
 
 ### Passwords and permissions
 
@@ -800,7 +800,7 @@ reader without it may do:
   It replaces the built-in patterns, so `hyphenate` is not needed with it.
 
   ```ts
-  import { Font } from '@inkoxide/render';
+  import { Font } from '@inkoxide/react';
 
   const whole = new Set(['Inkoxide', 'PostgreSQL']);
   // syllables(word) is your own rules, or a hyphenation library: 'hyphenation' → ['hy', 'phen', 'ation'].
@@ -1470,7 +1470,7 @@ function.
 ## Serving templates
 
 An advanced API, for a server that renders templates by id from JSON data, such as
-`POST /pdf/invoice`. It lives in its own entry, `@inkoxide/render/templates`, and checks the
+`POST /pdf/invoice`. It lives in its own entry, `@inkoxide/react/templates`, and checks the
 data with a [zod](https://zod.dev) 4 schema before React renders anything. Install zod to write
 the schemas:
 
@@ -1481,8 +1481,8 @@ npm install zod
 ```tsx
 import { readFileSync } from 'node:fs';
 
-import { Document, Image, Page, RenderError, Text } from '@inkoxide/render';
-import { generate, type TemplateLike } from '@inkoxide/render/templates';
+import { Document, Image, Page, RenderError, Text } from '@inkoxide/react';
+import { generate, type TemplateLike } from '@inkoxide/react/templates';
 import { z } from 'zod';
 
 const schema = z.object({ number: z.string(), total: z.number() });
@@ -1561,14 +1561,14 @@ options of `generate`), `RenderResult` (what `generate` resolves to), `Timings` 
 
 The same templates render in a browser, with the engine as WebAssembly in a Web Worker, so the
 page keeps responding while it renders. Install the module next to the package, and import
-from `@inkoxide/render/browser`:
+from `@inkoxide/react/browser`:
 
 ```sh
-npm install @inkoxide/render @inkoxide/wasm
+npm install @inkoxide/react @inkoxide/wasm
 ```
 
 ```tsx
-import { PdfDownloadLink, PdfViewer, usePdf } from '@inkoxide/render/browser';
+import { PdfDownloadLink, PdfViewer, usePdf } from '@inkoxide/react/browser';
 
 function InvoicePage({ invoice }: { invoice: InvoiceData }) {
   const doc = <Invoice invoice={invoice} />;
@@ -1617,7 +1617,7 @@ function InvoicePage({ invoice }: { invoice: InvoiceData }) {
   rejects with `INTERNAL`, and the next one starts it again, with its own options. The options (`BrowserOptions`): `wasm` is where the module comes from (a
   URL, a `Response`, its bytes or a compiled `WebAssembly.Module`, of either module); `assets` is
   a folder to serve the bundled fonts and hyphenation patterns from: `fonts/` and `hyphenation/`
-  from `@inkoxide/render`'s `assets/`, with the `.bin` files of `@inkoxide/wasm`'s
+  from `@inkoxide/react`'s `assets/`, with the `.bin` files of `@inkoxide/wasm`'s
   `hyphenation/` in `hyphenation/` too; `threads` is how many threads renders
   use ([below](#threads-in-the-browser)); `worker: false` renders on the calling thread.
 - **`clearCaches()`** empties the engine's caches of decoded images, font subsets and SVG text.
@@ -1631,7 +1631,7 @@ engine's module worker. For the dev server, also add
 `hyphenation/` folder, and a document that hyphenates a language other than English then fails
 with `INTERNAL` (`engineCode` `NOT_LOADED`). [examples/browser](https://github.com/eddiesr93/inkoxide/tree/main/examples/browser)
 is a Vite page; its `vite.config.ts` sets `worker.format`, the policy below, and an alias that
-points `@inkoxide/render` at `@inkoxide/render/browser`, so that components written for Node
+points `@inkoxide/react` at `@inkoxide/react/browser`, so that components written for Node
 import unchanged. To use the engine without React, with document trees as JSON, see
 [`@inkoxide/wasm`](https://github.com/eddiesr93/inkoxide/blob/main/packages/wasm/README.md).
 
@@ -1651,7 +1651,7 @@ the page's origin (`worker-src 'self'`). `<PdfViewer>` shows the PDF from an obj
 cross-origin isolation (COOP and COEP), unless it wants threads.
 
 **From a CDN.** A page cannot start a worker from a script of another origin. When
-`@inkoxide/render` and `@inkoxide/wasm` are served from one (a CDN), the engine's worker, and
+`@inkoxide/react` and `@inkoxide/wasm` are served from one (a CDN), the engine's worker, and
 the pool's threads, start as a worker of the page's origin from a `blob:` URL that imports the
 script. The CDN must serve the scripts and assets with CORS (`Access-Control-Allow-Origin`), and
 the policy needs `worker-src blob:`, with `script-src` and `connect-src` allowing the CDN. On a
@@ -1715,7 +1715,7 @@ documents in milliseconds, with print features built in, such as repeating table
 numbers and PDF/A.
 
 **Does it run in the browser?**
-Yes: import from `@inkoxide/render/browser`, and install `@inkoxide/wasm`, the engine as
+Yes: import from `@inkoxide/react/browser`, and install `@inkoxide/wasm`, the engine as
 WebAssembly. See [In the browser](#in-the-browser).
 
 **The install worked, but the engine does not load.**
@@ -1728,7 +1728,7 @@ the code.
 
 **Every render fails with "No fonts found … Set INKOXIDE_ASSETS_DIR".**
 The bundled fonts and hyphenation patterns are files in the package's `assets/` folder
-(`node_modules/@inkoxide/render/assets`), found next to its code. When a bundler (esbuild,
+(`node_modules/@inkoxide/react/assets`), found next to its code. When a bundler (esbuild,
 webpack) moves the code into one file, for a serverless function say, they are no longer there.
 Copy that folder into the deployment and point the `INKOXIDE_ASSETS_DIR` environment variable at
 the copy: a folder with `fonts/` (the bundled `.ttf` and `.otf` files) and `hyphenation/`

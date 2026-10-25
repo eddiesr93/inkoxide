@@ -1,107 +1,134 @@
 // The React front end without the renderer: the components, and React templates to document trees.
-import type { Document } from '@inkoxide/schema';
-import {
-  buildDocument,
-  componentStack,
-  type Instance,
-  loadTailwind,
-  type Node,
+export {
+  type AbsoluteLength,
+  Attachment,
+  type AttachmentFile,
+  type AttachmentProps,
+  type BookmarkProp,
+  type BreakProp,
+  Canvas,
+  type CanvasProps,
+  Cell,
+  type CellProps,
+  Checkbox,
+  type CheckboxProps,
+  Circle,
+  type CircleProps,
+  ClipPath,
+  type ClipPathProps,
+  type Conformance,
+  Defs,
+  type DefsProps,
+  Document,
+  type DocumentProps,
+  type Edges,
+  Ellipse,
+  type EllipseProps,
+  Field,
+  type FieldProps,
+  FieldSet,
+  type FieldSetProps,
+  type FontStretch,
+  type FontWeightName,
+  Footer,
+  type FooterProps,
+  G,
+  type GradientProps,
+  Header,
+  type HeaderProps,
+  type HyphenationCallback,
+  Image,
+  ImageBackground,
+  type ImageBackgroundProps,
+  type ImageProps,
+  type ImageRequest,
+  type ImageSrc,
+  type ImageSrcValue,
+  type Length,
+  type LengthAuto,
+  type LengthPercent,
+  Line,
+  LinearGradient,
+  type LineProps,
+  Link,
+  type LinkProps,
+  List,
+  type ListProps,
+  Marker,
+  type MarkerProps,
+  type MediaStyle,
+  Note,
+  type NoteProps,
+  Page,
+  PageBreak,
+  type PageBreakProps,
   type PageInfo,
-  type RenderPage,
-  TemplateError,
-  type TreeOptions,
-  type TreeResult,
-} from '@inkoxide/tree';
-import { createElement, type ReactNode } from 'react';
-
-import type { RenderProp } from './components/index.ts';
-import { PageContext, RenderCall } from './page.ts';
-import { renderToInstances } from './reconciler/render.ts';
-
-export * from './components/index.ts';
+  PageNumber,
+  type PagePreset,
+  type PageProps,
+  type PageSize,
+  Path,
+  type PathProps,
+  type Permissions,
+  Polygon,
+  Polyline,
+  type PolyProps,
+  RadialGradient,
+  Radio,
+  type RadioProps,
+  type ReactProps,
+  Rect,
+  type RectProps,
+  type RenderProp,
+  type Role,
+  Row,
+  type RowProps,
+  Select,
+  type SelectProps,
+  Spacer,
+  type SpacerProps,
+  Stop,
+  type StopProps,
+  type Style,
+  type StyleProp,
+  StyleSheet,
+  Svg,
+  type SvgElementProps,
+  type SvgPresentation,
+  type SvgProps,
+  type SvgStyle,
+  type SvgTextProps,
+  Table,
+  type TableProps,
+  Text,
+  TextField,
+  type TextFieldProps,
+  type TextFormat,
+  TextInput,
+  TextPath,
+  type TextPathProps,
+  type TextProps,
+  TotalPages,
+  Tspan,
+  type TspanProps,
+  View,
+  type ViewProps,
+} from './components/index.ts';
 export { usePage } from './page.ts';
 export {
-  assertValidTree,
   type CanvasGradient,
   type CanvasTextOptions,
   type EmojiSource,
-  type EncryptionOptions,
   facturX,
   type FacturXOptions,
   type FacturXProfile,
   facturXRelationship,
-  familyKey,
-  type FontFace,
-  FontRegistry,
-  fonts,
-  fontStretchValue,
-  fontVariationsValue,
-  fontWeightValue,
-  type ImageSource,
-  imageSource,
-  innermostComponent,
-  isImagePath,
-  loadTailwind,
   type Located,
-  type OutputOptions,
   PAGE_SIZES,
   type Painter,
-  type PdfALevel,
-  type PdfUaPart,
-  type PendingImage,
-  parsePath,
-  type RemoteImagePolicy,
-  remoteAllowed,
-  remoteRefused,
-  type ResolvedFont,
-  type SchemaProblem,
   TemplateError,
   type TemplateErrorKind,
   type TreeOptions,
   type TreeResult,
-  validateTree,
 } from '@inkoxide/tree';
-
-/** The end of the component stack of an error inside a `render` prop's own root. */
-const RENDER_CALL = `\n    in ${RenderCall.name}`;
-
-/**
- * A `render` prop's content for one page, rendered by React in a root of its own inside the
- * element's host type, with the page in `PageContext` for `usePage()`.
- */
-const renderPage: RenderPage = (inst: Instance, page: PageInfo): Node[] => {
-  const fn = inst.props.render as RenderProp;
-  try {
-    return renderToInstances(
-      createElement(PageContext.Provider, { value: page }, createElement(RenderCall, { fn, page })),
-      inst.type,
-    ).children;
-  } catch (e) {
-    // The content is rendered in a root of its own, whose stack ends at the call of `fn`: the
-    // components around the element carry it on.
-    if (e instanceof TemplateError && e.componentStack?.endsWith(RENDER_CALL)) {
-      e.componentStack = e.componentStack.slice(0, -RENDER_CALL.length) + componentStack(inst);
-    }
-    throw e;
-  }
-};
-
-/**
- * Renders a template element to an Inkoxide document. Synchronous: React renders once, then the
- * host nodes are walked into the schema tree. Throws TemplateError with a component stack.
- */
-export function renderTemplate(element: ReactNode, opts: TreeOptions = {}): TreeResult {
-  const t0 = performance.now();
-  const container = renderToInstances(element);
-  return buildDocument(container, { renderPage }, opts, performance.now() - t0);
-}
-
-/**
- * The document tree of a template element (the simple API). Loads Tailwind first when it is
- * installed (`loadTailwind`). Building is synchronous; a template error is a rejected promise,
- * not a throw.
- */
-export async function renderToTree(element: ReactNode, opts: TreeOptions = {}): Promise<Document> {
-  await loadTailwind();
-  return renderTemplate(element, opts).document;
-}
+export { renderTemplate, renderToTree } from './template.ts';

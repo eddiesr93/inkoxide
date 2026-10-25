@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { inspect } from 'node:util';
 
 import type { BoxNode, TableNode, TextNode } from '@inkoxide/schema';
+import { FontRegistry } from '@inkoxide/tree';
 import { createContext, lazy, type ReactNode, Suspense, use, useContext } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -9,7 +10,6 @@ import { transformText } from '../../tree/src/tree/text.ts';
 import {
   Cell,
   Document,
-  FontRegistry,
   Footer,
   Header,
   Image,

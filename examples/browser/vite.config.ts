@@ -83,8 +83,8 @@ export default defineConfig({
   ],
   ...(INKOXIDE_CDN ? { base: `${CDN}/` } : {}),
   resolve: {
-    // The invoice imports from `@inkoxide/render`, as it would in Node: the browser entry here.
-    alias: [{ find: /^@inkoxide\/render$/, replacement: '@inkoxide/render/browser' }],
+    // The invoice imports from `@inkoxide/react`, as it would in Node: the browser entry here.
+    alias: [{ find: /^@inkoxide\/react$/, replacement: '@inkoxide/react/browser' }],
   },
   worker: { format: 'es' },
   build: { target: 'es2023', ...(INKOXIDE_CDN ? { outDir: 'dist-cdn' } : {}) },

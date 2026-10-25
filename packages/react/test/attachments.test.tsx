@@ -1,10 +1,10 @@
+import { describe, expect, it } from 'vitest';
+
 /**
  * Attachments: files a PDF carries, from `<Document attachments>` or, for a JSON document, the
  * render option `attachments`; and an e-invoice's metadata.
  */
-import { renderTemplate } from '@inkoxide/react';
-import { describe, expect, it } from 'vitest';
-
+import { renderTemplate } from '../src/index.ts';
 import {
   Attachment,
   Document,

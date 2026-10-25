@@ -9,7 +9,7 @@
     "bench:browser": "tsx browser/run.ts"
   },
   "dependencies": {
-    "@inkoxide/render": "workspace:*",
+    "@inkoxide/react": "workspace:*",
     "@inkoxide/tailwind": "workspace:*",
     "@inkoxide/wasm": "workspace:*",
     "react": "19.3.0"

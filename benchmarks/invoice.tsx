@@ -1,9 +1,9 @@
-// The invoice in @inkoxide/render (documents/invoice.tsx), with its logo read from disk.
+// The invoice in @inkoxide/react (documents/invoice.tsx), with its logo read from disk.
 // Run directly, by its path or through a symlink: writes the PDF. Imported (bench.tsx): only
 // exports Invoice.
 import { readFileSync, realpathSync } from 'node:fs';
 
-import { renderToFile } from '@inkoxide/render';
+import { renderToFile } from '@inkoxide/react';
 
 import { Invoice as Document } from './documents/invoice.tsx';
 import invoice from './invoice.json' with { type: 'json' };

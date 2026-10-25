@@ -70,8 +70,6 @@ export {
   type FooterProps,
   type GradientProps,
   type HeaderProps,
-  HOST,
-  HOST_NAME,
   type HostType,
   type HyphenationCallback,
   type ImageBackgroundProps,

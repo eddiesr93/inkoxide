@@ -2,12 +2,12 @@
   "name": "@inkoxide/examples",
   "private": true,
   "type": "module",
-  "description": "Example documents for @inkoxide/render, and the screenshots in its README.",
+  "description": "Example documents for @inkoxide/react, and the screenshots in its README.",
   "scripts": {
     "render": "tsx render.ts"
   },
   "dependencies": {
-    "@inkoxide/render": "workspace:*",
+    "@inkoxide/react": "workspace:*",
     "@inkoxide/tailwind": "workspace:*",
     "react": "19.3.0"
   },

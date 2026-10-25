@@ -1,6 +1,7 @@
 import { setTailwindStrict } from '@inkoxide/tailwind';
+import { FontRegistry, loadTailwind } from '@inkoxide/tree';
 
-import { FontRegistry, loadTailwind, TemplateError, type TreeResult } from '../src/index.ts';
+import { TemplateError, type TreeResult } from '../src/index.ts';
 
 export const FACES = [
   { id: 'Inter-Regular', family: 'Inter' },

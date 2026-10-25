@@ -2,7 +2,7 @@
   "name": "@inkoxide/examples-browser",
   "private": true,
   "type": "module",
-  "description": "A page that renders PDFs in the browser with @inkoxide/render/browser, and its Playwright tests.",
+  "description": "A page that renders PDFs in the browser with @inkoxide/react/browser, and its Playwright tests.",
   "scripts": {
     "dev": "vite --configLoader runner",
     "build": "vite build --configLoader runner",
@@ -10,7 +10,7 @@
     "test": "playwright test"
   },
   "dependencies": {
-    "@inkoxide/render": "workspace:*",
+    "@inkoxide/react": "workspace:*",
     "@inkoxide/tailwind": "workspace:*",
     "@inkoxide/wasm": "workspace:*",
     "react": "19.3.0",

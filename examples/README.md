@@ -23,6 +23,6 @@ npx tsx invoice.tsx
 <!-- examples:end -->
 
 `pnpm --filter @inkoxide/examples render` renders all of them to `out/`, writes the first page of
-each to `packages/render/media/`, framed as a sheet of paper on a grey canvas, and rewrites the
-quick start, gallery and examples sections of `packages/render/README.md` from these files, so the
+each to `packages/react/media/`, framed as a sheet of paper on a grey canvas, and rewrites the
+quick start, gallery and examples sections of `packages/react/README.md` from these files, so the
 README always shows the code that made each picture. It needs poppler (`pdftoppm`).

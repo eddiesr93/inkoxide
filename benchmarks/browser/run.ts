@@ -1,4 +1,4 @@
-// The browser benchmark: the invoice and the report rendered by @inkoxide/render/browser
+// The browser benchmark: the invoice and the report rendered by @inkoxide/react/browser
 // (WebAssembly, in a Web Worker). Builds the page with Vite, serves it with `vite preview`, and
 // opens it in a fresh browser context each time, so that nothing is cached between cold starts.
 //   pnpm bench:browser [warm runs]       (after scripts/build-wasm.sh)

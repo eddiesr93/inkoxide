@@ -1,4 +1,4 @@
-import type { ImageRequest } from '@inkoxide/react';
+import type { ImageRequest } from '@inkoxide/tree';
 
 import { DEFAULT_IMAGE_TIMEOUT_MS, envList, maxImageBytes, timerMs } from './policy.ts';
 import type { RemoteImageOptions } from './types.ts';

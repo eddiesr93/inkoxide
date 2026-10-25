@@ -12,8 +12,8 @@ import { pathToFileURL } from 'node:url';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { DEFAULT_FACES } from '../src/fonts.ts';
-import { HYPHENATION_FILES } from '../src/hyphenation.ts';
+import { DEFAULT_FACES } from '../../render/src/fonts.ts';
+import { HYPHENATION_FILES } from '../../render/src/hyphenation.ts';
 
 const WASM = new URL('../../wasm/inkoxide.wasm', import.meta.url);
 const built = existsSync(WASM);
@@ -191,7 +191,7 @@ describe.skipIf(!built)('@inkoxide/render/browser', () => {
     const dir = mkdtempSync(join(tmpdir(), 'inkoxide-assets-'));
     mkdirSync(join(dir, 'fonts'));
     copyFileSync(
-      new URL('../assets/fonts/Inter-Regular.ttf', import.meta.url),
+      new URL('../../render/assets/fonts/Inter-Regular.ttf', import.meta.url),
       join(dir, 'fonts/Inter-Regular.ttf'),
     );
     vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -346,7 +346,9 @@ describe.skipIf(!built)('@inkoxide/render/browser', () => {
 
 describe('the bundled assets of the browser host', () => {
   it('are the files of fonts.ts and hyphenation.ts', async () => {
-    const { BUNDLED_ASSETS } = await load<typeof import('../src/browser-host.ts')>('../src/browser-host.ts');
+    const { BUNDLED_ASSETS } = await load<typeof import('../../render/src/browser-host.ts')>(
+      '../../render/src/browser-host.ts',
+    );
     const files = [
       ...DEFAULT_FACES.map((f) => `fonts/${f.file}`),
       ...Object.values(HYPHENATION_FILES).map((f) => `hyphenation/${f}`),

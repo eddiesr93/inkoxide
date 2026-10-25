@@ -1,6 +1,6 @@
 import { realpathSync } from 'node:fs';
 
-import { Document, Page, renderToFile, Text, View } from '@inkoxide/render';
+import { Document, Page, renderToFile, Text, View } from '@inkoxide/react';
 
 interface Line {
   name: string;

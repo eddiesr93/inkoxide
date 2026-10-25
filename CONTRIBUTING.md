@@ -55,7 +55,7 @@ pnpm test                  # the TypeScript packages
   `scripts/fixtures/` generates, the version `@inkoxide/react` reports
   (`scripts/gen-react-version.mjs`), the Tailwind theme (`scripts/gen-tailwind-theme.mjs`),
   `docs/TAILWIND_SUPPORT.md` (`scripts/gen-tailwind-docs.ts`) and the example sources in
-  `packages/render/README.md` and `examples/README.md` (`examples/render.ts --readme`). After it
+  `packages/react/README.md` and `examples/README.md` (`examples/render.ts --readme`). After it
   fails, the regenerated files are in place: review and commit them.
 - **React and Tailwind changes** need a test in `packages/*/test`. A new Tailwind utility
   belongs in `packages/tailwind/src/supported.ts`; its examples are tests, and

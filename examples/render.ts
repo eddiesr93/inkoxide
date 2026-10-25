@@ -1,7 +1,7 @@
 /**
  * Renders every example to out/<name>.pdf and its first page, framed as a sheet of paper, to
- * packages/render/media/<name>.png (needs poppler's pdftoppm). Then rewrites the generated parts
- * of packages/render/README.md from the example sources, so the README shows exactly the code
+ * packages/react/media/<name>.png (needs poppler's pdftoppm). Then rewrites the generated parts
+ * of packages/react/README.md from the example sources, so the README shows exactly the code
  * that produced each picture:
  *
  * - `<!-- quickstart:start -->`: receipt.tsx, the quick start;
@@ -26,8 +26,8 @@ import { decodePng, encodePng, type Rgb } from './png.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = join(HERE, 'out');
-const MEDIA = join(HERE, '..', 'packages', 'render', 'media');
-const README = join(HERE, '..', 'packages', 'render', 'README.md');
+const MEDIA = join(HERE, '..', 'packages', 'react', 'media');
+const README = join(HERE, '..', 'packages', 'react', 'README.md');
 const EXAMPLES_README = join(HERE, 'README.md');
 
 /** The gallery, in README order: what each example shows, and what its first page holds. */
@@ -117,7 +117,7 @@ const names = readmeOnly ? [] : process.argv.length > 2 ? process.argv.slice(2) 
 
 for (const name of names) {
   // Imported here, so that `--readme` runs without the engine.
-  const { renderToBuffer } = await import('@inkoxide/render');
+  const { renderToBuffer } = await import('@inkoxide/react');
   const mod = (await import(`./${name}.tsx`)) as { default: ComponentType<object>; sample: object };
   const t0 = performance.now();
   const pdf = await renderToBuffer(createElement(mod.default, mod.sample));

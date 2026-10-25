@@ -1,4 +1,4 @@
-// The invoice in @inkoxide/render, styled with className: the server benchmark (bench.tsx) and the
+// The invoice in @inkoxide/react, styled with className: the server benchmark (bench.tsx) and the
 // browser one (browser/) render it.
 import {
   Cell,
@@ -12,7 +12,7 @@ import {
   Text,
   TotalPages,
   View,
-} from '@inkoxide/render';
+} from '@inkoxide/react';
 
 import type invoice from '../invoice.json';
 

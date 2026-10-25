@@ -76,7 +76,7 @@ if [[ $python_only == 0 ]]; then
     packages/react/src/version.ts
     packages/tailwind/src/tailwind-theme.ts
     docs/TAILWIND_SUPPORT.md
-    packages/render/README.md
+    packages/react/README.md
     examples/README.md
   )
 fi

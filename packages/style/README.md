@@ -8,7 +8,7 @@ a value the same way.
 
 To make PDFs, install [`@inkoxide/render`](https://www.npmjs.com/package/@inkoxide/render)
 instead: it brings this package with it. Its
-[guide](https://github.com/eddiesr93/inkoxide/blob/main/packages/render/GUIDE.md#styling)
+[guide](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#styling)
 describes the styles.
 
 Part of [Inkoxide](https://github.com/eddiesr93/inkoxide). Requires Node.js 22 or later; ES

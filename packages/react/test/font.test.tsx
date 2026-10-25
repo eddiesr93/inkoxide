@@ -8,12 +8,13 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { fonts, renderTemplate } from '@inkoxide/react';
+import { fonts } from '@inkoxide/tree';
 import type { ReactNode } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { assetsDir } from '../../render/src/node-host.ts';
+import { renderTemplate } from '../src/index.ts';
 import { countPages, Document, Font, Page, RenderError, renderToBuffer, Svg, Text } from '../src/index.ts';
-import { assetsDir } from '../src/node-host.ts';
 
 const file = (name: string) => join(assetsDir(), 'fonts', name);
 

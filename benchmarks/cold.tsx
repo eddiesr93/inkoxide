@@ -6,7 +6,7 @@ import invoice from './invoice.json' with { type: 'json' };
 
 const [doc] = process.argv.slice(2);
 const t0 = performance.now();
-const ink = await import('@inkoxide/render');
+const ink = await import('@inkoxide/react');
 const el =
   doc === 'invoice'
     ? createElement((await import('./invoice.tsx')).Invoice, invoice)

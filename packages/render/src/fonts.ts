@@ -1,4 +1,4 @@
-import type { FontFace } from '@inkoxide/react';
+import type { FontFace } from '@inkoxide/tree';
 
 /** A bundled face, with the name of its file in assets/fonts. */
 interface BundledFace extends FontFace {

@@ -1,3 +1,4 @@
+import type { BrowserRenderOptions } from '@inkoxide/render/browser';
 /**
  * React helpers of the browser entry: a hook that renders a document to a PDF blob and its URL,
  * a link that downloads it, a frame that shows it in the browser's own viewer, and a component
@@ -14,7 +15,9 @@ import {
   useState,
 } from 'react';
 
-import { type BrowserRenderOptions, renderToBlob } from './browser-api.ts';
+import { browserRenderer } from './browser-render.ts';
+
+const { renderToBlob } = browserRenderer;
 
 export interface UsePdfResult {
   /** The PDF of the last render that finished, or null. */

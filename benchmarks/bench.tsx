@@ -6,7 +6,7 @@
 import { execFileSync } from 'node:child_process';
 import { cpus, totalmem } from 'node:os';
 
-import * as inkoxide from '@inkoxide/render';
+import * as inkoxide from '@inkoxide/react';
 import type { ReactElement } from 'react';
 
 import { Report } from './documents/report.tsx';

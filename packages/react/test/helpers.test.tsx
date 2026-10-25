@@ -9,7 +9,7 @@ import { Activity, act, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 
-import type { BrowserRenderOptions } from '../src/browser-api.ts';
+import type { BrowserRenderOptions } from '../../render/src/browser-api.ts';
 import { BlobProvider, PdfViewer, usePdf, type UsePdfResult } from '../src/helpers.tsx';
 
 interface Started {
@@ -21,9 +21,11 @@ interface Started {
 /** The renders the hook started, oldest first. */
 const renders = vi.hoisted((): Started[] => []);
 
-vi.mock('../src/browser-api.ts', () => ({
-  renderToBlob: (_element: ReactElement, opts: BrowserRenderOptions) =>
-    new Promise<Blob>((resolve, reject) => renders.push({ opts, resolve, reject })),
+vi.mock('../src/browser-render.ts', () => ({
+  browserRenderer: {
+    renderToBlob: (_element: ReactElement, opts: BrowserRenderOptions) =>
+      new Promise<Blob>((resolve, reject) => renders.push({ opts, resolve, reject })),
+  },
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

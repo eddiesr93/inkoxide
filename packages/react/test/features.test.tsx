@@ -8,6 +8,7 @@ import type {
   TextNode,
 } from '@inkoxide/schema';
 import { parseColor } from '@inkoxide/tailwind';
+import { imageSource, isImagePath, remoteAllowed } from '@inkoxide/tree';
 import type { ReactNode } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -32,8 +33,6 @@ import {
   Image,
   ImageBackground,
   type ImageSrc,
-  imageSource,
-  isImagePath,
   LinearGradient,
   Link,
   List,
@@ -52,7 +51,6 @@ import {
   RadialGradient,
   Radio,
   Rect,
-  remoteAllowed,
   renderTemplate,
   Row,
   Select,

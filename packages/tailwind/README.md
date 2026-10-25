@@ -7,7 +7,7 @@ shadow, a gradient) throws outside production, and is logged once and ignored in
 
 Install it next to [`@inkoxide/render`](https://www.npmjs.com/package/@inkoxide/render) to
 style documents with `className`; without it, `style` works alone. The render
-[guide](https://github.com/eddiesr93/inkoxide/blob/main/packages/render/GUIDE.md#tailwind)
+[guide](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#tailwind)
 covers styling with classes, and
 [TAILWIND_SUPPORT.md](https://github.com/eddiesr93/inkoxide/blob/main/docs/TAILWIND_SUPPORT.md)
 lists every supported utility.

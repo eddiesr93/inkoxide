@@ -1,5 +1,5 @@
-import type { EncryptionOptions, PdfALevel, PdfUaPart } from '@inkoxide/react';
 import type { Document } from '@inkoxide/schema';
+import type { EncryptionOptions, PdfALevel, PdfUaPart } from '@inkoxide/tree';
 
 export interface RenderOpts {
   /**

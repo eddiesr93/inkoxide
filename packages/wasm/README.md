@@ -9,7 +9,7 @@ with the same functions, plus `init`, `threadCount`, `loadHyphenation` and
 This page is for using the engine directly. To render React components in a
 browser, in a Web Worker, use `@inkoxide/render/browser`, which runs this
 package for you: see
-[In the browser](https://github.com/eddiesr93/inkoxide/blob/main/packages/render/GUIDE.md#in-the-browser).
+[In the browser](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#in-the-browser).
 
 ```sh
 npm install @inkoxide/wasm

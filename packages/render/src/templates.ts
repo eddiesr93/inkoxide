@@ -1,16 +1,16 @@
-// `@inkoxide/render/templates`: templates served by id, with a zod schema for their data
-// (GUIDE.md, "Serving templates"). test/exports.test.ts pins the list.
+// `@inkoxide/render/templates`: what templates served by id share in every front end: the check of
+// their data, a render of a tree built before, and of a stored document (GUIDE.md, "Serving
+// templates"). Each front end's `generate` and `renderTree` come with it (`@inkoxide/react/templates`).
+// test/exports.test.ts pins the list.
 // In Node: the native binding, and the bundled assets from disk.
 import './node-host.ts';
 
-export type { TreeResult } from '@inkoxide/react';
+export type { TreeResult } from '@inkoxide/tree';
 export {
   type GenerateOptions,
-  generate,
   parseData,
   renderDocument,
   renderSettled,
-  renderTree,
   type TemplateLike,
 } from './pipeline.ts';
 export type { RenderOpts, RenderResult, Timings } from './types.ts';

@@ -1,7 +1,7 @@
 /**
- * The public API: every name the package exports, from `@inkoxide/render` and
- * `@inkoxide/render/templates`. A name added here is API under semver, so it needs its place in
- * GUIDE.md first.
+ * The public API of the engine package, which every front end builds on: `@inkoxide/render`,
+ * `@inkoxide/render/browser` and `@inkoxide/render/templates`. A name added here is API under
+ * semver, so it needs its place in README.md first.
  */
 import { readFileSync } from 'node:fs';
 
@@ -13,150 +13,43 @@ import * as main from '../src/index.ts';
 import * as templates from '../src/templates.ts';
 
 const MAIN_VALUES = [
-  'Attachment',
-  'Canvas',
-  'Cell',
-  'Checkbox',
-  'Circle',
-  'ClipPath',
-  'Defs',
-  'Document',
-  'Ellipse',
-  'Field',
-  'FieldSet',
   'Font',
-  'Footer',
-  'G',
-  'Header',
-  'Image',
-  'ImageBackground',
-  'Line',
-  'LinearGradient',
-  'Link',
-  'List',
-  'Marker',
-  'Note',
-  'PAGE_SIZES',
-  'Page',
-  'PageBreak',
-  'PageNumber',
-  'Path',
-  'Polygon',
-  'Polyline',
-  'RadialGradient',
-  'Radio',
-  'Rect',
   'RenderError',
-  'Row',
-  'Select',
-  'Spacer',
-  'Stop',
-  'StyleSheet',
-  'Svg',
-  'Table',
-  'Text',
-  'TextField',
-  'TextInput',
-  'TextPath',
-  'TotalPages',
-  'Tspan',
-  'View',
   'countPages',
+  'createRenderer',
   'engineStatus',
-  'facturX',
-  'facturXRelationship',
   'init',
-  'renderToBuffer',
-  'renderToFile',
-  'renderToStream',
-  'usePage',
+  'renderDocument',
   'version',
 ];
-
 const MAIN_TYPES = [
-  'AbsoluteLength',
-  'AttachmentFile',
-  'AttachmentProps',
-  'BookmarkProp',
-  'BreakProp',
-  'CanvasGradient',
-  'CanvasProps',
-  'CanvasTextOptions',
-  'CellProps',
-  'CheckboxProps',
-  'CircleProps',
-  'ClipPathProps',
   'DataIssue',
-  'DefsProps',
-  'DocumentProps',
-  'EllipseProps',
-  'EmojiSource',
   'EngineStatus',
   'EngineVersion',
-  'FacturXOptions',
-  'FacturXProfile',
-  'FieldProps',
-  'FieldSetProps',
   'FontRegistration',
   'FontSource',
   'FontSrc',
   'FontWeight',
-  'FontWeightName',
-  'FooterProps',
-  'GradientProps',
-  'HeaderProps',
-  'HyphenationCallback',
-  'ImageBackgroundProps',
-  'ImageProps',
-  'ImageRequest',
-  'ImageSrc',
-  'ImageSrcValue',
-  'Length',
-  'LengthAuto',
-  'LengthPercent',
-  'LineProps',
-  'LinkProps',
-  'ListProps',
+  'FrontEnd',
+  'GenerateOptions',
   'LocalImageOptions',
-  'MarkerProps',
-  'MediaStyle',
-  'NoteProps',
-  'PageBreakProps',
-  'PageInfo',
-  'PagePreset',
-  'PageProps',
-  'PageSize',
-  'Painter',
-  'PathProps',
-  'Permissions',
-  'PolyProps',
-  'RadioProps',
-  'RectProps',
+  'NodeRenderer',
   'RemoteImageOptions',
   'RenderErrorCode',
-  'RenderProp',
+  'RenderOpts',
+  'RenderResult',
   'RenderToBufferOptions',
-  'Role',
-  'RowProps',
-  'SelectProps',
-  'SpacerProps',
-  'StopProps',
-  'Style',
-  'StyleProp',
-  'SvgPresentation',
-  'SvgProps',
-  'SvgTextProps',
-  'TableProps',
-  'TextFieldProps',
-  'TextFormat',
-  'TextPathProps',
-  'TextProps',
-  'TspanProps',
-  'ViewProps',
+  'TemplateLike',
+  'Timings',
 ];
-
-const TEMPLATES_VALUES = ['generate', 'parseData', 'renderDocument', 'renderSettled', 'renderTree'];
-
+const BROWSER_VALUES = [...MAIN_VALUES, 'clearCaches'];
+const BROWSER_TYPES = [
+  ...MAIN_TYPES.filter((n) => n !== 'LocalImageOptions' && n !== 'NodeRenderer'),
+  'BrowserOptions',
+  'BrowserRenderOptions',
+  'BrowserRenderer',
+];
+const TEMPLATES_VALUES = ['parseData', 'renderDocument', 'renderSettled'];
 const TEMPLATES_TYPES = [
   'GenerateOptions',
   'RenderOpts',
@@ -164,35 +57,6 @@ const TEMPLATES_TYPES = [
   'TemplateLike',
   'Timings',
   'TreeResult',
-];
-
-/**
- * `@inkoxide/render/browser`: the main entry without what needs Node, with `renderToBlob`,
- * `clearCaches`, and `generate` from the templates.
- */
-const BROWSER_VALUES = [
-  ...MAIN_VALUES.filter((n) => n !== 'renderToFile'),
-  'BlobProvider',
-  'clearCaches',
-  'generate',
-  'PdfDownloadLink',
-  'PdfViewer',
-  'renderToBlob',
-  'usePdf',
-];
-const BROWSER_TYPES = [
-  ...MAIN_TYPES.filter((n) => n !== 'LocalImageOptions'),
-  'BlobProviderProps',
-  'BrowserOptions',
-  'BrowserRenderOptions',
-  'GenerateOptions',
-  'PdfDownloadLinkProps',
-  'PdfViewerProps',
-  'RenderOpts',
-  'RenderResult',
-  'TemplateLike',
-  'Timings',
-  'UsePdfResult',
 ];
 
 const sorted = (names: Iterable<string>) => [...names].sort();
@@ -233,21 +97,17 @@ describe('exports', () => {
     expect(declared('index.ts')).toEqual(sorted([...MAIN_VALUES, ...MAIN_TYPES]));
   });
 
-  it('@inkoxide/render/templates exports exactly the template pipeline', () => {
-    expect(sorted(Object.keys(templates))).toEqual(sorted(TEMPLATES_VALUES));
-    expect(declared('templates.ts')).toEqual(sorted([...TEMPLATES_VALUES, ...TEMPLATES_TYPES]));
-  });
-
-  it('@inkoxide/render/browser exports the main names that do not need Node', () => {
+  it('@inkoxide/render/browser exports the names that do not need Node', () => {
     expect(sorted(Object.keys(browser))).toEqual(sorted(BROWSER_VALUES));
     expect(declared('browser.ts')).toEqual(sorted([...BROWSER_VALUES, ...BROWSER_TYPES]));
   });
 
+  it('@inkoxide/render/templates exports what templates share', () => {
+    expect(sorted(Object.keys(templates))).toEqual(sorted(TEMPLATES_VALUES));
+    expect(declared('templates.ts')).toEqual(sorted([...TEMPLATES_VALUES, ...TEMPLATES_TYPES]));
+  });
+
   it('has an entry in package.json for each', () => {
-    expect(pkg.exports).toEqual({
-      '.': './src/index.ts',
-      './templates': './src/templates.ts',
-      './browser': './src/browser.ts',
-    });
+    expect(Object.keys(pkg.exports).sort()).toEqual(['.', './browser', './templates']);
   });
 });

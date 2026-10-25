@@ -14,8 +14,8 @@ export default defineConfig({
   // Served cross-origin isolated, so that the engine can render on a pool of threads (`?threads=`).
   plugins: [inkoxideTailwind({ sources: ['.', '../documents'] }), isolated()],
   resolve: {
-    // The Inkoxide documents import from `@inkoxide/render`, as on the server: the browser entry.
-    alias: [{ find: /^@inkoxide\/render$/, replacement: '@inkoxide/render/browser' }],
+    // The Inkoxide documents import from `@inkoxide/react`, as on the server: the browser entry.
+    alias: [{ find: /^@inkoxide\/react$/, replacement: '@inkoxide/react/browser' }],
   },
   worker: { format: 'es' },
   build: {

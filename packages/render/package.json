@@ -3,25 +3,21 @@
   "version": "0.10.1",
   "private": true,
   "type": "module",
-  "description": "React components to PDF with the native Inkoxide engine: renderToBuffer, renderToFile, Font.register.",
+  "description": "The Inkoxide engine with its bundled fonts, for every front end: renderDocument, Font.register, and the renderer a front end (React, Vue, Svelte, Angular) exports.",
   "exports": {
     ".": "./src/index.ts",
     "./templates": "./src/templates.ts",
     "./browser": "./src/browser.ts"
   },
   "dependencies": {
-    "@inkoxide/react": "workspace:*",
     "@inkoxide/schema": "workspace:*",
+    "@inkoxide/tree": "workspace:*",
     "inkoxide": "workspace:*",
-    "react": "19.3.0",
     "zod": "4.6.5"
   },
   "devDependencies": {
     "@inkoxide/tailwind": "workspace:*",
-    "@inkoxide/wasm": "workspace:*",
-    "@types/react": "19.3.0",
-    "@types/react-dom": "19.3.0",
-    "react-dom": "19.3.0"
+    "@inkoxide/wasm": "workspace:*"
   },
   "peerDependencies": {
     "@inkoxide/tailwind": "workspace:*",
