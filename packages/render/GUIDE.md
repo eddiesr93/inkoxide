@@ -1582,8 +1582,14 @@ function InvoicePage({ invoice }: { invoice: InvoiceData }) {
   `'document.pdf'`), `options` and the props of an `<a>`; its children may be a function of the
   `usePdf` result. **`<PdfViewer>`** is an `<iframe>` with the browser's own viewer: `document`,
   `options`, `fallback` (shown until the first render has finished, and when it failed),
-  `title` (default `'PDF'`) and the props of an `<iframe>`. Each renders when it mounts: give it
-  another `key` to render again. Their props are `PdfDownloadLinkProps` and `PdfViewerProps`.
+  `showToolbar` (`false` adds `#toolbar=0` to the URL, which Chromium's viewer follows), `title`
+  (default `'PDF'`) and the props of an `<iframe>`. **`<BlobProvider>`** shows what its
+  function child makes of the `usePdf` result: `<BlobProvider document={doc}>{({ url }) => …}</BlobProvider>`.
+  Each renders when it mounts and again when `document` changes: an element of another type or
+  key, or one whose props are not the same values (`<Invoice invoice={invoice} />` made again
+  with the same `invoice` is the same document). A render that starts stops the one still
+  running, and the last PDF stays until the next one is ready. Their props are
+  `PdfDownloadLinkProps`, `PdfViewerProps` and `BlobProviderProps`.
 - **`renderToBuffer`**, **`renderToBlob`** and **`renderToStream`** render outside React
   components, and **`generate`** renders a [template](#serving-templates). Their options (`BrowserRenderOptions`, and
   `GenerateOptions` for `generate`) are those of the Node entry, with a `signal` or `timeoutMs`

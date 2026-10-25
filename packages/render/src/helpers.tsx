@@ -1,6 +1,7 @@
 /**
  * React helpers of the browser entry: a hook that renders a document to a PDF blob and its URL,
- * a link that downloads it and a frame that shows it in the browser's own viewer.
+ * a link that downloads it, a frame that shows it in the browser's own viewer, and a component
+ * that hands the render's state to a function.
  */
 import {
   type AnchorHTMLAttributes,
@@ -92,6 +93,36 @@ export function usePdf(element?: ReactElement, opts: BrowserRenderOptions = {}):
   return { ...state, update };
 }
 
+/**
+ * Whether `next` renders as `prev` did: the same element, or one of the same type and key whose
+ * props are the same values (`<Invoice invoice={invoice} />` made again with the same `invoice`).
+ */
+function sameElement(prev: ReactElement, next: ReactElement): boolean {
+  if (prev === next) return true;
+  if (prev.type !== next.type || prev.key !== next.key) return false;
+  const a = prev.props as Record<string, unknown>;
+  const b = next.props as Record<string, unknown>;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => Object.is(a[k], b[k]));
+}
+
+/**
+ * `usePdf` for a component given `document` by its parent: renders again when the parent gives
+ * it another one. Not for `usePdf` itself, whose caller makes the element on each of its renders,
+ * the ones the hook's own state causes as well.
+ */
+function useDocumentPdf(document: ReactElement, options?: BrowserRenderOptions): UsePdfResult {
+  const pdf = usePdf(document, options);
+  const shown = useRef(document);
+  const { update } = pdf;
+  useEffect(() => {
+    if (sameElement(shown.current, document)) return;
+    shown.current = document;
+    update(document);
+  }, [document, update]);
+  return pdf;
+}
+
 export interface PdfDownloadLinkProps extends Omit<
   AnchorHTMLAttributes<HTMLAnchorElement>,
   'href' | 'download' | 'children'
@@ -106,8 +137,8 @@ export interface PdfDownloadLinkProps extends Omit<
 }
 
 /**
- * A link that downloads `document` as a PDF, once it has rendered. It renders when it mounts: give
- * it another `key` to render again.
+ * A link that downloads `document` as a PDF, once it has rendered. It renders when it mounts and
+ * when `document` changes: an element of another type or key, or with other props.
  */
 export function PdfDownloadLink({
   document,
@@ -116,7 +147,7 @@ export function PdfDownloadLink({
   children,
   ...rest
 }: PdfDownloadLinkProps) {
-  const pdf = usePdf(document, options);
+  const pdf = useDocumentPdf(document, options);
   return (
     <a {...rest} href={pdf.url ?? undefined} download={fileName} aria-disabled={pdf.url === null}>
       {typeof children === 'function' ? children(pdf) : children}
@@ -130,14 +161,43 @@ export interface PdfViewerProps extends Omit<IframeHTMLAttributes<HTMLIFrameElem
   options?: BrowserRenderOptions;
   /** Shown in place of the frame while the first render runs, or when it failed. */
   fallback?: ReactNode;
+  /**
+   * `false` asks the viewer to hide its toolbar (`#toolbar=0` on the URL). Chromium's viewer
+   * hides it; others may not. Default `true`.
+   */
+  showToolbar?: boolean;
 }
 
 /**
  * `document`, rendered and shown in an `<iframe>`, in the browser's own PDF viewer. It renders
- * when it mounts: give it another `key` to render again.
+ * when it mounts and when `document` changes, and shows the last PDF until the next one is ready.
  */
-export function PdfViewer({ document, options, fallback = null, title = 'PDF', ...rest }: PdfViewerProps) {
-  const pdf = usePdf(document, options);
+export function PdfViewer({
+  document,
+  options,
+  fallback = null,
+  title = 'PDF',
+  showToolbar = true,
+  ...rest
+}: PdfViewerProps) {
+  const pdf = useDocumentPdf(document, options);
   if (pdf.url === null) return <>{fallback}</>;
-  return <iframe {...rest} title={title} src={pdf.url} />;
+  return <iframe {...rest} title={title} src={showToolbar ? pdf.url : `${pdf.url}#toolbar=0`} />;
+}
+
+export interface BlobProviderProps {
+  /** The `<Document>` element to render. */
+  document: ReactElement;
+  options?: BrowserRenderOptions;
+  /** What it shows: a function of the render's state. */
+  children: (pdf: UsePdfResult) => ReactNode;
+}
+
+/**
+ * Renders `document` and shows what `children` makes of the render's state (`blob`, `url`,
+ * `loading`, `error`): a link, a frame, a preview of its own. It renders when it mounts and when
+ * `document` changes, as `PdfViewer` does.
+ */
+export function BlobProvider({ document, options, children }: BlobProviderProps) {
+  return <>{children(useDocumentPdf(document, options))}</>;
 }
