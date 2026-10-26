@@ -8,7 +8,7 @@ together, and so does `@inkoxide/wasm` from its first release. From 1.0.0, so do
 `@inkoxide/tree`, `@inkoxide/vue`, `@inkoxide/svelte` and `@inkoxide/angular`. The document
 schema has its own version and [changelog](packages/schema/CHANGELOG.md).
 
-## Unreleased (1.0.0)
+## 1.0.0 - 2026-10-26
 
 Templates in React, Vue, Svelte and Angular. A document written in any of them builds the same
 document tree, and so the same PDF, byte for byte. [UPGRADING.md](UPGRADING.md) lists what React

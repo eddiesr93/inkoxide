@@ -1,6 +1,6 @@
 {
   "name": "@inkoxide/angular",
-  "version": "0.10.1",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Angular templates to PDF with the Inkoxide engine, in Node and in the browser: components, renderToBuffer, renderToFile, Font.register.",
