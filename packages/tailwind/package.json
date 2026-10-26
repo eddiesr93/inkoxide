@@ -1,6 +1,6 @@
 {
   "name": "@inkoxide/tailwind",
-  "version": "0.10.1",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Tailwind class strings to Inkoxide styles, using the real Tailwind v4 compiler.",

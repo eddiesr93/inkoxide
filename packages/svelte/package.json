@@ -1,6 +1,6 @@
 {
   "name": "@inkoxide/svelte",
-  "version": "0.10.1",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Svelte templates to PDF with the Inkoxide engine, in Node and in the browser: components, renderToBuffer, renderToFile, Font.register.",

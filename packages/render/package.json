@@ -1,6 +1,6 @@
 {
   "name": "@inkoxide/render",
-  "version": "0.10.1",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "The Inkoxide engine with its bundled fonts, for every front end: renderDocument, Font.register, and the renderer a front end (React, Vue, Svelte, Angular) exports.",

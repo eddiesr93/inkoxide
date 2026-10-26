@@ -13,6 +13,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { isBuiltin } from 'node:module';
 import { dirname, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -136,7 +137,8 @@ function importedPackages(dist) {
       .replace(/^\s*\/\/.*$/gm, '');
     for (const m of code.matchAll(spec)) {
       const s = m[1];
-      if (s.startsWith('node:')) continue;
+      // Node's own modules: declarations name them without `node:` (`import("stream").Readable`).
+      if (isBuiltin(s)) continue;
       names.add(s.startsWith('@') ? s.split('/').slice(0, 2).join('/') : s.split('/')[0]);
     }
   }
