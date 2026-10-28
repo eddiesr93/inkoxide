@@ -10,6 +10,7 @@ use common::{hyphenation_for, installed, qpdf_available, root, sorted_files, sto
 use inkoxide::{
     HyphenationStore, InkoxideError, InputFormat, PdfALevel, RenderOptions, ValidationCode,
 };
+use read_fonts::{FontRef, TableProvider};
 
 #[test]
 fn all_fixtures_render() {
@@ -536,18 +537,16 @@ fn variable_fonts_embed_whole_instances_without_subsetting() {
     assert!(pdf == render(4), "4 threads differ from 1");
     let glyphs = |file: &str| {
         let bytes = fs::read(root().join("fixtures/fonts").join(file)).unwrap();
-        ttf_parser::Face::parse(&bytes, 0)
-            .unwrap()
-            .number_of_glyphs()
+        FontRef::new(&bytes).unwrap().maxp().unwrap().num_glyphs()
     };
     let (glyf, cff2) = (glyphs("VarTest-glyf.ttf"), glyphs("VarTest-CFF2.otf"));
     let programs = font_programs(&pdf);
     let mut instances = 0;
     for program in &programs {
-        let face = ttf_parser::Face::parse(program, 0).unwrap();
-        assert!(!face.is_variable(), "a variable font is embedded");
-        if [glyf, cff2].contains(&face.number_of_glyphs()) {
-            assert!(face.tables().glyf.is_some());
+        let font = FontRef::new(program).unwrap();
+        assert!(font.fvar().is_err(), "a variable font is embedded");
+        if [glyf, cff2].contains(&font.maxp().unwrap().num_glyphs()) {
+            assert!(font.glyf().is_ok());
             instances += 1;
         }
     }
@@ -599,7 +598,7 @@ fn font_programs(pdf: &[u8]) -> Vec<Vec<u8>> {
         if flate2::read::ZlibDecoder::new(&body[..end])
             .read_to_end(&mut program)
             .is_ok()
-            && ttf_parser::Face::parse(&program, 0).is_ok()
+            && FontRef::new(&program).is_ok_and(|f| f.head().is_ok())
         {
             programs.push(program);
         }

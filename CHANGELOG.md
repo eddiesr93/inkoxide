@@ -8,6 +8,41 @@ together, and so does `@inkoxide/wasm` from its first release. From 1.0.0, so do
 `@inkoxide/tree`, `@inkoxide/vue`, `@inkoxide/svelte` and `@inkoxide/angular`. The document
 schema has its own version and [changelog](packages/schema/CHANGELOG.md).
 
+## Unreleased
+
+### Changed
+
+- The engine reads fonts with read-fonts and shapes text with HarfRust, the HarfBuzz project's Rust
+  crates, in place of ttf-parser and rustybuzz, which are no longer maintained (#83). Text shapes
+  and draws as before: every fixture renders to the same bytes but `variable-fonts` (see the next
+  item).
+- An instance of a variable font keeps the fractions of its `MVAR` deltas and of its varied
+  outlines, which were dropped: its `CapHeight` and `FontBBox` can come out a unit larger.
+- A font whose only `cmap` is a symbol or Mac Roman one is registered, and text maps to its glyphs
+  as in browsers; it was refused as having no Unicode `cmap`.
+- A font whose `GSUB` or `GPOS` lookups point to missing or malformed coverage tables is
+  registered, and such a coverage matches no glyph, as in HarfBuzz; it was refused, because the
+  old shaper panicked on it.
+
+### Fixed
+
+- `COLR` sweep gradients start where the OpenType specification puts them: it adds half a turn to
+  the angles a font stores, which the engine left out, so each was drawn half a turn round.
+- `COLR` colours round their alpha (0.8 is 204 of 255; it was cut to 203), and a gradient whose
+  colour stops fall outside 0 to 1 draws them where the font puts them, not at its ends.
+
+### Security
+
+- A font with `CFF2` outlines whose charstrings use `blend` with too few operands made the font
+  parser panic while it measured the glyphs: the render failed with `INTERNAL`, and the
+  WebAssembly module aborted. Found by the `register_font` fuzz target; fixed by the change of
+  font parser.
+
+### Repository
+
+- The `COLR` test font stores its sweep gradient's angles as the specification reads them
+  (`scripts/fixtures/emoji_fonts.py`).
+
 ## 1.0.0 - 2026-10-26
 
 Templates in React, Vue, Svelte and Angular. A document written in any of them builds the same

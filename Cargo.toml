@@ -24,8 +24,8 @@ thiserror = "=2.0.21"
 tracing = { version = "=0.1.44", default-features = false, features = ["std"] }
 pdf-writer = "=0.15.0"
 taffy = { version = "=0.14.0", default-features = false, features = ["std", "flexbox", "grid", "taffy_tree", "content_size"] }
-rustybuzz = "=0.20.1"
-ttf-parser = "=0.25.1"
+harfrust = "=0.15.0"
+read-fonts = "=0.46.0"
 unicode-linebreak = "=0.1.5"
 unicode-properties = { version = "=0.1.4", default-features = false, features = ["emoji", "general-category"] }
 unicode-bidi = { version = "=0.3.18", default-features = false, features = ["hardcoded-data", "std"] }

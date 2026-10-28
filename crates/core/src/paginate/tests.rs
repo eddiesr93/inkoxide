@@ -275,7 +275,7 @@ fn many_pages_of_small_boxes() {
 #[test]
 fn text_splits_between_lines() {
     use crate::fonts::FontSet;
-    use crate::text::{RustybuzzShaper, TextCache};
+    use crate::text::{HarfRustShaper, TextCache};
     let store = crate::test_fixtures::inter();
     let para = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20);
     let json = format!(
@@ -286,7 +286,7 @@ fn text_splits_between_lines() {
     );
     let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
     let fonts = FontSet::load(&d, &store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let mut tree = Tree::build(&d.pages[0].children);
     compute(&mut tree, 200.0, H, &mut cache).unwrap();
     let p = paginate(&tree, H, &mut cache);
@@ -322,7 +322,7 @@ fn text_splits_between_lines() {
 /// Page of each line of a paragraph placed after a box `before` tall.
 fn line_pages(before: f32, text_style: &str, words: usize) -> Vec<u32> {
     use crate::fonts::FontSet;
-    use crate::text::{RustybuzzShaper, TextCache};
+    use crate::text::{HarfRustShaper, TextCache};
     let store = crate::test_fixtures::inter();
     let para = "lorem ".repeat(words);
     let json = format!(
@@ -332,7 +332,7 @@ fn line_pages(before: f32, text_style: &str, words: usize) -> Vec<u32> {
     );
     let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
     let fonts = FontSet::load(&d, &store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let mut tree = Tree::build(&d.pages[0].children);
     compute(&mut tree, 200.0, H, &mut cache).unwrap();
     let p = paginate(&tree, H, &mut cache);
@@ -433,7 +433,7 @@ fn horizontal_padding_narrows_measured_text() {
     // Regression: Taffy hands leaf measures the border-box width; text
     // must wrap at the content width, or it overflows its box.
     use crate::fonts::FontSet;
-    use crate::text::{RustybuzzShaper, TextCache};
+    use crate::text::{HarfRustShaper, TextCache};
     let store = crate::test_fixtures::inter();
     let para = "lorem ".repeat(60);
     let json = format!(
@@ -442,7 +442,7 @@ fn horizontal_padding_narrows_measured_text() {
     );
     let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
     let fonts = FontSet::load(&d, &store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let mut tree = Tree::build(&d.pages[0].children);
     compute(&mut tree, 200.0, H, &mut cache).unwrap();
     let Rect { w: cw, h: ch, .. } = tree.nodes[1].geo.content_box();
@@ -658,14 +658,14 @@ fn row_and_grid_boxes_taller_than_a_page_split_by_rows() {
 /// every paragraph sits on one page, and returns the page count.
 fn check_lines(children: &str) -> u32 {
     use crate::fonts::FontSet;
-    use crate::text::{RustybuzzShaper, TextCache};
+    use crate::text::{HarfRustShaper, TextCache};
     let store = crate::test_fixtures::inter();
     let json = format!(
         r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[{{"size":{{"width":200,"height":{H}}},"children":[{children}]}}]}}"#
     );
     let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
     let fonts = FontSet::load(&d, &store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let mut tree = Tree::build(&d.pages[0].children);
     compute(&mut tree, 200.0, H, &mut cache).unwrap();
     let p = paginate(&tree, H, &mut cache);
@@ -804,14 +804,14 @@ fn run_text<R>(
     f: impl FnOnce(&Tree<'_>, &Placement, &mut dyn LineSource) -> R,
 ) -> R {
     use crate::fonts::FontSet;
-    use crate::text::{RustybuzzShaper, TextCache};
+    use crate::text::{HarfRustShaper, TextCache};
     let store = crate::test_fixtures::inter();
     let json = format!(
         r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[{{"size":{{"width":200,"height":{H}}},"children":[{children}]}}]}}"#
     );
     let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
     let fonts = FontSet::load(&d, &store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let mut tree = Tree::build(&d.pages[0].children);
     compute(&mut tree, 200.0, H, &mut cache).unwrap();
     let p = paginate(&tree, H, &mut cache);
