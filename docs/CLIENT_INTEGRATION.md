@@ -67,9 +67,8 @@ for (const id of ['Inter-Regular', 'Inter-Bold']) {
   `FONT_ERROR`), font
   collections (`.ttc`; register each font as its own file), fonts with
   neither TrueType nor embeddable CFF outlines, fonts without a
-  Unicode `cmap`, fonts whose `GSUB` or `GPOS` lookups point to
-  missing or malformed coverage tables, and CFF fonts with a number out
-  of range in a DICT.
+  Unicode `cmap` (a symbol or Mac Roman one stands in for it, as in
+  browsers), and CFF fonts with a number out of range in a DICT.
 - **Colour fonts.** Glyphs in `COLR` (versions 0 and 1) and PNG bitmaps
   in `CBDT` or `sbix` are drawn in colour, as images that copy as their
   text. A font with colour bitmaps and no outlines (Noto Color Emoji's

@@ -3,7 +3,7 @@ use std::fmt::Write as _;
 use super::*;
 use crate::fonts::FontSet;
 use crate::images::svg_text::extract;
-use crate::text::RustybuzzShaper;
+use crate::text::HarfRustShaper;
 use crate::{FontStore, InputFormat};
 
 const FONTS: &str = r#"[{"id":"Inter-Regular","family":"Inter"},{"id":"Inter-Bold","family":"Inter","weight":700}]"#;
@@ -29,7 +29,7 @@ fn laid_with(fonts: &str, body: &str) -> LaidText {
     let store = store();
     let doc = document(fonts);
     let set = FontSet::load(&doc, &store).unwrap();
-    let mut shaper = RustybuzzShaper::new(&set).unwrap();
+    let mut shaper = HarfRustShaper::new(&set);
     lay_out(&text, &mut shaper)
 }
 
@@ -217,7 +217,7 @@ fn records_glyphs_for_the_text_layer() {
     let store = store();
     let doc = document(FONTS);
     let set = FontSet::load(&doc, &store).unwrap();
-    let mut cache = crate::text::TextCache::new(RustybuzzShaper::new(&set).unwrap(), None);
+    let mut cache = crate::text::TextCache::new(HarfRustShaper::new(&set), None);
     let laid = lay_out(&text, cache.shaper());
     let unicode = cache.into_unicode();
     let map = &unicode.fonts[&0];
@@ -287,9 +287,7 @@ fn lays_out_emoji_images_as_images() {
     };
     let emoji = std::collections::HashMap::from([("😀".to_string(), source)]);
     let objects = crate::text::InlineObjects::new(std::collections::HashMap::new(), emoji);
-    let mut shaper = RustybuzzShaper::new(&set)
-        .unwrap()
-        .with_objects(std::sync::Arc::new(objects));
+    let mut shaper = HarfRustShaper::new(&set).with_objects(std::sync::Arc::new(objects));
     let laid = lay_out(&text, &mut shaper);
     assert_eq!(laid.images.len(), 1);
     let image = &laid.images[0];

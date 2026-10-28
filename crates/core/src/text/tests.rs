@@ -25,7 +25,7 @@ fn para(text: &str, style: &str) -> String {
 /// the layout.
 fn lines(d: &Document, store: &FontStore, width: f32) -> (Vec<String>, LineLayout) {
     let fonts = FontSet::load(d, store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let node = &d.pages[0].children[0];
     let layout = (*cache.layout(node, width).unwrap()).clone();
     let (p, _) = cache.prepared(node).unwrap();
@@ -132,7 +132,7 @@ fn min_content_includes_the_hyphen() {
     let s = store();
     let d = doc(&para("aaa\u{AD}bbbbbb\u{AD}cc", ""));
     let fonts = FontSet::load(&d, &s).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let node = &d.pages[0].children[0];
     let min = cache
         .measure(
@@ -169,7 +169,7 @@ fn falls_back_for_missing_glyphs() {
     let fonts = FontSet::load(&d, &s).unwrap();
     let inter = fonts.key("Inter-Regular").unwrap();
     let noto = fonts.key("NotoSans-Regular").unwrap();
-    let mut shaper = RustybuzzShaper::new(&fonts).unwrap();
+    let mut shaper = HarfRustShaper::new(&fonts);
     let crate::schema::NodeKind::Text { runs } = &d.pages[0].children[0].kind else {
         panic!()
     };
@@ -209,7 +209,7 @@ fn fill_numbers_puts_the_digits_in_place_of_the_stand_ins() {
         run(r#""placeholder":"totalPages""#),
     ));
     let fonts = FontSet::load(&d, &s).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let node = &d.pages[0].children[0];
     let NodeKind::Text { runs } = &node.kind else {
         unreachable!()
@@ -274,7 +274,7 @@ fn empty_text_has_no_height() {
 /// the line.
 fn after_tabs(d: &Document, store: &FontStore) -> Vec<Vec<f32>> {
     let fonts = FontSet::load(d, store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let node = &d.pages[0].children[0];
     let layout = (*cache.layout(node, f32::INFINITY).unwrap()).clone();
     let (p, _) = cache.prepared(node).unwrap();
@@ -342,7 +342,7 @@ fn tabs_after_page_numbers_keep_their_stop() {
             {"placeholder":"pageNumber","font":"Inter-Regular","size":10},
             {"text":"\tx","font":"Inter-Regular","size":10}]}"#);
     let fonts = FontSet::load(&d, &s).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let node = &d.pages[0].children[0];
     let NodeKind::Text { runs } = &node.kind else {
         unreachable!()
@@ -397,7 +397,7 @@ fn segments(text: &str, fallbacks: &[&str]) -> Vec<(String, String, usize)> {
     );
     let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
     let fonts = FontSet::load(&d, &store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let node = &d.pages[0].children[0];
     cache.layout(node, 600.0);
     let (p, _) = cache.prepared(node).unwrap();
@@ -528,7 +528,7 @@ fn advances(runs_json: &str) -> Vec<f32> {
     let s = store();
     let d = doc(runs_json);
     let fonts = FontSet::load(&d, &s).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let node = &d.pages[0].children[0];
     cache.layout(node, f32::INFINITY);
     let (p, _) = cache.prepared(node).unwrap();
@@ -575,7 +575,7 @@ fn the_same_word_shapes_apart_with_other_features() {
 /// the layout.
 fn lines_in(d: &Document, store: &FontStore, boxes: &LineBoxes) -> (Vec<String>, LineLayout) {
     let fonts = FontSet::load(d, store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let node = &d.pages[0].children[0];
     let layout = (*cache.layout_in(node, boxes).unwrap()).clone();
     let (p, _) = cache.prepared(node).unwrap();
@@ -689,7 +689,7 @@ fn assert_fits_shrunk(l: &LineLayout, width: f32, spaces: &[f32]) {
 /// `width`.
 fn line_spaces(d: &Document, store: &FontStore, width: f32) -> (LineLayout, Vec<f32>) {
     let fonts = FontSet::load(d, store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let node = &d.pages[0].children[0];
     let layout = (*cache.layout(node, width).unwrap()).clone();
     let (p, _) = cache.prepared(node).unwrap();
@@ -987,9 +987,7 @@ fn objects_layout(
     images.insert("logo", crate::test_fixtures::fixture("images/logo.png"));
     let set = crate::images::ImageSet::load(&d.pages, &images, &crate::images::ImageCrateDecoder)
         .unwrap();
-    let shaper = RustybuzzShaper::new(&fonts)
-        .unwrap()
-        .with_objects(Arc::new(set.inline_objects()));
+    let shaper = HarfRustShaper::new(&fonts).with_objects(Arc::new(set.inline_objects()));
     let mut cache = TextCache::new(shaper, None);
     let node = &d.pages[0].children[0];
     let layout = (*cache.layout(node, width).unwrap()).clone();
@@ -1110,9 +1108,7 @@ fn placeholders_keep_the_objects() {
     images.insert("logo", crate::test_fixtures::fixture("images/logo.png"));
     let set = crate::images::ImageSet::load(&d.pages, &images, &crate::images::ImageCrateDecoder)
         .unwrap();
-    let shaper = RustybuzzShaper::new(&fonts)
-        .unwrap()
-        .with_objects(Arc::new(set.inline_objects()));
+    let shaper = HarfRustShaper::new(&fonts).with_objects(Arc::new(set.inline_objects()));
     let mut cache = TextCache::new(shaper, None);
     let node = &d.pages[0].children[0];
     cache.layout(node, 600.0);
@@ -1211,7 +1207,7 @@ fn chunks(
     boxes: &LineBoxes,
 ) -> Vec<Result<(), optimal::FirstFit>> {
     let fonts = FontSet::load(d, store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let node = &d.pages[0].children[0];
     let NodeKind::Text { runs } = &node.kind else {
         unreachable!()
@@ -1316,7 +1312,7 @@ fn an_instance_shapes_with_the_layout_at_its_axes() {
         );
         let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
         let fonts = FontSet::load(&d, &s).unwrap();
-        let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+        let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
         let node = &d.pages[0].children[0];
         cache.layout(node, f32::INFINITY);
         let (p, _) = cache.prepared(node).unwrap();
@@ -1348,7 +1344,7 @@ fn vertical_text_shapes_top_to_bottom_with_vertical_forms() {
         "pages":[{"size":{"width":10,"height":10}}]}"#;
     let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
     let set = crate::fonts::FontSet::load(&d, &store).unwrap();
-    let mut shaper = RustybuzzShaper::new(&set).unwrap();
+    let mut shaper = HarfRustShaper::new(&set);
     let run = crate::schema::TextRun {
         text: Some("縦書、「ー」。".into()),
         font: "VertTest".into(),
@@ -1404,7 +1400,7 @@ fn a_text_node_holds_more_than_65_535_runs() {
     *runs.last_mut().unwrap() = r#"{"text":"a","font":"Inter-Regular","size":40}"#;
     let d = doc(&format!(r#"{{"type":"text","runs":[{}]}}"#, runs.join(",")));
     let fonts = FontSet::load(&d, &s).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let node = &d.pages[0].children[0];
     let height = cache.layout(node, 500.0).unwrap().height;
     let (p, _) = cache.prepared(node).unwrap();
@@ -1467,7 +1463,7 @@ fn segments_in_a_glyph_range() {
         run("efg", "Inter-Regular")
     ));
     let fonts = FontSet::load(&d, &st).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let node = &d.pages[0].children[0];
     cache.layout(node, 500.0).unwrap();
     let (p, _) = cache.prepared(node).unwrap();

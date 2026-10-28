@@ -85,7 +85,7 @@ pub(super) fn render_with<R>(
 ) -> R {
     let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
     let fonts = FontSet::load(&doc, store).unwrap();
-    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut text = TextCache::new(HarfRustShaper::new(&fonts), None);
     let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
     let (pages, marks, _) = run(
         &doc,
@@ -932,9 +932,8 @@ fn ops_with_logo(json: &str) -> Vec<Vec<Op>> {
     let mut images = ImageStore::new();
     images.insert("logo", crate::test_fixtures::fixture("images/logo.png"));
     let mut images = ImageSet::load(&doc.pages, &images, &ImageCrateDecoder).unwrap();
-    let shaper = RustybuzzShaper::new(&fonts)
-        .unwrap()
-        .with_objects(std::sync::Arc::new(images.inline_objects()));
+    let shaper =
+        HarfRustShaper::new(&fonts).with_objects(std::sync::Arc::new(images.inline_objects()));
     let mut text = TextCache::new(shaper, None);
     let (pages, _, _) = run(
         &doc,
@@ -969,7 +968,7 @@ fn an_svg_without_a_size_is_laid_out_without_its_text() {
             .to_vec(),
     );
     let mut images = ImageSet::load(&doc.pages, &images, &ImageCrateDecoder).unwrap();
-    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut text = TextCache::new(HarfRustShaper::new(&fonts), None);
     images.lay_out_text(text.shaper()).unwrap();
     let (pages, _, _) = run(
         &doc,
@@ -1099,7 +1098,7 @@ fn emoji_ops_in(
     );
     let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
     let fonts = FontSet::load(&doc, &store).unwrap();
-    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut text = TextCache::new(HarfRustShaper::new(&fonts), None);
     let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
     let (pages, _, _) = run(
         &doc,
@@ -1144,7 +1143,7 @@ fn colour_glyphs_take_the_colour_of_their_run() {
     );
     let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
     let fonts = FontSet::load(&doc, &store).unwrap();
-    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut text = TextCache::new(HarfRustShaper::new(&fonts), None);
     let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
     let (pages, _, _) = run(
         &doc,
@@ -1445,9 +1444,8 @@ fn inline_images_follow_the_visual_order_of_right_to_left_text() {
         let mut images = ImageStore::new();
         images.insert("logo", crate::test_fixtures::fixture("images/logo.png"));
         let mut images = ImageSet::load(&doc.pages, &images, &ImageCrateDecoder).unwrap();
-        let shaper = RustybuzzShaper::new(&fonts)
-            .unwrap()
-            .with_objects(std::sync::Arc::new(images.inline_objects()));
+        let shaper =
+            HarfRustShaper::new(&fonts).with_objects(std::sync::Arc::new(images.inline_objects()));
         let mut text = TextCache::new(shaper, None);
         let (pages, _, _) = run(
             &doc,
@@ -1513,7 +1511,7 @@ fn a_hyphen_follows_its_word_in_the_words_direction() {
     store.register("Inter", font("Inter-Regular")).unwrap();
     let fonts = FontSet::load(&doc, &store).unwrap();
     let mut images = ImageSet::load(&doc.pages, &ImageStore::new(), &ImageCrateDecoder).unwrap();
-    let mut text = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut text = TextCache::new(HarfRustShaper::new(&fonts), None);
     let (pages, _, _) = run(
         &doc,
         &fonts,

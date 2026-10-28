@@ -52,7 +52,7 @@ use std::sync::Arc;
 
 use fonts::FontSet;
 use pdf::{DocumentOut, PdfWriterSink, Profile};
-use text::{RustybuzzShaper, TextCache, UnicodeMap};
+use text::{HarfRustShaper, TextCache, UnicodeMap};
 
 /// Engine version (the crate version).
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -700,7 +700,7 @@ fn render_inner(
     // The instances of variable fonts text asks for besides the declared
     // ones, before the shaper loads a face for each.
     font_set.add_variants(text::font_asks(&document, &font_set, &image_set));
-    let shaper = RustybuzzShaper::new(&font_set)?
+    let shaper = HarfRustShaper::new(&font_set)
         .with_hyphenator(&hyphenator)
         .with_objects(Arc::new(image_set.inline_objects()));
     let mut text = TextCache::new(shaper, document.meta.lang.as_deref());
