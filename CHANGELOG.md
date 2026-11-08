@@ -8,7 +8,11 @@ together, and so does `@inkoxide/wasm` from its first release. From 1.0.0, so do
 `@inkoxide/tree`, `@inkoxide/vue`, `@inkoxide/svelte` and `@inkoxide/angular`. The document
 schema has its own version and [changelog](packages/schema/CHANGELOG.md).
 
-## Unreleased
+## 1.1.0 - 2026-11-08
+
+Fonts are read with read-fonts and text is shaped with HarfRust, the maintained Rust crates of the
+HarfBuzz project. Documents render as before; more fonts register, and a font that made the old
+parser panic no longer does.
 
 ### Changed
 

@@ -684,7 +684,7 @@ dependencies = [
 
 [[package]]
 name = "inkoxide"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "aes",
  "criterion",
@@ -718,14 +718,14 @@ dependencies = [
 
 [[package]]
 name = "inkoxide-binding"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "inkoxide",
 ]
 
 [[package]]
 name = "inkoxide-cli"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "clap",
  "inkoxide",
@@ -734,7 +734,7 @@ dependencies = [
 
 [[package]]
 name = "inkoxide-node"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "inkoxide",
  "inkoxide-binding",
@@ -745,7 +745,7 @@ dependencies = [
 
 [[package]]
 name = "inkoxide-wasm"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "inkoxide",
  "inkoxide-binding",
