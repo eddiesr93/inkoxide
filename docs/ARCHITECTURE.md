@@ -90,7 +90,7 @@ bytes ──serde──▶ schema::Document ──validate──▶ (arena tree)
 | Parse | `validate` (`parse`), `schema` | JSON or MessagePack into the typed structs of `schema` (hand-written deserialisers in `schema/de.rs`); serde errors become validation errors with their path and code |
 | Validate | `validate/rules/` | Semantic checks, a file per area (attachments, fields, images, links, styles, tables, tagging, text): font ids, image ids (images must decode), anchors, value ranges |
 | Fonts | `fonts`, `pdf/font.rs` | Registry and metrics, WOFF/WOFF2 decoding, subsetting, CFF programs (`fonts/cff.rs`); Type0/CID embedding of TrueType and CFF, ToUnicode |
-| Text | `text` | rustybuzz shaping, UAX #14 line breaking, hyphenation, font fallback, bidi, justification |
+| Text | `text` | HarfRust shaping, UAX #14 line breaking, hyphenation, font fallback, bidi, justification |
 | Layout | `layout` | An arena tree laid out by Taffy (flexbox and grid), with a fast path for simple table cells |
 | Tables | `layout/table.rs` | Column widths, spans, collapsed borders; splitting with repeated header rows |
 | Floats | `layout/flow.rs`, `layout/float.rs`, `layout/shape.rs` | Float containers (the root, a column box or a cell with floated children), Taffy leaves like tables: children stacked as in a column, floats placed, text wrapped beside them (around a `shapeOutside`, in strips), column boxes laid out beside them with the floats seeded in, other boxes narrowed |
@@ -139,7 +139,7 @@ margin offset.
 ## Text pipeline
 
 ```
-runs ─▶ prepare (whitespace, soft hyphens, font per char, rustybuzz) ─▶ Prepared   (cached per node)
+runs ─▶ prepare (whitespace, soft hyphens, font per char, HarfRust) ─▶ Prepared   (cached per node)
 Prepared + LineBoxes ─▶ break_lines (per chunk: greedy or optimal, metrics, maxLines/ellipsis) ─▶ LineLayout (cached per boxes)
 LineLayout ─▶ TextPainter (align, justify, placeholders, decorations) ─▶ Op::Text
 Op::Text in a colour font ─▶ ColorGlyphs ─▶ Op::Span + Op::Image + Op::InvisibleText
@@ -156,7 +156,7 @@ float or, for a float with a `shapeOutside`, one per strip of its shape
 the text beside its floats (`Tree.wraps`); pagination, page numbers and
 the painter look the lines up in them.
 
-A run's `fontFeatures` go to rustybuzz with its words; shaped words and
+A run's `fontFeatures` go to HarfRust with its words; shaped words and
 shape plans are cached per feature set too. A run's `verticalAlign` moves
 its baseline (`text::baseline_shift`, from the font's OS/2 superscript and
 subscript metrics): line metrics count the moved glyph boxes, and the
@@ -186,16 +186,18 @@ of an SVG image, a colour glyph is its image instead. A font with colour
 bitmaps and no outlines is never embedded.
 
 Two third-party crates stay behind one module each, so replacing them
-touches only that module: ttf-parser (font parsing) is used only in
+touches only that module: read-fonts (font parsing) is used only in
 `fonts`, which gives the rest of the engine metrics, glyph ids and
-advances; rustybuzz (shaping) only in `text/prepare.rs`, which parses its
-shaping faces from the font bytes once per render and shares them between
-threads. Two parts of `fonts/layout.rs` know rustybuzz without using it,
-reading with ttf-parser what it would: registration refuses the fonts
-whose `GSUB` or `GPOS` coverage offsets rustybuzz would unwrap, and
-`vertical_form` finds the glyphs whose `vert` form rustybuzz substitutes
-in vertical text (only `vert`, the feature it applies). Replacing
-rustybuzz means checking both again. `pdf` depends on `fonts` and `images`,
+advances; HarfRust (shaping) only in `text/prepare.rs`. HarfRust reads
+fonts through read-fonts' font model, so `fonts` hands `text/prepare.rs`
+each font's model at its instance (`LoadedFont::shaping_font`), once per
+render; the threads share them, and the layout data HarfRust derives from
+them. `fonts` knows HarfRust without using it in two places, reading
+with read-fonts what it would: `fonts/layout.rs` finds the glyphs whose
+`vert` form HarfRust substitutes in vertical text (only `vert`, the
+feature it applies), and `LoadedFont::vertical_metrics` reads glyphs'
+vertical origins and advances as it does. Replacing HarfRust means
+checking both again. `pdf` depends on `fonts` and `images`,
 never the reverse, and `text` does not depend on `pdf`: the pipeline asks
 `pdf` what a colour glyph's image (from `ColorGlyphs`) needs for PDF/A,
 and how many bytes the text of a node's images takes. `fonts`
@@ -244,14 +246,16 @@ that carry `/Stm`.
 
 A variable font is registered once; each declaration with `variations`
 draws with an `Instance` of it (`fonts/mod.rs`): canonical coordinates
-(clamped, in tag order, defaults left out), metrics read by ttf-parser at
-those coordinates (it applies `MVAR`), and a digest that keys the program
-caches. Layout reads the ttf-parser face at the coordinates, and shaping
-gives rustybuzz the same ones. Every program embedded is the instance as
-static TrueType, made by subsetter's instancer (skrifa underneath), CFF2
-outlines included. Two parsers read the font, so registration refuses
-what they read differently: more than 63 axes (ttf-parser then applies
-none) and `avar` 2 (which ttf-parser does not read).
+(clamped, in tag order, defaults left out), the read-fonts model of the
+font at those coordinates, metrics read from it (read-fonts applies
+`MVAR`), and a digest that keys the program caches. Layout and shaping
+read that one model. Every program embedded is the instance as static
+TrueType, made by subsetter's instancer (an older copy of the same
+fontations crates, skrifa and read-fonts, underneath), CFF2 outlines
+included. Two copies read the font, so registration refuses what they
+could read differently: more than 63 axes, `avar` 2, and a `gvar` table
+that does not read whole (read-fonts reads a glyph's variations only
+when it varies the glyph).
 
 Text can ask a declaration for an instance besides its own: the optical
 size of its font size (`opsz`, unless the declaration sets it or

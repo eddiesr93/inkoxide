@@ -1,7 +1,7 @@
 use super::*;
 use crate::fonts::FontSet;
 use crate::schema::Document;
-use crate::text::{RustybuzzShaper, TextCache};
+use crate::text::{HarfRustShaper, TextCache};
 use crate::InputFormat;
 
 fn doc(children: &str) -> Document {
@@ -313,7 +313,7 @@ fn simple_cell_fast_path_matches_taffy() {
         let spec = &d.pages[0];
         let w = spec.size.width - spec.margin.left - spec.margin.right;
         let run = |fast: bool| {
-            let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+            let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
             let mut tree = Tree::build(&spec.children);
             compute_tree(&mut tree, w, 0.0, &mut cache, fast).unwrap();
             tree.nodes.iter().map(|n| n.geo).collect::<Vec<_>>()
@@ -496,7 +496,7 @@ fn float_free_column_boxes_lay_out_as_taffy_does() {
         let fonts = FontSet::load(&d, &store).unwrap();
         let min_height = if case % 2 == 0 { 0.0 } else { 700.0 };
         let run = |flowing: bool| {
-            let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+            let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
             let mut tree = Tree::build(&d.pages[0].children);
             if flowing {
                 compute_tree_flowing(&mut tree, 380.0, min_height, &mut cache).unwrap();
@@ -534,7 +534,7 @@ fn float_free_column_boxes_lay_out_as_taffy_does() {
 fn with_floats<R>(
     children: &str,
     width: f32,
-    f: impl FnOnce(&Tree<'_>, &mut TextCache<'_, RustybuzzShaper<'_, '_>>) -> R,
+    f: impl FnOnce(&Tree<'_>, &mut TextCache<'_, HarfRustShaper<'_, '_>>) -> R,
 ) -> R {
     let store = crate::test_fixtures::fonts(&["Inter-Regular"]);
     let json = format!(
@@ -543,7 +543,7 @@ fn with_floats<R>(
     );
     let d = crate::validate::parse(json.as_bytes(), InputFormat::Json).unwrap();
     let fonts = FontSet::load(&d, &store).unwrap();
-    let mut cache = TextCache::new(RustybuzzShaper::new(&fonts).unwrap(), None);
+    let mut cache = TextCache::new(HarfRustShaper::new(&fonts), None);
     let mut tree = Tree::build(&d.pages[0].children);
     compute_tree(&mut tree, width, 0.0, &mut cache, true).unwrap();
     f(&tree, &mut cache)

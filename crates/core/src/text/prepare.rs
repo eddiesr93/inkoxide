@@ -1,7 +1,7 @@
 //! Width-independent text preparation: whitespace processing, hyphenation
 //! points, font itemisation and shaping.
 //!
-//! The only user of the shaping library (rustybuzz): its faces, plans and
+//! The only user of the shaping library (harfrust): its fonts, plans and
 //! buffers stay private to this file.
 
 use std::collections::HashMap;
@@ -359,6 +359,7 @@ impl ShapingFailure {
     pub fn error(&self) -> InkoxideError {
         let what = match self.cause {
             ShapingCause::Panicked => "the shaper panicked".to_string(),
+            ShapingCause::Refused => "the shaper refused the text".to_string(),
             ShapingCause::TooManyGlyphs => format!(
                 "the text shaped to more than {MAX_EXTRA_GLYPHS} glyphs beyond one per byte"
             ),
@@ -371,9 +372,10 @@ impl ShapingFailure {
 }
 
 enum ShapingCause {
-    /// The shaper panicked, as it does on some malformed fonts.
-    /// Registration rejects the ones known (see `fonts/layout.rs`).
+    /// The shaper panicked: a backstop, as no font is known to make it.
     Panicked,
+    /// The shaper refused the text.
+    Refused,
     /// The render's text shaped to more than [`MAX_EXTRA_GLYPHS`] extra
     /// glyphs.
     TooManyGlyphs,
@@ -381,48 +383,29 @@ enum ShapingCause {
 
 /// Font, direction, feature set ([`ShapeCache::features`]) and text of a
 /// shaped word.
-type WordKey = (FontKey, Option<rustybuzz::Direction>, FeatureSet, Box<str>);
+type WordKey = (FontKey, Option<harfrust::Direction>, FeatureSet, Box<str>);
 
 /// Index of a run's OpenType features in [`ShapeCache::features`]; 0 is
 /// none. Validation bounds the different sets of a document's text, and
 /// `ImageSet::lay_out_text` those of its SVGs.
 type FeatureSet = u16;
 
-/// Shaping faces of a render's fonts, indexed by [`FontKey`]: parsed once
-/// per render and shared by every [`ShapeCache`] (one per shaping thread).
+/// A render's fonts as the shaper reads them, each at its instance's
+/// location, indexed by [`FontKey`]: taken once per render and shared by
+/// every [`ShapeCache`] (one per shaping thread). The fonts keep the layout
+/// data the shaper derives from them, so the threads share that too.
 #[derive(Clone)]
-pub(super) struct Faces<'a>(Arc<[rustybuzz::Face<'a>]>);
+pub(super) struct Faces(Arc<[harfrust::Font]>);
 
-impl<'a> Faces<'a> {
-    pub fn load(fonts: &FontSet<'a>) -> Result<Self, InkoxideError> {
-        fonts
-            .fonts
-            .iter()
-            .map(|f| {
-                let data = f.data;
-                // `from_slice` fails only where ttf-parser does, and
-                // `FontSet::load` parsed these bytes already.
-                let mut face = rustybuzz::Face::from_slice(&data.bytes, 0).ok_or_else(|| {
-                    InkoxideError::Font(format!(
-                        "font `{}` cannot be loaded for shaping",
-                        data.metrics.post_script_name
-                    ))
-                })?;
-                if !f.coords().is_empty() {
-                    let variations: Vec<rustybuzz::Variation> = f
-                        .coords()
-                        .iter()
-                        .map(|&(tag, value)| rustybuzz::Variation {
-                            tag: crate::fonts::opentype_tag(tag),
-                            value,
-                        })
-                        .collect();
-                    face.set_variations(&variations);
-                }
-                Ok(face)
-            })
-            .collect::<Result<_, _>>()
-            .map(Self)
+impl Faces {
+    pub fn load(fonts: &FontSet<'_>) -> Self {
+        Self(
+            fonts
+                .fonts
+                .iter()
+                .map(|f| f.shaping_font().clone())
+                .collect(),
+        )
     }
 }
 
@@ -430,8 +413,8 @@ impl<'a> Faces<'a> {
 /// script) and shaped words per (font, direction, features, text). Documents repeat words constantly
 /// (table cells, numbers, common vocabulary), so shaping word by word and
 /// reusing results removes most shaping work.
-pub(super) struct ShapeCache<'a> {
-    faces: Faces<'a>,
+pub(super) struct ShapeCache {
+    faces: Faces,
     /// Glyphs the render's text has shaped to beyond one per byte, shared
     /// by the caches of its threads: against [`MAX_EXTRA_GLYPHS`].
     extra: Arc<AtomicU64>,
@@ -441,23 +424,23 @@ pub(super) struct ShapeCache<'a> {
         (
             FontKey,
             FeatureSet,
-            rustybuzz::Direction,
-            Option<rustybuzz::Script>,
+            harfrust::Direction,
+            Option<harfrust::Script>,
         ),
-        rustybuzz::ShapePlan,
+        harfrust::ShapePlan,
     >,
     /// Keyed by font, direction (`None`: guessed from the text), features
     /// and text.
     words: HashMap<WordKey, Arc<[UnitGlyph]>>,
     /// The feature sets of the runs shaped so far, by [`FeatureSet`]; the
     /// first is empty.
-    features: Vec<Box<[rustybuzz::Feature]>>,
+    features: Vec<Box<[harfrust::Feature]>>,
     /// Each run's features, sorted by tag, to their [`FeatureSet`].
     feature_sets: HashMap<Box<[FontFeature]>, FeatureSet>,
 }
 
-impl<'a> ShapeCache<'a> {
-    pub fn new(faces: Faces<'a>) -> Self {
+impl ShapeCache {
+    pub fn new(faces: Faces) -> Self {
         Self {
             faces,
             extra: Arc::default(),
@@ -484,7 +467,7 @@ impl<'a> ShapeCache<'a> {
             .iter()
             .filter_map(|f| {
                 let tag: [u8; 4] = f.tag.as_bytes().try_into().ok()?;
-                Some(rustybuzz::Feature::new(
+                Some(harfrust::Feature::new(
                     crate::fonts::opentype_tag(tag),
                     f.value,
                     ..,
@@ -532,41 +515,45 @@ impl<'a> ShapeCache<'a> {
     /// Glyphs come back in logical order (clusters ascending) whatever
     /// the direction; painting reverses right-to-left runs. Top to bottom,
     /// the advances are the vertical ones, down.
+    /// `None` when the shaper refuses it.
     fn word(
         &mut self,
         key: FontKey,
         word: &str,
-        dir: Option<rustybuzz::Direction>,
+        dir: Option<harfrust::Direction>,
         set: FeatureSet,
         unicode: &mut super::UnicodeMap,
-    ) -> Arc<[UnitGlyph]> {
+    ) -> Option<Arc<[UnitGlyph]>> {
         if let Some(g) = self.words.get(&(key, dir, set, Box::from(word))) {
-            return g.clone();
+            return Some(g.clone());
         }
-        let face = &self.faces.0[usize::from(key)];
-        let mut buf = rustybuzz::UnicodeBuffer::new();
+        let font = &self.faces.0[usize::from(key)];
+        let mut buf = harfrust::Buffer::new();
         buf.push_str(word);
         buf.guess_segment_properties();
         if let Some(dir) = dir {
             buf.set_direction(dir);
         }
-        let reversed = buf.direction() == rustybuzz::Direction::RightToLeft && dir.is_some();
-        let vertical = buf.direction() == rustybuzz::Direction::TopToBottom;
+        let reversed = buf.direction() == harfrust::Direction::RightToLeft && dir.is_some();
+        let vertical = buf.direction() == harfrust::Direction::TopToBottom;
         let features = self
             .features
             .get(usize::from(set))
             .map_or(&[][..], |f| &f[..]);
         let plan = self
             .plans
-            .entry((key, set, buf.direction(), Some(buf.script())))
+            .entry((key, set, buf.direction(), buf.script()))
             .or_insert_with(|| {
-                rustybuzz::ShapePlan::new(face, buf.direction(), Some(buf.script()), None, features)
+                harfrust::ShapePlan::new(font, buf.direction(), buf.script(), None, features)
             });
-        let shaped = rustybuzz::shape_with_plan(face, plan, buf);
-        let infos = shaped.glyph_infos();
-        let mut glyphs: Vec<UnitGlyph> = infos
+        let options = harfrust::ShapeOptions::new()
+            .plan(Some(plan))
+            .features(features);
+        harfrust::shape(&harfrust::ShaperFont::new(font), &mut buf, options).ok()?;
+        let mut glyphs: Vec<UnitGlyph> = buf
+            .glyph_infos()
             .iter()
-            .zip(shaped.glyph_positions())
+            .zip(buf.glyph_positions())
             .map(|(i, p)| UnitGlyph {
                 id: i.glyph_id as u16,
                 advance: if vertical { -p.y_advance } else { p.x_advance },
@@ -587,7 +574,7 @@ impl<'a> ShapeCache<'a> {
         }
         self.words
             .insert((key, dir, set, Box::from(word)), glyphs.clone());
-        glyphs
+        Some(glyphs)
     }
 }
 
@@ -617,7 +604,7 @@ fn words(s: &str) -> impl Iterator<Item = (usize, &str)> {
 pub(crate) fn prepare(
     opts: &ParagraphOptions<'_>,
     fonts: &FontSet<'_>,
-    cache: &mut ShapeCache<'_>,
+    cache: &mut ShapeCache,
     unicode: &mut super::UnicodeMap,
 ) -> Prepared {
     let (text, run_ranges) = build_text(opts);
@@ -682,12 +669,12 @@ pub(crate) fn prepare(
 
         let first = glyphs.len() as u32;
         let dir = if opts.vertical {
-            Some(rustybuzz::Direction::TopToBottom)
+            Some(harfrust::Direction::TopToBottom)
         } else {
             levels.is_some().then_some(if seg.level % 2 == 1 {
-                rustybuzz::Direction::RightToLeft
+                harfrust::Direction::RightToLeft
             } else {
-                rustybuzz::Direction::LeftToRight
+                harfrust::Direction::LeftToRight
             })
         };
         for (off, word) in words(seg_text) {
@@ -701,9 +688,13 @@ pub(crate) fn prepare(
             }));
             let shaped = match shaped {
                 // Every occurrence counts: each copies its glyphs.
-                Ok(g) if cache.spend(g.len(), word.len()) => g,
-                Ok(_) => {
+                Ok(Some(g)) if cache.spend(g.len(), word.len()) => g,
+                Ok(Some(_)) => {
                     cache.fail(fonts.get(seg.font), ShapingCause::TooManyGlyphs);
+                    break;
+                }
+                Ok(None) => {
+                    cache.fail(fonts.get(seg.font), ShapingCause::Refused);
                     break;
                 }
                 Err(_) => {

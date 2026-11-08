@@ -451,10 +451,11 @@ mod tests {
             Some(ColorGlyph::Svg { svg, .. }) => svg,
             other => panic!("{other:?}"),
         };
-        // The square fades from opaque to half (127 of 255) with wght.
+        // The square fades from opaque to half (127.5 of 255, rounded) with
+        // wght.
         let (default, bold) = (svg(0), svg(1));
         assert!(!default.contains("fill-opacity"), "{default}");
-        assert!(bold.contains(r#"fill-opacity="0.49803922""#), "{bold}");
+        assert!(bold.contains(r#"fill-opacity="0.5019608""#), "{bold}");
     }
 
     /// The image bytes of glyph `gid` of `font` (SVG or PNG), its layers

@@ -8,6 +8,8 @@
 //! writes the charset offset as a fixed 5-byte integer, so it is patched
 //! in place and the charset is appended at the end.
 
+use read_fonts::TableProvider;
+
 /// The `CFF ` table of an OpenType font.
 fn cff_table(otf: &[u8]) -> Option<&[u8]> {
     let u16_at = |p: usize| Some(u16::from_be_bytes(otf.get(p..p + 2)?.try_into().ok()?));
@@ -146,7 +148,11 @@ pub(super) fn full_program(otf: &[u8]) -> Option<Vec<u8>> {
     if reals_fit(otf) != Some(true) {
         return None;
     }
-    let n = ttf_parser::Face::parse(otf, 0).ok()?.number_of_glyphs();
+    let n = read_fonts::FontRef::new(otf)
+        .ok()?
+        .maxp()
+        .ok()?
+        .num_glyphs();
     let glyphs: Vec<u16> = (0..n).collect();
     let remapper = subsetter::GlyphRemapper::new_from_glyphs_sorted(&glyphs);
     let sub = subsetter::subset(otf, 0, &remapper).ok()?;

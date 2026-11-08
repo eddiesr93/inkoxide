@@ -3,13 +3,16 @@
 //!
 //! Fonts are registered explicitly (no system font discovery: determinism).
 //! Registration decodes WOFF and WOFF2 files to the font they wrap, then
-//! parses and validates the font once; per render, the fonts a document
-//! declares are parsed again for glyph lookups and advances (`FontSet`).
+//! parses and validates the font once, keeping read-fonts' model of it,
+//! which caches what is read from it; per render, the fonts a document
+//! declares take that model, at their instances, for glyph lookups and
+//! advances (`FontSet`).
 //!
-//! The font-parsing library (ttf-parser) and the subsetter stay in this
+//! The font-parsing library (read-fonts) and the subsetter stay in this
 //! module: the rest of the engine sees glyph ids, advances, [`FontMetrics`]
-//! and font programs. Shaping faces belong to `text`, which builds them
-//! from [`FontData`]'s bytes.
+//! and font programs. Shaping belongs to `text`, which takes each font's
+//! read-fonts model from [`LoadedFont::shaping_font`]: the shaper
+//! (harfrust) reads fonts through it.
 
 mod cff;
 mod color;
@@ -17,7 +20,13 @@ mod layout;
 mod woff;
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::sync::{Arc, Mutex, OnceLock};
+
+use read_fonts::model::glyph::GlyphSourceOrder;
+use read_fonts::model::{self, name::NameId};
+use read_fonts::types::{GlyphId, Tag};
+use read_fonts::{FontRef, TableProvider};
 
 pub(crate) use color::{ColorGlyph, TextColor, BLACK_TEXT};
 
@@ -109,17 +118,25 @@ fn script_shift(offset: f32, size: f32, default_offset: f32) -> f32 {
 }
 
 /// The OpenType tag of `bytes`, such as a feature's (`tnum`): the type
-/// the shaper takes, built here so that only this module names ttf-parser.
-pub(crate) fn opentype_tag(bytes: [u8; 4]) -> ttf_parser::Tag {
-    ttf_parser::Tag::from_bytes(&bytes)
+/// the shaper takes, built here so that only this module names read-fonts.
+pub(crate) fn opentype_tag(bytes: [u8; 4]) -> Tag {
+    Tag::new(&bytes)
+}
+
+/// `bytes` as read-fonts models a font, sharing them; `None` for bytes it
+/// reads no font from.
+fn model_font(bytes: &Arc<[u8]>) -> Option<model::Font> {
+    let shared: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(bytes.clone());
+    model::Font::new(model::Blob::from(shared), 0)
 }
 
 /// A registered font face.
-#[derive(Debug)]
 pub struct FontData {
     /// The sfnt font (TrueType or CFF OpenType), decoded from WOFF or WOFF2
     /// when it was registered in one of them.
     pub(crate) bytes: Arc<[u8]>,
+    /// `bytes` as read-fonts models them, at the default location.
+    font: model::Font,
     /// SHA-256 of `bytes`: what caches that outlive the font key it by,
     /// so they need not keep its bytes to tell it from another.
     pub(crate) digest: [u8; 32],
@@ -136,6 +153,16 @@ pub struct FontData {
     instances: Mutex<Vec<Arc<Instance>>>,
 }
 
+impl fmt::Debug for FontData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FontData")
+            .field("metrics", &self.metrics)
+            .field("axes", &self.axes)
+            .field("outlines", &self.outlines)
+            .finish_non_exhaustive()
+    }
+}
+
 /// A variation axis of a variable font, in user space.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Axis {
@@ -145,8 +172,8 @@ pub(crate) struct Axis {
     pub max: f32,
 }
 
-/// Most axes a variable font may have: ttf-parser applies no variation to
-/// a font with more.
+/// Most axes a variable font may have: a bound on what each instance costs
+/// to locate, shape and embed. Real fonts have a dozen at most.
 const MAX_AXES: usize = 63;
 
 /// Most instances of one font kept: each keeps its metrics and, once
@@ -156,20 +183,21 @@ const MAX_KEPT_INSTANCES: usize = 64;
 /// An axis tag and a user-space value on it.
 pub(crate) type Coord = ([u8; 4], f32);
 
-/// Sets `face` to `coords`.
-fn set_coords(face: &mut ttf_parser::Face<'_>, coords: &[Coord]) {
-    for &(tag, v) in coords {
-        face.set_variation(ttf_parser::Tag::from_bytes(&tag), v);
-    }
+/// `font` at `coords`.
+fn located(font: &model::Font, coords: &[Coord]) -> model::Font {
+    font.instance_builder()
+        .variations(coords.iter().map(|(tag, v)| (Tag::new(tag), *v)))
+        .build()
 }
 
 /// A static instance of a variable font: its location, and what differs
 /// there from the default.
-#[derive(Debug)]
 pub(crate) struct Instance {
     /// Each axis value that is not the default, clamped to its axis, in
     /// tag order: equal locations are equal coordinates.
     pub coords: Box<[Coord]>,
+    /// The font at `coords`.
+    font: model::Font,
     pub metrics: FontMetrics,
     /// SHA-256 of the font's digest and the coordinates: what the program
     /// caches key it by.
@@ -177,6 +205,15 @@ pub(crate) struct Instance {
     /// Compressed whole program of the instance and its length, on first
     /// use.
     compressed: OnceLock<(Arc<[u8]>, usize)>,
+}
+
+impl fmt::Debug for Instance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Instance")
+            .field("coords", &self.coords)
+            .field("metrics", &self.metrics)
+            .finish_non_exhaustive()
+    }
 }
 
 impl FontData {
@@ -195,64 +232,76 @@ impl FontData {
     /// The first character of `text` the font has no glyph for, control
     /// characters aside.
     pub(crate) fn lacks(&self, text: &str) -> Option<char> {
-        let face = ttf_parser::Face::parse(&self.bytes, 0).ok()?;
+        let charmap = self.font.charmap();
         text.chars()
-            .find(|&c| !c.is_control() && face.glyph_index(c).is_none())
+            .find(|&c| !c.is_control() && charmap.map_unicode(c).is_none())
     }
 
     fn parse(id: &str, bytes: Arc<[u8]>) -> Result<Self, InkoxideError> {
         let err = |msg: &str| InkoxideError::Font(format!("font `{id}`: {msg}"));
+        let invalid = |why: &str| err(&format!("not a valid TrueType/OpenType font ({why})"));
         let bytes = match woff::decode(&bytes).map_err(|m| err(&m))? {
             Some(sfnt) => sfnt.into(),
             None => bytes,
         };
-        // `Face::parse` would take the first face of a collection, and the
-        // PDF needs the program of one font, not the whole file.
+        // A collection holds several fonts, and the PDF needs the program of
+        // one font, not the whole file.
         if bytes.starts_with(b"ttcf") {
             return Err(err(
                 "font collections (.ttc) are not supported; register each font as its own \
                  .ttf or .otf file",
             ));
         }
-        let face = ttf_parser::Face::parse(&bytes, 0)
-            .map_err(|e| err(&format!("not a valid TrueType/OpenType font ({e})")))?;
-        let tables = face.tables();
-        // Parsed only with their companion tables (`CBLC`, `CPAL`).
-        let bitmaps = tables.cbdt.is_some() || tables.sbix.is_some();
-        let color = bitmaps || tables.colr.is_some() || tables.svg.is_some();
-        let outlines = outlines(&face, &bytes, bitmaps).map_err(err)?;
-        if outlines == Outlines::None && !bitmaps {
-            return Err(err(
-                "font has neither TrueType (glyf) nor embeddable CFF outlines, nor colour \
-                 bitmaps (CBDT or sbix)",
-            ));
-        }
-        if tables
-            .cmap
-            .is_none_or(|c| !c.subtables.into_iter().any(|s| s.is_unicode()))
-        {
-            return Err(err("font has no Unicode cmap"));
-        }
-        if let Some(table) = layout::unresolved_coverage(&face) {
-            return Err(err(&format!(
-                "the {table} table is malformed (a coverage offset does not point to a \
-                 coverage table)"
-            )));
-        }
-        let axes = face
-            .variation_axes()
-            .into_iter()
+        let (font, outlines, color) = {
+            // Only an sfnt: read-fonts also models bare CFF and Type 1 fonts.
+            let tables = FontRef::new(&bytes).map_err(|e| invalid(&e.to_string()))?;
+            // The tables every font needs, which the model would do without.
+            let head = tables.head().map_err(|_| invalid("no valid head table"))?;
+            if tables.hhea().is_err() || tables.maxp().is_err() {
+                return Err(invalid("no valid hhea or maxp table"));
+            }
+            if !(16..=16384).contains(&head.units_per_em()) {
+                return Err(invalid("its units per em are out of range"));
+            }
+            let font = model_font(&bytes).ok_or_else(|| invalid("unreadable"))?;
+            // Read only with their companion tables (`CBLC`, `CPAL`): a
+            // `COLR` glyph's colours are in `CPAL`.
+            let bitmaps = matches!(
+                font.bitmap_strikes().source(),
+                Some(
+                    model::glyph::bitmap::BitmapSource::Cbdt
+                        | model::glyph::bitmap::BitmapSource::Sbix
+                )
+            );
+            let colr = !font.color_glyphs().is_empty() && !font.palettes().is_empty();
+            let color = bitmaps || colr || tables.svg().is_ok();
+            let outlines = outlines(&font, &tables, &bytes, bitmaps).map_err(err)?;
+            if outlines == Outlines::None && !bitmaps {
+                return Err(err(
+                    "font has neither TrueType (glyf) nor embeddable CFF outlines, nor colour \
+                     bitmaps (CBDT or sbix)",
+                ));
+            }
+            if !font.charmap().has_unicode() {
+                return Err(err("font has no Unicode cmap"));
+            }
+            (font, outlines, color)
+        };
+        let axes = font
+            .axes()
+            .iter()
             .map(|a| Axis {
-                tag: a.tag.to_bytes(),
-                min: a.min_value,
-                default: a.def_value,
-                max: a.max_value,
+                tag: a.tag().to_be_bytes(),
+                min: a.min_value(),
+                default: a.default_value(),
+                max: a.max_value(),
             })
             .collect();
-        let metrics = read_metrics(&face, id, color);
+        let metrics = read_metrics(&font, id, color);
         Ok(Self {
             digest: <sha2::Sha256 as sha2::Digest>::digest(&bytes).into(),
             bytes,
+            font,
             metrics,
             axes,
             outlines,
@@ -320,22 +369,15 @@ impl FontData {
 
     fn make_instance(&self, coords: Box<[Coord]>) -> Instance {
         let base = &self.metrics;
-        let metrics = match ttf_parser::Face::parse(&self.bytes, 0) {
-            Ok(mut face) => {
-                set_coords(&mut face, &coords);
-                let mut m = read_metrics(&face, "", base.color);
-                let coord = |tag: &[u8; 4]| coords.iter().find(|(t, _)| t == tag).map(|(_, v)| *v);
-                m.weight =
-                    coord(b"wght").map_or(base.weight, |w| w.round().clamp(1.0, 1000.0) as u16);
-                m.italic_angle = coord(b"slnt").unwrap_or(base.italic_angle);
-                m.is_italic = base.is_italic || leans(coord(b"ital"), coord(b"slnt"));
-                m.post_script_name =
-                    instance_name(&name_prefix(&face, &base.post_script_name), &coords);
-                m
-            }
-            // It parsed when it was registered.
-            Err(_) => base.clone(),
-        };
+        let font = located(&self.font, &coords);
+        let mut metrics = read_metrics(&font, "", base.color);
+        let coord = |tag: &[u8; 4]| coords.iter().find(|(t, _)| t == tag).map(|(_, v)| *v);
+        metrics.weight =
+            coord(b"wght").map_or(base.weight, |w| w.round().clamp(1.0, 1000.0) as u16);
+        metrics.italic_angle = coord(b"slnt").unwrap_or(base.italic_angle);
+        metrics.is_italic = base.is_italic || leans(coord(b"ital"), coord(b"slnt"));
+        metrics.post_script_name =
+            instance_name(&name_prefix(&font, &base.post_script_name), &coords);
         let mut h = <sha2::Sha256 as sha2::Digest>::new();
         sha2::Digest::update(&mut h, self.digest);
         for (tag, v) in &coords {
@@ -344,6 +386,7 @@ impl FontData {
         }
         Instance {
             coords,
+            font,
             metrics,
             digest: sha2::Digest::finalize(h).into(),
             compressed: OnceLock::new(),
@@ -387,9 +430,9 @@ impl FontData {
         Ok(cell.get_or_init(|| data).clone())
     }
 
-    /// Number of glyphs in the font (0 when it no longer parses).
+    /// Number of glyphs in the font.
     fn glyph_count(&self) -> u16 {
-        ttf_parser::Face::parse(&self.bytes, 0).map_or(0, |f| f.number_of_glyphs())
+        glyph_count(&self.font)
     }
 }
 
@@ -410,79 +453,110 @@ impl FontData {
     }
 }
 
-/// The start of the PostScript names of `face`'s instances: its
-/// variations PostScript name prefix (name ID 25), or else `name`.
-fn name_prefix(face: &ttf_parser::Face<'_>, name: &str) -> String {
-    face.names()
-        .into_iter()
-        .find(|n| n.name_id == 25 && n.is_unicode())
-        .and_then(|n| n.to_string())
-        .filter(|n| !n.is_empty())
-        .unwrap_or_else(|| name.to_string())
+/// The string of name `id` of `font`, in English where it has one.
+fn name(font: &model::Font, id: NameId) -> Option<String> {
+    Some(font.names().get(id)?.english_or_first()?.name().to_string())
 }
 
-/// The metrics of `face` at its variation coordinates (ttf-parser applies
-/// `MVAR`); `fallback_name` is the PostScript name of a font without one.
-fn read_metrics(face: &ttf_parser::Face<'_>, fallback_name: &str, color: bool) -> FontMetrics {
-    let upem = f32::from(face.units_per_em());
-    let bbox = face.global_bounding_box();
-    let ascender = f32::from(face.ascender());
-    let post_script_name = face
-        .names()
-        .into_iter()
-        .find(|n| n.name_id == ttf_parser::name_id::POST_SCRIPT_NAME && n.is_unicode())
-        .and_then(|n| n.to_string())
-        .unwrap_or_else(|| fallback_name.to_string());
-    let underline = face.underline_metrics();
-    let strikeout = face.strikeout_metrics();
-    let x_height = face
-        .x_height()
-        .filter(|&h| h > 0)
-        .map(f32::from)
+/// The start of the PostScript names of `font`'s instances: its
+/// variations PostScript name prefix (name ID 25), or else `name`.
+fn name_prefix(font: &model::Font, base: &str) -> String {
+    name(font, NameId::VARIATIONS_POSTSCRIPT_NAME_PREFIX)
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| base.to_string())
+}
+
+/// Number of glyphs in `font`: its glyph ids are `0..glyph_count`.
+fn glyph_count(font: &model::Font) -> u16 {
+    u16::try_from(font.num_glyphs()).unwrap_or(u16::MAX)
+}
+
+/// The box of glyph `gid`'s outline in `font`, `[x_min, y_min, x_max,
+/// y_max]` in font units with y up: the box of its points, curves'
+/// control points included, whatever the `glyf` header says. `None` for a
+/// glyph with no outline (a space).
+fn outline_box(font: &model::Font, gid: u16) -> Option<[f32; 4]> {
+    let e = font
+        .outline_glyphs()
+        .get(GlyphId::from(gid))?
+        .extents()
+        .ok()?;
+    (e.width > 0.0 || e.height > 0.0).then_some([
+        e.x_bearing,
+        e.y_bearing - e.height,
+        e.x_bearing + e.width,
+        e.y_bearing,
+    ])
+}
+
+/// The metrics of `font` at its location (read-fonts applies `MVAR`);
+/// `fallback_name` is the PostScript name of a font without one.
+fn read_metrics(font: &model::Font, fallback_name: &str, color: bool) -> FontMetrics {
+    let m = font.metrics();
+    let style = font.style_metrics();
+    let os2 = font.tables().os2().ok();
+    let upem = f32::from(m.units_per_em);
+    let line = m.h_line().unwrap_or_default();
+    let ascender = line.ascender.to_f32();
+    let italic_angle = style
+        .italic_angle
+        .map_or(0.0, read_fonts::types::Fixed::to_f32);
+    let post_script_name =
+        name(font, NameId::POSTSCRIPT_NAME).unwrap_or_else(|| fallback_name.to_string());
+    let x_height = m
+        .x_height
+        .map(read_fonts::types::F48Dot16::to_f32)
+        .filter(|&h| h > 0.0)
         .or_else(|| {
-            let x = face.glyph_index('x')?;
-            face.glyph_bounding_box(x).map(|b| f32::from(b.y_max))
+            let x = font.charmap().map_unicode('x')?;
+            outline_box(font, u16::try_from(x.to_u32()).ok()?).map(|b| b[3])
         })
         .filter(|&h| h > 0.0)
         .unwrap_or(upem * 0.5);
     // Fonts without an OS/2 table, or with sizes of 0, get values close
     // to what browsers use.
-    let script = |m: Option<ttf_parser::ScriptMetrics>, offset: f32| {
-        m.filter(|m| m.y_size > 0)
+    let script = |m: Option<model::metrics::ScriptMetrics>, offset: f32| {
+        m.filter(|m| m.y_size.to_f32() > 0.0)
             .map_or((upem * offset, upem * SCRIPT_SIZE), |m| {
-                (f32::from(m.y_offset), f32::from(m.y_size))
+                (m.y_offset.to_f32(), m.y_size.to_f32())
             })
     };
-    let (subscript_offset, subscript_size) = script(face.subscript_metrics(), SUBSCRIPT_OFFSET);
-    let (superscript_offset, superscript_size) =
-        script(face.superscript_metrics(), SUPERSCRIPT_OFFSET);
+    let (subscript_offset, subscript_size) = script(style.subscript, SUBSCRIPT_OFFSET);
+    let (superscript_offset, superscript_size) = script(style.superscript, SUPERSCRIPT_OFFSET);
+    let (underline, strikeout) = (style.underline, style.strike_through);
     FontMetrics {
         units_per_em: upem,
         ascender,
-        descender: f32::from(face.descender()),
-        line_gap: f32::from(face.line_gap()),
-        cap_height: face.capital_height().map_or(ascender * 0.7, f32::from),
-        italic_angle: face.italic_angle(),
+        descender: line.descender.to_f32(),
+        line_gap: line.line_gap.to_f32(),
+        cap_height: m
+            .cap_height
+            .map_or(ascender * 0.7, read_fonts::types::F48Dot16::to_f32),
+        italic_angle,
         bbox: [
-            f32::from(bbox.x_min),
-            f32::from(bbox.y_min),
-            f32::from(bbox.x_max),
-            f32::from(bbox.y_max),
+            m.bounds.x_min.to_f32(),
+            m.bounds.y_min.to_f32(),
+            m.bounds.x_max.to_f32(),
+            m.bounds.y_max.to_f32(),
         ],
-        weight: face.weight().to_number(),
-        is_italic: face.is_italic(),
-        is_fixed_pitch: face.is_monospaced(),
-        // OS/2 sFamilyClass (offset 30): IBM classes 1..=7 are serifs.
-        is_serif: face
-            .raw_face()
-            .table(ttf_parser::Tag::from_bytes(b"OS/2"))
-            .and_then(|t| t.get(30))
-            .is_some_and(|class| (1..=7).contains(class)),
+        weight: os2
+            .as_ref()
+            .map_or(400, read_fonts::tables::os2::Os2::us_weight_class),
+        // Italic by its style, or by its slant.
+        is_italic: os2.as_ref().is_some_and(|t| {
+            t.fs_selection()
+                .contains(read_fonts::tables::os2::SelectionFlags::ITALIC)
+        }) || italic_angle != 0.0,
+        is_fixed_pitch: style.is_fixed_pitch.unwrap_or(false),
+        // OS/2 sFamilyClass: IBM classes 1..=7 are serifs.
+        is_serif: os2
+            .as_ref()
+            .is_some_and(|t| (1..=7).contains(&(t.s_family_class() as u16 >> 8))),
         post_script_name: sanitize_name(&post_script_name),
-        underline_position: underline.map_or(-upem * 0.1, |m| f32::from(m.position)),
-        underline_thickness: underline.map_or(upem * 0.05, |m| f32::from(m.thickness)),
-        strikeout_position: strikeout.map_or(upem * 0.3, |m| f32::from(m.position)),
-        strikeout_thickness: strikeout.map_or(upem * 0.05, |m| f32::from(m.thickness)),
+        underline_position: underline.map_or(-upem * 0.1, |d| d.position.to_f32()),
+        underline_thickness: underline.map_or(upem * 0.05, |d| d.thickness.to_f32()),
+        strikeout_position: strikeout.map_or(upem * 0.3, |d| d.position.to_f32()),
+        strikeout_thickness: strikeout.map_or(upem * 0.05, |d| d.thickness.to_f32()),
         x_height,
         subscript_offset,
         subscript_size,
@@ -492,20 +566,23 @@ fn read_metrics(face: &ttf_parser::Face<'_>, fallback_name: &str, color: bool) -
     }
 }
 
-/// The outlines of `face` (`bytes`), or why they cannot be used. A
-/// variable font's are read by two parsers, ttf-parser for layout and
-/// skrifa (in the subsetter) for the outlines embedded, which must agree
-/// on it. CFF outlines that cannot be embedded are none: a font with
-/// colour `bitmaps` draws those, and `FontData::parse` refuses one without.
+/// The outlines of `font` (`tables`, `bytes`), or why they cannot be
+/// used. A variable font's are read twice, by read-fonts for layout and
+/// by the subsetter's own copy of the fontations crates for the outlines
+/// embedded, which must agree on it. CFF outlines that cannot be embedded
+/// are none: a font with colour `bitmaps` draws those, and
+/// `FontData::parse` refuses one without.
 fn outlines(
-    face: &ttf_parser::Face<'_>,
+    font: &model::Font,
+    tables: &FontRef<'_>,
     bytes: &[u8],
     bitmaps: bool,
 ) -> Result<Outlines, &'static str> {
-    let raw = |tag: &[u8; 4]| face.raw_face().table(ttf_parser::Tag::from_bytes(tag));
+    let raw = |tag: &[u8; 4]| tables.table_data(Tag::new(tag));
     // By the tables present, as the subsetter picks them, parsed or not.
     let has = |tag: &[u8; 4]| raw(tag).is_some();
-    if !face.is_variable() && !has(b"CFF2") {
+    let axes = font.axes();
+    if axes.is_empty() && !has(b"CFF2") {
         if has(b"glyf") {
             return Ok(Outlines::TrueType);
         }
@@ -528,26 +605,27 @@ fn outlines(
     if has(b"glyf") && !has(b"gvar") {
         return Err("a variable font with TrueType outlines needs a gvar table");
     }
-    if has(b"gvar") && face.tables().gvar.is_none() {
+    // Read whole: read-fonts reads a glyph's offsets only when it varies
+    // the glyph.
+    let gvar_reads = tables.gvar().is_ok_and(|gvar| {
+        (0..gvar.glyph_count()).all(|g| gvar.data_for_gid(GlyphId::from(g)).is_ok())
+    });
+    if has(b"gvar") && !gvar_reads {
         return Err("the gvar table is malformed");
     }
-    if usize::from(face.variation_axes().len()) > MAX_AXES {
+    if axes.len() as usize > MAX_AXES {
         return Err("variable fonts with more than 63 axes are not supported");
     }
-    if raw(b"avar").is_some_and(|t| t.get(..2) != Some(&[0, 1])) {
+    if raw(b"avar").is_some_and(|t| t.as_bytes().get(..2) != Some(&[0, 1])) {
         return Err("only version 1.0 of the avar table is supported (this font has another)");
     }
     // Away from the default location, where the variation data are read.
-    let coords: Vec<(subsetter::Tag, f32)> = face
-        .variation_axes()
-        .into_iter()
+    let coords: Vec<(subsetter::Tag, f32)> = axes
+        .iter()
         .filter_map(|a| {
-            let v = if a.max_value == a.def_value {
-                a.min_value
-            } else {
-                a.max_value
-            };
-            (v != a.def_value).then(|| (subsetter::Tag::new(&a.tag.to_bytes()), v))
+            let (min, default, max) = (a.min_value(), a.default_value(), a.max_value());
+            let v = if max == default { min } else { max };
+            (v != default).then(|| (subsetter::Tag::new(&a.tag().to_be_bytes()), v))
         })
         .collect();
     let remapper = subsetter::GlyphRemapper::new_from_glyphs_sorted(&[0]);
@@ -671,9 +749,8 @@ impl FontStore {
     ///   colour bitmaps and no outlines that can be embedded is accepted,
     ///   never embedded, and draws only its colour glyphs;
     /// - fonts without a Unicode `cmap` (text is mapped to glyphs through
-    ///   it);
-    /// - fonts whose `GSUB` or `GPOS` lookups point to coverage tables
-    ///   that are missing or malformed (they would fail shaping).
+    ///   it). As in browsers, a symbol or Mac Roman `cmap` stands in for
+    ///   one.
     pub fn register(
         &mut self,
         id: impl Into<String>,
@@ -721,7 +798,7 @@ pub(crate) type FontKey = u16;
 /// drew with, or tried.
 type Needed = Arc<crate::error::Missing>;
 
-/// A registered font parsed for one render: its `cmap` and advances.
+/// A registered font as one render reads it: its `cmap` and advances.
 pub(crate) struct LoadedFont<'a> {
     /// The id the document declares it under.
     pub id: &'a str,
@@ -730,7 +807,11 @@ pub(crate) struct LoadedFont<'a> {
     pub data: &'a FontData,
     /// A variable font's instance, when not the default one.
     pub instance: Option<Arc<Instance>>,
-    face: ttf_parser::Face<'a>,
+    /// The font at the instance's location.
+    font: model::Font,
+    /// Its tables, for what the model does not read (`GSUB` lookups, the
+    /// raw `COLR` and `SVG ` tables).
+    tables: FontRef<'a>,
     /// For a deferred font that is not registered: another font's data
     /// stands in, it has no glyph, and asking for one notes it here.
     deferred: Option<Needed>,
@@ -742,11 +823,6 @@ impl LoadedFont<'_> {
         self.instance
             .as_ref()
             .map_or(&self.data.metrics, |i| &i.metrics)
-    }
-
-    /// The variation coordinates it draws at (empty: the default ones).
-    pub fn coords(&self) -> &[Coord] {
-        self.instance.as_ref().map_or(&[], |i| &i.coords)
     }
 
     /// What tells its programs from those of other fonts and instances.
@@ -802,76 +878,78 @@ impl LoadedFont<'_> {
             self.note_needed();
             return None;
         }
-        self.face.glyph_index(c).map(|g| g.0)
+        let g = self.font.charmap().map_unicode(c)?;
+        u16::try_from(g.to_u32()).ok()
     }
 
     /// Whether `c` has a vertical form in this font, which its `vert`
     /// feature substitutes (see `fonts/layout.rs`).
     pub fn has_vertical_form(&self, c: char) -> bool {
         self.glyph(c)
-            .is_some_and(|g| layout::vertical_form(&self.face, ttf_parser::GlyphId(g)))
+            .is_some_and(|g| layout::vertical_form(&self.tables, GlyphId::from(g)))
     }
 
     /// Number of glyphs in the font: its glyph ids are `0..glyph_count()`.
     pub fn glyph_count(&self) -> u16 {
-        self.face.number_of_glyphs()
+        glyph_count(&self.font)
     }
 
-    /// Horizontal advance of glyph `gid` in font units.
+    /// Horizontal advance of glyph `gid` in font units, rounded to a whole
+    /// unit as the shaper and the instancer round a varied one.
     pub fn advance(&self, gid: u16) -> f32 {
-        f32::from(
-            self.face
-                .glyph_hor_advance(ttf_parser::GlyphId(gid))
-                .unwrap_or(0),
-        )
+        self.font
+            .glyph_metrics()
+            .h_advance(GlyphId::from(gid))
+            .round()
     }
 
     /// The box of glyph `gid`'s outline, `[x_min, y_min, x_max, y_max]` in
     /// font units with y up; `None` for a glyph with no outline (a space).
     pub fn glyph_bbox(&self, gid: u16) -> Option<[f32; 4]> {
-        let b = self.face.glyph_bounding_box(ttf_parser::GlyphId(gid))?;
-        Some([
-            f32::from(b.x_min),
-            f32::from(b.y_min),
-            f32::from(b.x_max),
-            f32::from(b.y_max),
-        ])
+        outline_box(&self.font, gid)
+    }
+
+    /// The font, at its instance's location, for the shaper: harfrust reads
+    /// fonts through read-fonts' model.
+    pub fn shaping_font(&self) -> &model::Font {
+        &self.font
     }
 
     /// The vertical metrics most of the font's glyphs are shaped upright
     /// with, in font units: how far below its point in a column a glyph's
     /// baseline is, and how far down the next point is. Each glyph's are
-    /// read as shaping reads them: from `VORG` and `vmtx`, or else from
-    /// its box and the line height.
+    /// read as the shaper reads them: from `VORG` and `vmtx`, or else from
+    /// its box and the line height; the box of its outline, though, where
+    /// the shaper would measure a colour glyph's colour (painting each
+    /// glyph of a hostile font could take billions of steps, and this is
+    /// only the common case).
     pub fn vertical_metrics(&self) -> (f32, f32) {
-        let f = &self.face;
-        let (ascender, descender) = (i32::from(f.ascender()), i32::from(f.descender()));
-        let line = ascender - descender;
-        let vmtx = f.tables().vmtx.is_some();
+        let glyphs = self
+            .font
+            .glyph_metrics()
+            .with_extents_source_order(GlyphSourceOrder::BASE_OUTLINES);
         let mut origins: BTreeMap<i32, usize> = BTreeMap::new();
         let mut advances: BTreeMap<i32, usize> = BTreeMap::new();
-        for g in 0..f.number_of_glyphs() {
-            let id = ttf_parser::GlyphId(g);
-            let advance = f.glyph_ver_advance(id).map_or(line, i32::from);
-            *advances.entry(advance).or_default() += 1;
-            let origin = f.glyph_y_origin(id).map(i32::from).or_else(|| {
-                let b = f.glyph_bounding_box(id)?;
-                let (top, bottom) = (i32::from(b.y_max), i32::from(b.y_min));
-                Some(if vmtx {
-                    top + f.glyph_ver_side_bearing(id).map_or(0, i32::from)
-                } else {
-                    top + ((line - (top - bottom)) >> 1)
-                })
-            });
-            *origins.entry(origin.unwrap_or(ascender)).or_default() += 1;
+        for g in 0..self.font.num_glyphs() {
+            let id = GlyphId::new(g);
+            *advances
+                .entry(glyphs.v_advance(id).round() as i32)
+                .or_default() += 1;
+            *origins
+                .entry(glyphs.v_origin_y(id).round() as i32)
+                .or_default() += 1;
         }
-        let most = |counts: BTreeMap<i32, usize>, or: i32| {
+        let m = self.metrics();
+        let most = |counts: BTreeMap<i32, usize>, or: f32| {
             counts
                 .into_iter()
                 .max_by_key(|&(v, n)| (n, std::cmp::Reverse(v)))
-                .map_or(or, |(v, _)| v)
+                .map_or(or, |(v, _)| v as f32)
         };
-        (most(origins, ascender) as f32, most(advances, line) as f32)
+        (
+            most(origins, m.ascender),
+            most(advances, m.ascender - m.descender),
+        )
     }
 }
 
@@ -1080,7 +1158,7 @@ impl<'a> FontSet<'a> {
                     InkoxideError::Internal(format!("font `{source}` vanished after validation"))
                 })?
             };
-            let mut face = ttf_parser::Face::parse(&data.bytes, 0)
+            let tables = FontRef::new(&data.bytes)
                 .map_err(|_| InkoxideError::Font(format!("font `{}` cannot be loaded", decl.id)))?;
             let instance = match &decl.variations {
                 Some(v) if !is_deferred => data.instance(v, |tag| {
@@ -1091,7 +1169,7 @@ impl<'a> FontSet<'a> {
                 }),
                 _ => None,
             };
-            set_coords(&mut face, instance.as_ref().map_or(&[][..], |i| &i.coords));
+            let font = instance.as_ref().map_or(&data.font, |i| &i.font).clone();
             // Validation allows at most 256 declarations (`MAX_FONTS`), and
             // `add_variants` adds at most `MAX_ALL_VARIANTS`: every key fits.
             by_id.insert(decl.id.as_str(), fonts.len() as FontKey);
@@ -1100,7 +1178,8 @@ impl<'a> FontSet<'a> {
                 source,
                 data,
                 instance,
-                face,
+                font,
+                tables,
                 deferred: is_deferred.then(|| needed.clone()),
             });
         }
@@ -1212,14 +1291,17 @@ impl<'a> FontSet<'a> {
             if instance.as_ref().map(|i| &i.coords) == base.instance.as_ref().map(|i| &i.coords) {
                 continue;
             }
-            let mut face = base.face.clone();
-            set_coords(&mut face, instance.as_ref().map_or(&[][..], |i| &i.coords));
+            let font = instance
+                .as_ref()
+                .map_or(&base.data.font, |i| &i.font)
+                .clone();
             let variant = LoadedFont {
                 id: base.id,
                 source: base.source,
                 data: base.data,
                 instance,
-                face,
+                font,
+                tables: base.tables.clone(),
                 deferred: None,
             };
             *n += 1;
@@ -1299,13 +1381,15 @@ mod tests {
 
     /// `sfnt` with its tables as `edit` leaves them, by tag.
     fn edit_tables(sfnt: &[u8], edit: impl FnOnce(&mut BTreeMap<[u8; 4], Vec<u8>>)) -> Vec<u8> {
-        let face = ttf_parser::RawFace::parse(sfnt, 0).unwrap();
-        let mut tables: BTreeMap<[u8; 4], Vec<u8>> = face
-            .table_records
-            .into_iter()
+        let font = FontRef::new(sfnt).unwrap();
+        let mut tables: BTreeMap<[u8; 4], Vec<u8>> = font
+            .table_directory()
+            .table_records()
+            .iter()
             .map(|t| {
-                let range = t.offset as usize..(t.offset + t.length) as usize;
-                (t.tag.to_bytes(), sfnt[range].to_vec())
+                let start = t.offset() as usize;
+                let range = start..start + t.length() as usize;
+                (t.tag().to_be_bytes(), sfnt[range].to_vec())
             })
             .collect();
         edit(&mut tables);
@@ -1350,6 +1434,34 @@ mod tests {
         assert_eq!(ids, ["NotoSans-Regular", "Inter-Regular"]);
     }
 
+    /// A `COLR` glyph's colours are in `CPAL`: without the table, the font
+    /// has no colour; with a colour missing from it, the glyphs that ask for
+    /// that colour have none, and draw as their outlines.
+    #[test]
+    fn colr_glyphs_need_their_palette() {
+        let colr = fixture("EmojiTest-COLR.ttf");
+        let mut s = FontStore::new();
+        s.register("none", edit_tables(&colr, |t| drop(t.remove(b"CPAL"))))
+            .unwrap();
+        let none = s.get("none").unwrap();
+        assert!(!none.has_color() && none.has_outlines());
+        // One colour left of the palette: the smile paints with others.
+        let short = edit_tables(&colr, |t| {
+            t.get_mut(b"CPAL").unwrap()[2..4].copy_from_slice(&1u16.to_be_bytes());
+        });
+        s.register("short", short).unwrap();
+        s.register("whole", colr).unwrap();
+        let json = r#"{"version":1,"fonts":[{"id":"short","family":"a"},{"id":"whole","family":"b"}],"pages":[]}"#;
+        let doc: Document = serde_json::from_str(json).unwrap();
+        let set = FontSet::load(&doc, &s).unwrap();
+        let smile = |key: FontKey| {
+            let font = set.get(key);
+            font.color_glyph(font.glyph('😀').unwrap())
+        };
+        assert!(set.get(0).has_color());
+        assert!(smile(0).is_none() && smile(1).is_some());
+    }
+
     #[test]
     fn refuses_fonts_without_outlines_or_a_unicode_cmap() {
         let otf = fixture("InterDisplay-Bold.otf");
@@ -1392,6 +1504,23 @@ mod tests {
             t.remove(b"cmap");
         }));
         assert!(e.contains("no Unicode cmap"), "{e}");
+        // A symbol `cmap` stands in for a Unicode one, as in browsers.
+        let symbol = edit_tables(&otf, |t| {
+            let cmap = t.get_mut(b"cmap").unwrap();
+            let u16_at = |c: &[u8], at: usize| usize::from(u16::from_be_bytes([c[at], c[at + 1]]));
+            for i in 0..u16_at(cmap, 2) {
+                let record = 4 + 8 * i;
+                let offset =
+                    u32::from_be_bytes(cmap[record + 4..record + 8].try_into().unwrap()) as usize;
+                // Variation sequences (format 14) are not a mapping.
+                if u16_at(cmap, offset) != 14 {
+                    cmap[record..record + 4].copy_from_slice(&[0, 3, 0, 0]);
+                }
+            }
+        });
+        let mut s = FontStore::new();
+        s.register("symbol", symbol).unwrap();
+        assert_eq!(s.get("symbol").unwrap().lacks("Ink 42"), None);
     }
 
     fn variations(pairs: &[(&str, f32)]) -> Vec<FontVariation> {
@@ -1425,7 +1554,7 @@ mod tests {
                 "TrueType (glyf) or CFF2 outlines",
             ),
         ] {
-            let e = s.register("x", fixture(file)).unwrap_err().to_string();
+            let e = s.register("x", fixture(file)).expect_err(file).to_string();
             assert!(e.contains(why), "{file}: {e}");
         }
         // CFF2 outlines the instancer cannot read.
@@ -1685,26 +1814,21 @@ mod tests {
             let glyphs: Vec<u16> = (0..font.glyph_count()).collect();
             let sub = font.subset(&glyphs).unwrap();
             let map = sub.cid_to_gid.as_deref().unwrap();
-            let face = ttf_parser::Face::parse(&sub.program, 0).unwrap();
+            let program = model_font(&sub.program.clone().into()).unwrap();
             assert!(
-                !face.is_variable() && face.tables().glyf.is_some(),
+                program.axes().is_empty() && program.tables().glyf().is_ok(),
                 "{}",
                 font.id
             );
             for g in glyphs {
                 let new =
                     u16::from_be_bytes([map[2 * usize::from(g)], map[2 * usize::from(g) + 1]]);
-                let embedded = face.glyph_hor_advance(ttf_parser::GlyphId(new)).unwrap();
-                assert_eq!(
-                    f32::from(embedded),
-                    font.advance(g),
-                    "{} glyph {g}",
-                    font.id
-                );
+                let embedded = program.glyph_metrics().h_advance(GlyphId::from(new));
+                assert_eq!(embedded, font.advance(g).round(), "{} glyph {g}", font.id);
             }
             let (whole, length) = font.compressed_program(|p| Ok(p.to_vec())).unwrap();
-            let face = ttf_parser::Face::parse(&whole, 0).unwrap();
-            assert!(!face.is_variable() && face.number_of_glyphs() == font.glyph_count());
+            let program = model_font(&whole).unwrap();
+            assert!(program.axes().is_empty() && glyph_count(&program) == font.glyph_count());
             assert_eq!(length, whole.len());
         }
         // The stems grow with the weight.
@@ -1750,9 +1874,10 @@ mod tests {
     type Outline = Vec<(char, Vec<f32>)>;
 
     /// Every glyph's advance and outline.
-    fn glyphs(bytes: &[u8]) -> Vec<(Option<u16>, Outline)> {
+    fn glyphs(bytes: &Arc<[u8]>) -> Vec<(f32, Outline)> {
+        use read_fonts::model::glyph::outline::{DrawMemory, DrawOptions, PathSink};
         struct Path(Outline);
-        impl ttf_parser::OutlineBuilder for Path {
+        impl PathSink for Path {
             fn move_to(&mut self, x: f32, y: f32) {
                 self.0.push(('M', vec![x, y]));
             }
@@ -1769,13 +1894,18 @@ mod tests {
                 self.0.push(('Z', vec![]));
             }
         }
-        let face = ttf_parser::Face::parse(bytes, 0).unwrap();
-        (0..face.number_of_glyphs())
+        let font = model_font(bytes).unwrap();
+        let outlines = font.outline_glyphs();
+        (0..font.num_glyphs())
             .map(|g| {
-                let gid = ttf_parser::GlyphId(g);
+                let gid = GlyphId::new(g);
                 let mut path = Path(Vec::new());
-                face.outline_glyph(gid, &mut path);
-                (face.glyph_hor_advance(gid), path.0)
+                if let Some(outline) = outlines.get(gid) {
+                    outline
+                        .draw(&DrawOptions::default(), DrawMemory::Scratch, &mut path)
+                        .unwrap();
+                }
+                (font.glyph_metrics().h_advance(gid), path.0)
             })
             .collect()
     }
@@ -1804,12 +1934,14 @@ mod tests {
         s.register("web", fixture("woff/RobotoMono-Regular.woff"))
             .unwrap();
         let (plain, web) = (
-            ttf_parser::RawFace::parse(&ttf, 0).unwrap(),
-            ttf_parser::RawFace::parse(&s.get("web").unwrap().bytes, 0).unwrap(),
+            FontRef::new(&ttf).unwrap(),
+            FontRef::new(&s.get("web").unwrap().bytes).unwrap(),
         );
-        assert_eq!(plain.table_records.len(), web.table_records.len());
-        for t in plain.table_records {
-            assert_eq!(plain.table(t.tag), web.table(t.tag), "{}", t.tag);
+        let records = plain.table_directory().table_records();
+        assert_eq!(records.len(), web.table_directory().table_records().len());
+        for t in records {
+            let table = |f: &FontRef<'_>| f.table_data(t.tag()).map(|d| d.as_bytes().to_vec());
+            assert_eq!(table(&plain), table(&web), "{}", t.tag());
         }
     }
 
@@ -1906,7 +2038,7 @@ mod tests {
     fn rejects_font_collections() {
         let inter = fixture("Inter-Regular.ttf");
         let ttc = collection(&inter);
-        assert!(ttf_parser::Face::parse(&ttc, 0).is_ok());
+        assert!(model::Font::new(model::Blob::from(ttc.clone()), 0).is_some());
         let e = FontStore::new().register("x", ttc).unwrap_err();
         assert_eq!(e.code(), "FONT_ERROR");
         assert!(e.to_string().contains("font collections (.ttc)"), "{e}");
@@ -1943,26 +2075,16 @@ mod tests {
 
     /// A fuzz finding, minimised: Noto Sans Hebrew with the lookahead
     /// coverage of a chained context lookup pointing to bytes that are not
-    /// a coverage table. Shaping an `i` before a soft hyphen with it panics
-    /// rustybuzz 0.20.1.
+    /// a coverage table. It panicked the engine's earlier shaper; harfrust
+    /// reads such a coverage as matching nothing, as harfbuzz does.
     const BAD_COVERAGE: &str = "malformed/gsub-lookahead-coverage.ttf";
 
     #[test]
-    fn rejects_coverage_offsets_that_do_not_resolve() {
-        let e = FontStore::new()
-            .register("x", fixture(BAD_COVERAGE))
-            .unwrap_err();
-        assert_eq!(e.code(), "FONT_ERROR");
-        assert_eq!(
-            e.to_string(),
-            "font error: font `x`: the GSUB table is malformed (a coverage offset does not \
-             point to a coverage table)"
-        );
-
-        // Noto Sans Hebrew has one chained context format 3 lookup with a
-        // lookahead in each table; a null offset there is rejected too.
+    fn shapes_with_coverage_offsets_that_do_not_resolve() {
+        // The fuzz finding, and Noto Sans Hebrew with a null lookahead
+        // offset in its chained context format 3 lookup of each table.
         let hebrew = fixture("NotoSansHebrew-Regular.ttf");
-        assert!(FontStore::new().register("x", hebrew.clone()).is_ok());
+        let mut fonts = vec![fixture(BAD_COVERAGE)];
         for (table, lookup) in [(b"GSUB", 3), (b"GPOS", 0)] {
             let mut font = hebrew.clone();
             let at = chain_format3(&font, table, lookup);
@@ -1972,67 +2094,49 @@ mod tests {
             let ahead_at = input_at + 2 + 2 * input;
             assert_eq!(u16::from_be_bytes([font[ahead_at], font[ahead_at + 1]]), 1);
             font[ahead_at + 2..ahead_at + 4].fill(0);
-            let e = FontStore::new().register("x", font).unwrap_err();
-            let table = std::str::from_utf8(table).unwrap();
-            assert!(e.to_string().contains(&format!("the {table} table")), "{e}");
+            fonts.push(font);
         }
-    }
-
-    /// The offset in `font` of the first subtable of lookup `lookup` in
-    /// GSUB or GPOS, which must be a chained context format 3 subtable.
-    fn chain_format3(font: &[u8], table: &[u8; 4], lookup: usize) -> usize {
-        let raw = ttf_parser::RawFace::parse(font, 0).unwrap();
-        let data = raw.table(ttf_parser::Tag::from_bytes(table)).unwrap();
-        let start = data.as_ptr() as usize - font.as_ptr() as usize;
-        let u16_at = |at: usize| usize::from(u16::from_be_bytes([font[at], font[at + 1]]));
-        let lookups = start + u16_at(start + 8);
-        let at = lookups + u16_at(lookups + 2 + 2 * lookup);
-        let subtable = at + u16_at(at + 6);
-        assert_eq!(u16_at(subtable), 3, "not format 3");
-        subtable
-    }
-
-    /// A font the shaper panics on that registration lets through (here by
-    /// skipping it): the render fails with a font error naming it, on one
-    /// thread and when paragraphs are shaped in parallel.
-    #[test]
-    fn a_panic_while_shaping_is_a_font_error() {
-        let hebrew = FontData::parse("bad", fixture("NotoSansHebrew-Regular.ttf").into()).unwrap();
-        let bytes: Arc<[u8]> = fixture(BAD_COVERAGE).into();
-        let mut fonts = FontStore::new();
-        fonts.fonts.insert(
-            "bad".into(),
-            Arc::new(FontData {
-                digest: <sha2::Sha256 as sha2::Digest>::digest(&bytes).into(),
-                bytes,
-                ..hebrew
-            }),
-        );
-        // An `i` before a soft hyphen reaches the broken lookup; enough
-        // paragraphs for `TextCache::prepare_all` to shape them in parallel.
-        let para = r#"{"type":"text","runs":[{"text":"i\u00ad","font":"bad","size":12}]}"#;
+        // An `i` before a soft hyphen reaches the broken lookup of the fuzz
+        // finding; enough paragraphs for `TextCache::prepare_all` to shape
+        // them in parallel.
+        let para = r#"{"type":"text","runs":[{"text":"i\u00ad \u05e9\u05dc\u05d5\u05dd","font":"bad","size":12}]}"#;
         let doc = format!(
             r#"{{"version":1,"fonts":[{{"id":"bad","family":"Bad"}}],
               "pages":[{{"size":{{"width":300,"height":200}},"children":[{}]}}]}}"#,
             [para; 200].join(",")
         );
         let images = crate::ImageStore::new();
-        for threads in [1, 4] {
-            let opts = crate::RenderOptions::default().with_threads(threads);
-            let e = crate::render(
-                doc.as_bytes(),
-                crate::InputFormat::Json,
-                &opts,
-                &fonts,
-                &images,
-            )
-            .unwrap_err();
-            assert_eq!(e.code(), "FONT_ERROR", "{e}");
-            assert!(
-                e.to_string().contains("font `bad`: the shaper panicked"),
-                "{e}"
-            );
+        for font in fonts {
+            let mut store = FontStore::new();
+            store.register("bad", font).unwrap();
+            for threads in [1, 4] {
+                let opts = crate::RenderOptions::default().with_threads(threads);
+                crate::render(
+                    doc.as_bytes(),
+                    crate::InputFormat::Json,
+                    &opts,
+                    &store,
+                    &images,
+                )
+                .unwrap();
+            }
         }
+    }
+
+    /// The offset in `font` of the first subtable of lookup `lookup` in
+    /// GSUB or GPOS, which must be a chained context format 3 subtable.
+    fn chain_format3(font: &[u8], table: &[u8; 4], lookup: usize) -> usize {
+        let data = FontRef::new(font)
+            .unwrap()
+            .table_data(Tag::new(table))
+            .unwrap();
+        let start = data.as_bytes().as_ptr() as usize - font.as_ptr() as usize;
+        let u16_at = |at: usize| usize::from(u16::from_be_bytes([font[at], font[at + 1]]));
+        let lookups = start + u16_at(start + 8);
+        let at = lookups + u16_at(lookups + 2 + 2 * lookup);
+        let subtable = at + u16_at(at + 6);
+        assert_eq!(u16_at(subtable), 3, "not format 3");
+        subtable
     }
 
     /// `fixtures/fonts/matching.json`, the cases `FontRegistry` in

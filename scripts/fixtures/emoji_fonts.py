@@ -276,6 +276,7 @@ def colrv1(v0, v1, clips, layers=None, var_map=b"", var_store=b""):
             buf += colorline(0, st)
             buf[at + 1:at + 4] = (line - at).to_bytes(3, "big")
         elif kind == "sweep":  # (sweep, (cx, cy), start, end, stops); angles in half turns
+            # as stored: the table adds one, so -1 is 0° and 1 is 360°.
             _, (cx, cy), a0, a1, st = p
             buf += struct.pack(">B", 8) + b"\0\0\0" + struct.pack(">hh", cx, cy) + f2dot14(a0) + f2dot14(a1)
             line = len(buf)
@@ -571,7 +572,7 @@ def colr_font():
         ),
         woman: colr_layers(
             ("glyph", l_head, solid(4)),
-            ("glyph", l_body, ("sweep", (550, 75), 0, 1.99, stops((0, 10, 1), (1, 11, 1)))),
+            ("glyph", l_body, ("sweep", (550, 75), -1, 0.99, stops((0, 10, 1), (1, 11, 1)))),
         ),
         laptop: colr_layers(
             ("composite", ("glyph", l_shine, solid(7, 0.6)), 3, ("glyph", l_screen, solid(8))),

@@ -111,7 +111,7 @@ counted inside `render`.
 |---|---:|---:|---|
 | Parse | 0.25–0.45 s | 18.7% | serde_json over 27 MB and 100,000 styled nodes; MessagePack input is faster |
 | Validate | 0.05–0.09 s | ~2% | |
-| Shape | 0.44–0.58 s | 26.5% | rustybuzz on every distinct word; repeated words come from a cache |
+| Shape | 0.44–0.58 s | 26.5% | the shaper on every distinct word; repeated words come from a cache |
 | Layout and pagination | 0.31–0.45 s | 5.4% | simple table cells skip Taffy entirely |
 | Paint | 0.36–0.39 s | ~9% | display lists for 100,000 cells and their borders |
 | Content streams | 0.15–0.19 s | ~6% | 19 MB of PDF operators |
@@ -119,3 +119,8 @@ counted inside `render`.
 
 On several threads, shaping, painting, content streams and compression run in parallel per
 page.
+
+The profile was taken with rustybuzz and ttf-parser. With HarfRust and read-fonts in their
+place, the release CLI on an Apple M4 Pro renders `report-100p-realistic` 13% faster on all
+cores and 10% faster on one thread, and the small fixtures with text 20–40% faster, but
+`emoji-colr`, a page of `COLR` emoji, 6% slower (median of three runs each, against 1.0.0).

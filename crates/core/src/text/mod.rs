@@ -1,11 +1,11 @@
-//! Text: shaping (rustybuzz), line breaking (UAX #14), hyphenation
+//! Text: shaping (harfrust), line breaking (UAX #14), hyphenation
 //! (`hyphen.rs`: registered patterns, the built-in ones of `builtin.rs`
 //! and the Romanian rules), and the per-render paragraph cache.
 //!
 //! Nothing outside this module sees shaping-library types: the rest of the
 //! engine works with [`Prepared`] paragraphs and [`LineLayout`]s. Inside
-//! it, only `prepare.rs` uses rustybuzz; it builds its shaping faces from
-//! the font bytes, and takes glyph lookups and advances from `fonts`.
+//! it, only `prepare.rs` uses harfrust; it shapes with the fonts' read-fonts
+//! models, and takes glyph lookups and advances from `fonts`.
 
 mod builtin;
 mod color;
@@ -451,23 +451,22 @@ pub(crate) trait TextShaper {
     fn fonts(&self) -> &FontSet<'_>;
 }
 
-/// rustybuzz + unicode-linebreak + `hyphen.rs` implementation.
-pub(crate) struct RustybuzzShaper<'f, 'a> {
+/// harfrust + unicode-linebreak + `hyphen.rs` implementation.
+pub(crate) struct HarfRustShaper<'f, 'a> {
     fonts: &'f FontSet<'a>,
     unicode: UnicodeMap,
     hyphenator: &'f dyn hyphen::Hyphenator,
-    shapes: prepare::ShapeCache<'a>,
+    shapes: prepare::ShapeCache,
     objects: Arc<InlineObjects>,
 }
 
-impl<'f, 'a> RustybuzzShaper<'f, 'a> {
-    /// Parses the fonts' shaping faces, once per render: shapers for
+impl<'f, 'a> HarfRustShaper<'f, 'a> {
+    /// Takes the fonts' shaping models, once per render: shapers for
     /// other threads share them ([`TextCache::prepare_all`]). Hyphenates
     /// with the built-in patterns (`builtin.rs`) and the Romanian rules,
     /// unless given a [hyphenator](Self::with_hyphenator).
-    pub fn new(fonts: &'f FontSet<'a>) -> Result<Self, InkoxideError> {
-        let faces = prepare::Faces::load(fonts)?;
-        Ok(Self::with_shapes(fonts, prepare::ShapeCache::new(faces)))
+    pub fn new(fonts: &'f FontSet<'a>) -> Self {
+        Self::with_shapes(fonts, prepare::ShapeCache::new(prepare::Faces::load(fonts)))
     }
 
     /// This shaper, hyphenating with `hyphenator`.
@@ -488,7 +487,7 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
             .with_objects(self.objects.clone())
     }
 
-    fn with_shapes(fonts: &'f FontSet<'a>, shapes: prepare::ShapeCache<'a>) -> Self {
+    fn with_shapes(fonts: &'f FontSet<'a>, shapes: prepare::ShapeCache) -> Self {
         let mut unicode = UnicodeMap::default();
         // Glyphs the painter adds without shaping: hyphens, ellipses and
         // placeholder digits.
@@ -521,7 +520,7 @@ impl<'f, 'a> RustybuzzShaper<'f, 'a> {
     }
 }
 
-impl TextShaper for RustybuzzShaper<'_, '_> {
+impl TextShaper for HarfRustShaper<'_, '_> {
     fn prepare(&mut self, runs: &[TextRun], style: &ParaStyle) -> Prepared {
         let lang = style
             .lang
@@ -718,7 +717,7 @@ fn node_key(n: &Node) -> usize {
     std::ptr::from_ref::<Node>(n) as usize
 }
 
-impl TextCache<'_, RustybuzzShaper<'_, '_>> {
+impl TextCache<'_, HarfRustShaper<'_, '_>> {
     /// The texts of the images text node `node` draws, once it is shaped:
     /// each image is in a span with its text, the `alt` of an inline object
     /// or the text of a colour glyph.

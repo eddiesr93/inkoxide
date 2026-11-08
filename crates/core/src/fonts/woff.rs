@@ -62,13 +62,14 @@ fn declared_size(bytes: &[u8]) -> Option<u64> {
 /// `compress` is set; `orig_len` overrides each table's declared size.
 #[cfg(test)]
 pub(super) fn woff_from_sfnt(sfnt: &[u8], compress: bool, orig_len: Option<u32>) -> Vec<u8> {
-    let face = ttf_parser::RawFace::parse(sfnt, 0).unwrap();
-    let tables: Vec<_> = face.table_records.into_iter().collect();
+    let font = read_fonts::FontRef::new(sfnt).unwrap();
+    let tables = font.table_directory().table_records();
     let start = 44 + 20 * tables.len();
     let mut dir = Vec::new();
     let mut data = Vec::new();
-    for t in &tables {
-        let raw = &sfnt[t.offset as usize..(t.offset + t.length) as usize];
+    for t in tables {
+        let (offset, length) = (t.offset() as usize, t.length());
+        let raw = &sfnt[offset..offset + length as usize];
         // Stored as is when compression does not make the table smaller.
         let mut z = Vec::new();
         flate2::read::ZlibEncoder::new(raw, flate2::Compression::best())
@@ -77,11 +78,11 @@ pub(super) fn woff_from_sfnt(sfnt: &[u8], compress: bool, orig_len: Option<u32>)
         let stored = Some(z)
             .filter(|z| compress && z.len() < raw.len())
             .unwrap_or_else(|| raw.to_vec());
-        dir.extend_from_slice(&t.tag.to_bytes());
+        dir.extend_from_slice(&t.tag().to_be_bytes());
         dir.extend_from_slice(&((start + data.len()) as u32).to_be_bytes());
         dir.extend_from_slice(&(stored.len() as u32).to_be_bytes());
-        dir.extend_from_slice(&orig_len.unwrap_or(t.length).to_be_bytes());
-        dir.extend_from_slice(&t.check_sum.to_be_bytes());
+        dir.extend_from_slice(&orig_len.unwrap_or(length).to_be_bytes());
+        dir.extend_from_slice(&t.checksum().to_be_bytes());
         data.extend_from_slice(&stored);
         data.resize(data.len().next_multiple_of(4), 0);
     }

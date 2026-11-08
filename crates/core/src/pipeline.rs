@@ -22,7 +22,7 @@ use crate::paginate::{paginate, Placement};
 use crate::paint::PageContent;
 use crate::pdf::Profile;
 use crate::schema::{Document, Node, NodeKind, PageSpec, Position};
-use crate::text::{ColorGlyphs, PageNumbers, RustybuzzShaper, TextCache};
+use crate::text::{ColorGlyphs, HarfRustShaper, PageNumbers, TextCache};
 use crate::InkoxideError;
 
 /// Most pages one render may produce: a memory guard against runaway
@@ -30,7 +30,7 @@ use crate::InkoxideError;
 /// any real document; ~2 GB of output at typical page sizes.
 pub(crate) const MAX_PAGES: u32 = 100_000;
 
-type Cache<'s, 'f, 'a> = TextCache<'s, RustybuzzShaper<'f, 'a>>;
+type Cache<'s, 'f, 'a> = TextCache<'s, HarfRustShaper<'f, 'a>>;
 
 /// Leaf measurement: text through `T` (the text cache, or one page's
 /// text), images by intrinsic size.
