@@ -69,7 +69,7 @@ export async function instrumentWorkers(page: Page): Promise<() => Promise<numbe
           super.postMessage({ id: -2, op: '__testPoolPanic', args: [] });
         }
         super.postMessage(message, options as StructuredSerializeOptions);
-        if (render) setTimeout(() => dispatchEvent(new Event('inkoxide:stop')));
+        if (render) setTimeout(() => dispatchEvent(new Event('inkoxide:stop')), Math.random() * 30);
       }
     };
   });
