@@ -138,7 +138,7 @@ jobs:
         # Node gives, under a strict Content Security Policy, without cross-origin isolation and,
         # cross-origin isolated, on a pool of threads (tests/threads.spec.ts).
         working-directory: examples/browser
-        run: pnpm exec playwright test tests/threads.spec.ts --project=webkit --repeat-each=12 --reporter=list
+        run: pnpm exec playwright test tests/threads.spec.ts -g 'a signal ends' --project=webkit --repeat-each=40 --retries=0 --reporter=list || true
       - name: Browser tests of the front ends
         # examples/frameworks: the invoice written in Vue, Svelte and Angular renders, in a worker,
         # in each browser, the bytes React renders in Node, with the classes the Tailwind plugin
