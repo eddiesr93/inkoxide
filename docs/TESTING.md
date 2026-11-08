@@ -387,7 +387,9 @@ a render knows is not a finding either: PDF/A-2b refusing files, a file
 without PDF/A to go in. A quarter of the inputs also render tagged (an
 eighth as PDF/UA-1), picked by their length apart from the PDF/A level,
 and render or fail as untagged does, with the same code; PDF/UA may
-refuse more only with `UA_CONFLICT`. Every
+refuse more only with `UA_CONFLICT`. A render over 8 MB (tens of
+thousands of pages, which a valid document may ask for) is not rendered
+again: not tagged, encrypted or from MessagePack. Every
 form script (`/JS`, read from the parsed object syntax, so a script
 written as a hex string is checked and a document title that looks like
 one is not) is a call of a standard form function (`AFNumber_Format`
@@ -402,7 +404,9 @@ plain, without its title in plain text (only the encrypted file's
 object syntax is scanned for numbers). An input that runs
 longer than 10 seconds is a finding (30 for `render_json` and `render_tree`:
 a document at the engine's limits renders in about 2 seconds, and they
-render it twice).
+render it twice). The RSS limit is 2 GB; on Linux `fuzz.sh` fixes
+glibc's mmap threshold, so the RSS is what the input holds rather than
+the heap's high-water mark over the night.
 
 Findings land in `fuzz/artifacts/`. To inspect one:
 

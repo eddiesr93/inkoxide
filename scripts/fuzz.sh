@@ -42,6 +42,13 @@ if [[ ${#targets[@]} -eq 0 ]]; then
   targets=("${all[@]}")
 fi
 limits=(-timeout=10 -rss_limit_mb=2048)
+# glibc raises its mmap threshold each time a large block is freed, and
+# from then on keeps blocks that size in the heap: over a night of
+# decoded images the RSS settles near the largest one ever held plus
+# what the heap kept, and the RSS limit counts memory already freed. A
+# fixed threshold turns that off, so freed images go back to the system
+# and the limit measures what an input holds (macOS ignores it).
+malloc=GLIBC_TUNABLES=glibc.malloc.mmap_threshold=131072
 # The document targets get more time: a document within the engine's
 # limits (100 000 pages, the content repeated on every page) renders in
 # about 2 s, and each input renders twice, under coverage instrumentation.
@@ -86,7 +93,7 @@ pids=()
 for t in "${targets[@]}"; do
   read -ra args <<<"$(flags "$t")"
   # A target's own flags come last: libFuzzer takes a flag's last value.
-  "${fuzz[@]}" run "${build[@]}" "$t" -- "${limits[@]}" -max_total_time="$secs" \
+  env "$malloc" "${fuzz[@]}" run "${build[@]}" "$t" -- "${limits[@]}" -max_total_time="$secs" \
     "${args[@]}" >"logs/$t.log" 2>&1 &
   pids+=($!)
 done
