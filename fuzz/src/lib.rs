@@ -268,10 +268,11 @@ pub fn check(doc: &[u8]) {
     let _ = check_with(doc, &FONTS, &IMAGES, pdf_a, tagged);
 }
 
-/// Above this size the JSON render is not rendered again, encrypted and
-/// as `MessagePack`: a valid document can ask for tens of thousands of pages
-/// (a row 1 000 000 points high on a page 32 points high), and three
-/// renders of those take longer than the fuzzer's timeout.
+/// Above this size the JSON render is not rendered again, tagged,
+/// encrypted or as `MessagePack`: a valid document can ask for tens of
+/// thousands of pages (a row 1 000 000 points high on a page 32 points
+/// high, a border as wide on a page 12 points high), and a second render
+/// of those, with its scan, takes longer than the fuzzer's timeout.
 const RERENDER_LIMIT: usize = 8 << 20;
 
 /// How the engine's error for content repeated on every page past its
@@ -892,7 +893,9 @@ fn render_with(
     // or fail alike; as PDF/UA, only `UA_CONFLICT` may refuse more. The
     // bound on content repeated on every page counts what tagging writes,
     // so a tagged render may pass it where the untagged one did not.
-    if let Some(ua) = tagged {
+    // Past `RERENDER_LIMIT`, the untagged render is the only one.
+    let huge = result.as_ref().is_ok_and(|pdf| pdf.len() > RERENDER_LIMIT);
+    if let Some(ua) = tagged.filter(|_| !huge) {
         let with_tags = options.clone().with_tagged(true).with_pdf_ua(ua);
         let other = inkoxide::render(doc, format, &with_tags, fonts, images);
         match (&result, &other) {
