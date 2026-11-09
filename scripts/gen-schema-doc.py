@@ -57,6 +57,13 @@ INTRO = """# Document schema v1
   painted on several pages (in a fixed node or a table's header rows)
   reserves the width of `999` in the run's font for each page's digits; a
   longer number can overflow that space.
+- **Page references.** A run with `pageOf: "id"` shows the number of the
+  page the node with that `id` starts on, as an entry of a table of
+  contents does, and is laid out like a placeholder: at the width of its
+  digits, with the flow paginated again when the numbers move it, and at
+  the width of `999` in flow text painted on several pages. The `id` is
+  one a `#id` link could name; any other is `UNKNOWN_ANCHOR`. A node
+  painted on several pages counts on the first of them.
 - **Images.** Intrinsic size is the pixel size at 96 dpi (1 px = 0.75 pt),
   like CSS. An image with no `width` and no `height` that is wider than
   the room it has is scaled down to fit it, keeping its aspect ratio
@@ -87,9 +94,9 @@ INTRO = """# Document schema v1
 | `STYLE_NOT_APPLICABLE` | Style property set on a node type it does not apply to |
 | `INVALID_TABLE` | Inconsistent table structure (spans, columns, header rows) |
 | `INVALID_NODE` | Node type not allowed here (e.g. `pageBreak` in a header) |
-| `UNKNOWN_ANCHOR` | A `#id` link names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
+| `UNKNOWN_ANCHOR` | A `#id` link or a run's `pageOf` names no displayed node `id` in the page body, flow or overlays (ids in headers, footers and under `display: none` are not destinations) |
 | `PDFA_CONFLICT` | The document uses something the PDF/A level does not allow: at any level, a page side under 3 points (at the page's `size`); under PDF/A-1b, transparency (a colour with alpha below 1, `opacity` below 1, `debug`, an image, inline image, emoji image or background image with partial alpha (unless the render option `flattenAlpha` draws it on white; binary alpha is a stencil mask), an SVG drawn with opacity, a mask, a blend mode, an isolated group or a clip path other than one path, or a colour glyph that needs transparency: a bitmap with partial alpha or a layer with an opacity); under PDF/A-1b, 2b and 2a, `attachments` (at `attachments[0]`). A render reports it at the first such use, and so does validation given the render's options, but for colour glyphs: a render checks those once the text is shaped, after the rest, and names one only when nothing else conflicts |
-| `UA_CONFLICT` | With the render option `pdfUA`: the document lacks something PDF/UA requires (`meta.title`, `meta.lang`, `alt` on an image or a `figure` box, `label` on a field, headings that go down one level at a time from `h1`, a `listItem` inside a `list` and a `listBody` inside a `listItem`; with `pdfUA: '2'`, no `#id` link to decoration, a `fixed` or `artifact` node, and no bookmark on it). A render reports it at the first such thing, and so does validation given the render's options |
+| `UA_CONFLICT` | With the render option `pdfUA`: the document lacks something PDF/UA requires (`meta.title`, `meta.lang`, `alt` on an image or a `figure` box, `label` on a field, headings that go down one level at a time from `h1`, a `listItem` inside a `list`, a `listBody` inside a `listItem` and a `tocItem` inside a `toc`; with `pdfUA: '2'`, no `#id` link to decoration, a `fixed` or `artifact` node, and no bookmark on it). A render reports it at the first such thing, and so does validation given the render's options |
 
 Each error is `{ "code", "path", "message" }`, with `path` like
 `pages[0].children[3].runs[1].font`. Validation returns at most 100

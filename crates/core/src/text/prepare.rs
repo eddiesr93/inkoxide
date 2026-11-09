@@ -128,12 +128,12 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
             ranges.push((start, text.len()));
             continue;
         }
-        let src: &str = match (run.placeholder, &run.image) {
-            (Some(_), _) => PLACEHOLDER_TEXT,
+        let src: &str = match (run.shows_number(), &run.image) {
+            (true, _) => PLACEHOLDER_TEXT,
             // An image is one object character: it breaks lines like one
             // (UAX #14 class CB) and is neutral in bidi.
-            (None, Some(_)) => OBJECT_TEXT,
-            (None, None) => run.text.as_deref().unwrap_or(""),
+            (false, Some(_)) => OBJECT_TEXT,
+            (false, None) => run.text.as_deref().unwrap_or(""),
         };
         match opts.white_space {
             WhiteSpace::Pre | WhiteSpace::PreWrap => {
@@ -168,7 +168,7 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
         if let Some(lang) = opts.lang {
             if run.hyphenate.unwrap_or(opts.hyphenate)
                 && !matches!(opts.white_space, WhiteSpace::Pre | WhiteSpace::NoWrap)
-                && run.placeholder.is_none()
+                && !run.shows_number()
                 && run.image.is_none()
             {
                 let hyphenated = insert_soft_hyphens(&text[start..], opts.hyphenator, lang);
@@ -778,7 +778,7 @@ pub(crate) fn prepare(
         breaks,
         rtl,
         bidi,
-        placeholders: opts.runs.iter().any(|r| r.placeholder.is_some()),
+        placeholders: opts.runs.iter().any(TextRun::shows_number),
         objects,
     }
 }
@@ -852,7 +852,7 @@ pub(super) fn number_glyphs(font: &LoadedFont<'_>, run: &TextRun, n: u32) -> Vec
 /// The paragraph with the page numbers in place of the stand-in digits of
 /// its placeholder runs, so its lines break and align at the width the
 /// numbers take.
-pub(crate) fn fill_numbers(para: &Para<'_>, numbers: PageNumbers) -> Prepared {
+pub(crate) fn fill_numbers(para: &Para<'_>, numbers: PageNumbers<'_>) -> Prepared {
     let Para {
         prepared: p,
         runs,
@@ -873,7 +873,7 @@ pub(crate) fn fill_numbers(para: &Para<'_>, numbers: PageNumbers) -> Prepared {
         let first = glyphs.len() as u32;
         let text_start = shift(seg.text.start, grown);
         starts.push((seg.glyphs.start, first));
-        let Some(ph) = run.placeholder else {
+        let Some(n) = numbers.of(run) else {
             glyphs.extend(
                 p.glyphs[seg.glyphs.start as usize..seg.glyphs.end as usize]
                     .iter()
@@ -896,7 +896,6 @@ pub(crate) fn fill_numbers(para: &Para<'_>, numbers: PageNumbers) -> Prepared {
             copied = seg.text.end as usize;
             continue;
         }
-        let n = numbers.of(ph);
         let digits = n.to_string();
         let at = glyphs.len();
         for (i, (id, advance)) in number_glyphs(fonts.get(seg.font), run, n)
@@ -1010,6 +1009,7 @@ mod tests {
             decoration_thickness: None,
             decoration_style: None,
             placeholder: None,
+            page_of: None,
             link: None,
             hyphenate: None,
             font_key: None,

@@ -85,7 +85,7 @@ validation_codes! {
     InvalidTable = "INVALID_TABLE",
     /// A node type is not allowed where it appears.
     InvalidNode = "INVALID_NODE",
-    /// A `#id` link names no node in the document.
+    /// A `#id` link or a run's `pageOf` names no node in the document.
     UnknownAnchor = "UNKNOWN_ANCHOR",
     /// The document uses something the PDF/A level it is rendered at does
     /// not allow: a page side under 3 points, at any level; under PDF/A-1b,

@@ -238,8 +238,9 @@ older than PDF 2.0, so part 2 with `pdfA` is refused. In the CLI,
   `meta.lang`, `alt` on each image (in text too) and `figure` box that
   is not decoration, a `label` on each field (in decoration too: its
   widget is tagged), headings that go down one level at a time from
-  `h1`, or lists made of items (a `listItem` inside a `list`, a
-  `listBody` inside a `listItem`) fails, at the path of the first thing
+  `h1`, lists made of items (a `listItem` inside a `list`, a
+  `listBody` inside a `listItem`), or tables of contents made of items
+  (a `tocItem` inside a `toc`) fails, at the path of the first thing
   it lacks. Under part 2, so does a `#id` link to decoration (a `fixed`
   node, one with the role `artifact`, or a node inside one) or a
   bookmark on it: part 2 links and bookmarks go to a structure element,

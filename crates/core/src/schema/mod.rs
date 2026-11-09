@@ -406,6 +406,10 @@ pub enum Role {
     ListItem,
     Label,
     ListBody,
+    /// A table of contents.
+    Toc,
+    /// An entry of a table of contents.
+    TocItem,
     /// Decoration: neither it nor its content is read.
     Artifact,
 }
@@ -890,6 +894,8 @@ pub struct TextRun {
     pub decoration_thickness: Option<f32>,
     pub decoration_style: Option<DecorationStyle>,
     pub placeholder: Option<Placeholder>,
+    /// The id of the node whose page number it shows, in place of text.
+    pub page_of: Option<String>,
     /// Link target of this run (as `Node::link`).
     pub link: Option<String>,
     /// Overrides the paragraph's `hyphenate` for this run's words.
@@ -917,6 +923,12 @@ impl TextRun {
             .as_deref()
             .map(Icon::Note)
             .or_else(|| self.attachment.as_deref().map(Icon::Attachment))
+    }
+
+    /// Whether it shows a number in place of text: a placeholder's, or
+    /// the page of a node (`page_of`).
+    pub fn shows_number(&self) -> bool {
+        self.placeholder.is_some() || self.page_of.is_some()
     }
 
     /// Whether it is an icon in place of text ([`icon`](Self::icon)).

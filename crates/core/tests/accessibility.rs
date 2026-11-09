@@ -149,6 +149,48 @@ fn pdf_ua_2_passes_verapdf_with_every_role() {
 }
 
 /// qpdf's objects of `pdf`, written as `name`, by reference (`"12 0 R"`).
+/// A table of contents is a `TOC` of `TOCI`s, each a paragraph with its
+/// link and the page of its target.
+#[test]
+fn a_table_of_contents_is_made_of_its_items() {
+    let entry = |title: &str, id: &str| {
+        format!(
+            r##"{{"type":"box","role":"tocItem","children":[{{"type":"text","runs":[
+                {{"text":"{title} ","font":"Inter-Regular","size":10,"link":"#{id}"}},
+                {{"pageOf":"{id}","font":"Inter-Regular","size":10,"link":"#{id}"}}]}}]}}"##
+        )
+    };
+    let chapter = |title: &str, id: &str| {
+        format!(
+            r#"{{"type":"pageBreak"}},{{"type":"text","id":"{id}","role":"h2","runs":[
+                {{"text":"{title}","font":"Inter-Regular","size":10}}]}}"#
+        )
+    };
+    let doc = format!(
+        r#"{{"version":1,"meta":{{"title":"Contents","lang":"en"}},"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+        "pages":[{{"size":{{"width":300,"height":600}},"children":[
+        {{"type":"text","role":"h1","runs":[{{"text":"Contents","font":"Inter-Regular","size":10}}]}},
+        {{"type":"box","role":"toc","children":[{},{}]}},{},{}]}}]}}"#,
+        entry("One", "one"),
+        entry("Two", "two"),
+        chapter("One", "one"),
+        chapter("Two", "two"),
+    );
+    for part in [PdfUaPart::Ua1, PdfUaPart::Ua2] {
+        let ua = RenderOptions::default().with_pdf_ua_part(part);
+        let text = String::from_utf8_lossy(
+            &render(doc.as_bytes(), &ua.clone().with_compress(false)).unwrap(),
+        )
+        .split_whitespace()
+        .collect::<String>();
+        assert_eq!(text.matches("/S/TOC/").count(), 1, "ua{}", part.as_str());
+        assert_eq!(text.matches("/S/TOCI/").count(), 2, "ua{}", part.as_str());
+        let name = format!("toc-ua{}", part.as_str());
+        let pdf = render(doc.as_bytes(), &ua).unwrap();
+        verapdf(&format!("ua{}", part.as_str()), &[write(&name, &pdf)]);
+    }
+}
+
 fn objects(name: &str, pdf: &[u8]) -> serde_json::Map<String, Value> {
     let file = write(name, pdf);
     let o = Command::new("qpdf")
@@ -367,6 +409,11 @@ fn a_document_without_what_pdf_ua_requires_is_refused() {
                     {"type":"box","role":"listBody","children":[]}]}]}"#,
             ),
             "pages[0].children[0].children[0].children[0].role",
+        ),
+        // A table of contents is made of its items.
+        (
+            doc(meta, r#"{"type":"box","role":"tocItem","children":[]}"#),
+            "pages[0].children[0].role",
         ),
         (
             doc(meta, &format!("{},{}", text("h1"), text("h3"))),

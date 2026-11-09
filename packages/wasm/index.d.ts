@@ -178,7 +178,8 @@ export interface RenderOptions {
    * PDF/UA-1, on PDF 1.7; `'2'` writes PDF/UA-2, on PDF 2.0, which does not combine with
    * `pdfA`. A document without a title, a language, `alt` on its images and figures or `label`
    * on its fields, with headings that skip a level, or with a `listItem` outside a `list` (a
-   * `listBody` outside a `listItem`), fails with `UA_CONFLICT`. Default `false`.
+   * `listBody` outside a `listItem`) or a `tocItem` outside a `toc`, fails with `UA_CONFLICT`.
+   * Default `false`.
    */
   pdfUA?: boolean | PdfUaPart;
   /**

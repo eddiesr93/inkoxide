@@ -136,9 +136,11 @@
         "listItem",
         "label",
         "listBody",
+        "toc",
+        "tocItem",
         "artifact"
       ],
-      "description": "What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first. Under PDF/UA-2 (`pdfUA: '2'`), the roles inside a box with a `link` make no elements: its link holds what is inside it."
+      "description": "What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), a table of contents (`toc`, whose entries are `tocItem` boxes), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first. Under PDF/UA-2 (`pdfUA: '2'`), the roles inside a box with a `link` make no elements: its link holds what is inside it."
     },
     "Meta": {
       "type": "object",
@@ -1336,7 +1338,7 @@
       "properties": {
         "text": {
           "type": "string",
-          "description": "Required unless `placeholder`, `image` or `note` is set; forbidden when one is."
+          "description": "Required unless `placeholder`, `pageOf`, `image`, `note` or `attachment` is set; forbidden when one is."
         },
         "font": {
           "$ref": "#/$defs/Id"
@@ -1385,7 +1387,12 @@
           "enum": [
             "pageNumber",
             "totalPages"
-          ]
+          ],
+          "description": "The physical number of the page the run is painted on (`pageNumber`), or the document's page count (`totalPages`), in place of text."
+        },
+        "pageOf": {
+          "$ref": "#/$defs/Id",
+          "description": "The id of a node of the page body (as a `#id` link's target): the run shows the number of the page that node starts on, in place of text, as a table of contents does. Laid out like a `placeholder`: as three digits first, then again with the number, a few times at most."
         },
         "link": {
           "$ref": "#/$defs/Link",
@@ -1457,6 +1464,11 @@
               },
               {
                 "required": [
+                  "pageOf"
+                ]
+              },
+              {
+                "required": [
                   "image"
                 ]
               },
@@ -1482,6 +1494,45 @@
               {
                 "required": [
                   "text"
+                ]
+              },
+              {
+                "required": [
+                  "pageOf"
+                ]
+              },
+              {
+                "required": [
+                  "image"
+                ]
+              },
+              {
+                "required": [
+                  "note"
+                ]
+              },
+              {
+                "required": [
+                  "attachment"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "pageOf"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "text"
+                ]
+              },
+              {
+                "required": [
+                  "placeholder"
                 ]
               },
               {
@@ -1520,6 +1571,11 @@
               },
               {
                 "required": [
+                  "pageOf"
+                ]
+              },
+              {
+                "required": [
                   "note"
                 ]
               },
@@ -1549,6 +1605,11 @@
               },
               {
                 "required": [
+                  "pageOf"
+                ]
+              },
+              {
+                "required": [
                   "image"
                 ]
               },
@@ -1574,6 +1635,11 @@
               {
                 "required": [
                   "placeholder"
+                ]
+              },
+              {
+                "required": [
+                  "pageOf"
                 ]
               },
               {

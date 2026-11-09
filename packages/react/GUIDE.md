@@ -33,7 +33,7 @@ how each writes them (`class` for `className`, a slot or a template for a `rende
 Components take `className`, `style` and `id`, and those with a box also take `debug`
 ([Debugging layout](#debugging-layout)), with these exceptions: `Document` takes only `debug`;
 `Page` has no `id`; `PageBreak` takes only `id`; `PageNumber` and `TotalPages`
-take no props; the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
+take no props, and `PageRef` only `to`; the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
 `transform`, `id`), and their `className` and `style` set SVG presentation
 ([Drawing](#drawing-svg-and-canvas)); and a `Text` or `Link` inside a `Text`,
 a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or `'sub'`),
@@ -50,6 +50,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | `ImageBackground` | A `View` with an image behind its children: `src` and `fit` as on `Image` ([Images](#images)). |
 | `Header`, `Footer` | Repeated on every page, in the top or bottom margin. |
 | `PageNumber`, `TotalPages` | The current page and the page count, inside a `Text`. |
+| `PageRef` | The number of the page another element is on (`to="#id"`), inside a `Text` ([table of contents](#table-of-contents)). |
 | `Table`, `Row`, `Cell` | A table that splits across pages. |
 | `PageBreak`, `Spacer` | A forced page break; empty space. |
 | `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `Marker`, `LinearGradient`, `RadialGradient`, `Stop`, `Tspan`, `TextPath` | Vector drawing in JSX; a `Text` in an `Svg` is SVG text. |
@@ -59,7 +60,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | `Note` | A text note: an icon that opens its text in the viewer. |
 | `Attachment` | An icon that opens one of the document's [attachments](#attachments) (`file`). |
 
-**The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `Link`,
+**The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `PageRef`, `Link`,
 `Image` (an image in the line), `Note`, `Attachment` and other `Text`, and nothing else. A `View` inside a `Text` is an error that names the component.
 
 ## Styling
@@ -660,6 +661,43 @@ whole page and `'width'` the page's width, from the element's top:
 <Image src={chart} bookmark={{ title: 'Chart', level: 2, zoom: 'page' }} />
 ```
 
+### Table of contents
+
+`<PageRef to="#id" />` shows the number of the page the element with that `id` starts on, so a
+table of contents is a list of links, each with the page of what it links to:
+
+```tsx
+const sections = [
+  { id: 'summary', title: 'Summary' },
+  { id: 'results', title: 'Results' },
+  { id: 'outlook', title: 'Outlook' },
+];
+
+<View role="toc" className="gap-1">
+  {sections.map((s) => (
+    <Link key={s.id} role="tocItem" href={`#${s.id}`} className="flex-row items-end gap-1">
+      <Text>{s.title}</Text>
+      <View className="mb-[3pt] flex-1 border-b border-dotted border-gray-400" />
+      <Text><PageRef to={`#${s.id}`} /></Text>
+    </Link>
+  ))}
+</View>
+<PageBreak />
+{sections.map((s) => (
+  <Text key={s.id} id={s.id} bookmark={s.title} role="h1" className="text-xl font-bold">
+    {s.title}
+  </Text>
+))}
+```
+
+The `View` between the title and the number draws the dotted leader: it takes the room the two
+leave. `PageRef` works in any `Text` ("see page `<PageRef to="#results" />`"), takes the style of
+the text around it, and names an element as a `#id` link does: an `id` no element of the page
+body has is an error (`UNKNOWN_ANCHOR`). The table of contents may come before or after what it
+lists, and may itself push the sections to later pages: the numbers are the ones of the finished
+document. In text painted on every page (a `fixed` element, a table's header rows) a `PageRef`
+keeps the room of three digits, as `PageNumber` does there.
+
 `Document` writes `title`, `author`, `subject`, `keywords`, `creator` (the application that
 made the file) and `producer` (the software that wrote the PDF, by default `Inkoxide <version>`)
 into the PDF's properties. `creationDate` (an RFC 3339 timestamp, `"2026-10-12T09:30:00Z"`) dates
@@ -1220,9 +1258,11 @@ document tree: to render a stored `result.document` tagged again, pass the rende
   inside a `Text` is a figure in place, and a link inside one a link. A `View` is not an element: its children belong to its parent.
   `role` says otherwise: `'h1'` to `'h6'` for headings (PDF/UA wants them to go down one level at
   a time from `h1`), `'section'`, `'blockQuote'`, `'caption'`, `'figure'` (a `View` drawn as one
-  figure, with `alt`), `'list'`, `'listItem'`, `'label'` and `'listBody'` for lists, or
+  figure, with `alt`), `'list'`, `'listItem'`, `'label'` and `'listBody'` for lists, `'toc'` and
+  `'tocItem'` for a [table of contents](#table-of-contents) and its entries, or
   `'artifact'` for decoration that screen readers skip. A `'listItem'` belongs in a `'list'` and a
   `'listBody'` in a `'listItem'`; the list's numbering is read from its labels (`1.`, `a)`, `•`).
+  A `'tocItem'` belongs in a `'toc'`.
 - **Parts of an SVG file.** In an SVG file given to `<Image src>`, an element (a group, `use`,
   shape, `image`, `text` or `a`) with `aria-label`, or else a `<title>` child, is a figure of its
   own with that text as its alternative text, inside the image's; an element with

@@ -210,8 +210,8 @@ const NS_PDF_1_7: &str = "http://iso.org/pdf/ssn";
 /// Writes the structure tree of `pages` (each with its tags) and `annots`
 /// with root `root`, within the limits of `profile`. Elements without
 /// content are left out, unless a link goes to them. For PDF 2.0, every
-/// element is in a namespace: PDF 2.0's, but for `BlockQuote`, which only
-/// PDF 1.7's has, mapped to PDF 2.0's `Div` there.
+/// element is in a namespace: PDF 2.0's, but for those which only PDF
+/// 1.7's has ([`Kind::ONLY_PDF_1_7`]), mapped to PDF 2.0's `Div` there.
 pub(super) fn write_tree(
     w: &mut Writer,
     plan: &Plan,
@@ -335,14 +335,19 @@ pub(super) fn write_tree(
         .collect();
     let parent_tree = w.alloc.next();
     let pdf_2 = profile.pdf_2();
-    let namespaces = pdf_2.then(|| {
-        let quotes = tree
-            .elems
-            .iter()
-            .zip(&kept)
-            .any(|(e, &k)| k && e.kind == Kind::BlockQuote);
-        (w.alloc.next(), quotes.then(|| w.alloc.next()))
-    });
+    // The kinds written that only PDF 1.7 has.
+    let old: Vec<Kind> = Kind::ONLY_PDF_1_7
+        .into_iter()
+        .filter(|kind| {
+            pdf_2
+                && tree
+                    .elems
+                    .iter()
+                    .zip(&kept)
+                    .any(|(e, &k)| k && e.kind == *kind)
+        })
+        .collect();
+    let namespaces = pdf_2.then(|| (w.alloc.next(), (!old.is_empty()).then(|| w.alloc.next())));
 
     // The root.
     let doc = refs[0].unwrap_or(root);
@@ -369,12 +374,13 @@ pub(super) fn write_tree(
             let mut d = w.pdf.indirect(ns17).dict();
             d.pair(Name(b"Type"), Name(b"Namespace"))
                 .pair(Name(b"NS"), Str(&uri));
-            d.insert(Name(b"RoleMapNS"))
-                .dict()
-                .insert(Name(Kind::BlockQuote.name()))
-                .array()
-                .item(Name(b"Div"))
-                .item(ns2);
+            let mut map = d.insert(Name(b"RoleMapNS")).dict();
+            for kind in &old {
+                map.insert(Name(kind.name()))
+                    .array()
+                    .item(Name(b"Div"))
+                    .item(ns2);
+            }
         }
     }
 
@@ -514,7 +520,7 @@ pub(super) fn write_tree(
             d.pair(Name(b"P"), parent);
             if let Some((ns2, ns17)) = namespaces {
                 let ns = match ns17 {
-                    Some(ns17) if e.kind == Kind::BlockQuote => ns17,
+                    Some(ns17) if old.contains(&e.kind) => ns17,
                     _ => ns2,
                 };
                 d.pair(Name(b"NS"), ns);

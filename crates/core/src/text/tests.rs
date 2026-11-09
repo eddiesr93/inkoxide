@@ -222,6 +222,7 @@ fn fill_numbers_puts_the_digits_in_place_of_the_stand_ins() {
     let numbers = PageNumbers {
         current: 7,
         total: 1234,
+        refs: &NO_REFS,
     };
     let paragraph = |prepared| Para {
         prepared,
@@ -365,6 +366,7 @@ fn tabs_after_page_numbers_keep_their_stop() {
         PageNumbers {
             current: 7,
             total: 9,
+            refs: &NO_REFS,
         },
     );
     assert_eq!(filled.text, "7\tx");
@@ -1115,6 +1117,7 @@ fn placeholders_keep_the_objects() {
     let numbers = PageNumbers {
         current: 12345,
         total: 99999,
+        refs: &NO_REFS,
     };
     assert!(cache.set_numbers(node, numbers));
     let (p, _) = cache.prepared(node).unwrap();
@@ -1356,6 +1359,7 @@ fn vertical_text_shapes_top_to_bottom_with_vertical_forms() {
         decoration_thickness: None,
         decoration_style: None,
         placeholder: None,
+        page_of: None,
         link: None,
         hyphenate: Some(false),
         font_key: None,

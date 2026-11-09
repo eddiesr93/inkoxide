@@ -133,15 +133,24 @@ impl Checker<'_> {
             self.last_heading = Some(level);
         }
         // ISO 14289-1, 7.6: a list holds items, an item a label and a body.
+        // And a table of contents holds its items (ISO 32000-1, 14.8.4.2).
+        let lists = "PDF/UA lists are made of items";
         let parent = (!self.structure.merged).then_some(self.structure.parent);
         let inside = match node.role {
-            Some(Role::ListItem) => Some((Role::List, "a `listItem` is inside a `list`")),
-            Some(Role::ListBody) => Some((Role::ListItem, "a `listBody` is inside a `listItem`")),
+            Some(Role::ListItem) => Some((Role::List, lists, "a `listItem` is inside a `list`")),
+            Some(Role::ListBody) => {
+                Some((Role::ListItem, lists, "a `listBody` is inside a `listItem`"))
+            }
+            Some(Role::TocItem) => Some((
+                Role::Toc,
+                "PDF/UA tables of contents are made of items",
+                "a `tocItem` is inside a `toc`",
+            )),
             _ => None,
         };
-        if let (Some(parent), Some((want, message))) = (parent, inside) {
+        if let (Some(parent), Some((want, what, message))) = (parent, inside) {
             if parent != Some(want) {
-                self.lacks("role", format!("PDF/UA lists are made of items: {message}"));
+                self.lacks("role", format!("{what}: {message}"));
             }
         }
     }

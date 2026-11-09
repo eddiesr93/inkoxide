@@ -1661,13 +1661,21 @@ fn font_size(s: &mut Src) -> Value {
 
 fn run(s: &mut Src) -> Value {
     let mut m = Map::new();
-    // One byte picks a placeholder, a note or text.
+    // One byte picks a placeholder, a note, a page reference or text.
     let kind = s.byte();
     if kind < 20 {
         m.insert(
             "placeholder".into(),
             json!(s.pick(&["pageNumber", "totalPages"])),
         );
+    } else if (30..38).contains(&kind) {
+        // Mostly an id a node may have, at times one none has.
+        let id = if s.chance(10) {
+            "missing".to_owned()
+        } else {
+            format!("n{}", s.below(4))
+        };
+        m.insert("pageOf".into(), json!(id));
     } else {
         m.insert("text".into(), json!(text(s)));
     }
@@ -1714,6 +1722,7 @@ fn run(s: &mut Src) -> Value {
         // An image in the line, in place of the text.
         m.remove("text");
         m.remove("placeholder");
+        m.remove("pageOf");
         if s.chaos && s.chance(20) {
             m.insert("text".into(), json!("x"));
         }
@@ -2459,6 +2468,8 @@ const ROLES: &[&str] = &[
     "listItem",
     "label",
     "listBody",
+    "toc",
+    "tocItem",
     "artifact",
 ];
 
@@ -3071,6 +3082,7 @@ mod tests {
             r#""fallbackFonts":["EmojiTest-CBDT""#,
             r#""image":{"src":"#,
             r#""contents":"In the line""#,
+            r#""pageOf":"n"#,
             r#""emojiImages":{"❤"#,
             r#""😀":"logo""#,
             r#""verticalAlign":"textTop""#,

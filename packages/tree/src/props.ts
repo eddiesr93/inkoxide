@@ -42,6 +42,7 @@ export type {
   PageInfo,
   PagePreset,
   PageProps,
+  PageRefProps,
   PageSize,
   PathProps,
   Permissions,

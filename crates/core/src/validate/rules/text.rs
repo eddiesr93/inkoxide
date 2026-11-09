@@ -135,6 +135,14 @@ impl Checker<'_> {
         if let Some(link) = &r.link {
             self.link(link);
         }
+        let one_of =
+            "a run takes one of `text`, `placeholder`, `pageOf`, `image`, `note` and `attachment`";
+        if let Some(id) = &r.page_of {
+            if r.text.is_some() || r.placeholder.is_some() || r.image.is_some() || r.is_icon() {
+                self.err(Code::InvalidValue, Some("pageOf"), one_of);
+            }
+            self.page_of(id);
+        }
         match (&r.text, &r.placeholder, &r.image) {
             (Some(_), Some(_), _) => self.err(
                 Code::InvalidValue,
@@ -146,20 +154,20 @@ impl Checker<'_> {
                 Some("image"),
                 "a run takes one of `text`, `placeholder` and `image`",
             ),
-            (None, None, None) if !r.is_icon() => self.err(
+            (None, None, None) if !r.is_icon() && r.page_of.is_none() => self.err(
                 Code::MissingField,
                 Some("text"),
-                "a run requires `text` (or a `placeholder`, an `image`, a `note` or an `attachment`)",
+                "a run requires `text` (or a `placeholder`, a `pageOf`, an `image`, a `note` or an `attachment`)",
             ),
             (Some(_), _, _) | (_, Some(_), _) | (_, _, Some(_)) if r.is_icon() => self.err(
                 Code::InvalidValue,
                 Some(if r.note.is_some() { "note" } else { "attachment" }),
-                "a run takes one of `text`, `placeholder`, `image`, `note` and `attachment`",
+                one_of,
             ),
             _ if r.note.is_some() && r.attachment.is_some() => self.err(
                 Code::InvalidValue,
                 Some("attachment"),
-                "a run takes one of `text`, `placeholder`, `image`, `note` and `attachment`",
+                one_of,
             ),
             _ => {}
         }

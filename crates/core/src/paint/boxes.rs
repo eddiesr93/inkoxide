@@ -71,7 +71,7 @@ pub(crate) trait ContentPainter {
     /// The physical page number and the page count of the page painted:
     /// placeholders show them, and nodes shown on some pages only are
     /// painted by them.
-    fn numbers(&self) -> PageNumbers;
+    fn numbers(&self) -> PageNumbers<'_>;
 
     /// In tagged output, the structure element the content of `node`
     /// belongs to; `None` for decoration, or without tagging.

@@ -30,6 +30,8 @@ pub(crate) enum Kind {
     LI,
     Lbl,
     LBody,
+    Toc,
+    TocItem,
     Table,
     THead,
     TBody,
@@ -60,6 +62,8 @@ impl Kind {
             Role::ListItem => Self::LI,
             Role::Label => Self::Lbl,
             Role::ListBody => Self::LBody,
+            Role::Toc => Self::Toc,
+            Role::TocItem => Self::TocItem,
             Role::Artifact => return None,
         })
     }
@@ -84,6 +88,8 @@ impl Kind {
             Self::LI => b"LI",
             Self::Lbl => b"Lbl",
             Self::LBody => b"LBody",
+            Self::Toc => b"TOC",
+            Self::TocItem => b"TOCI",
             Self::Table => b"Table",
             Self::THead => b"THead",
             Self::TBody => b"TBody",
@@ -95,6 +101,10 @@ impl Kind {
             Self::Link => b"Link",
         }
     }
+
+    /// The structure types that PDF 1.7 has and PDF 2.0 lacks: in PDF 2.0
+    /// they are in PDF 1.7's namespace, mapped to a `Div`.
+    pub const ONLY_PDF_1_7: [Self; 3] = [Self::BlockQuote, Self::Toc, Self::TocItem];
 
     /// Whether what is inside it is its own content, without elements of
     /// its own: text in a figure or a paragraph box.

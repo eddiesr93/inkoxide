@@ -1,11 +1,11 @@
 //! Page numbers: flows laid out again until the page count settles, and
 //! headers, footers and overlays laid out with each page's numbers.
 
-use super::{lay_out_flow, layout_fixed, page_count, Cache, Laid, PageBand};
+use super::{lay_out_flow, layout_fixed, page_count, Cache, Laid, Marks, PageBand};
 use crate::images::ImageSet;
 use crate::layout::{LeafMeasure, NodeIdx, Tree};
-use crate::schema::{Display, Node};
-use crate::text::PageNumbers;
+use crate::schema::{Display, Node, NodeKind};
+use crate::text::{PageNumbers, PageRefs};
 use crate::InkoxideError;
 
 /// Most times the flows are laid out again for the page numbers their text
@@ -16,7 +16,8 @@ pub(super) const NUMBER_PASSES: usize = 3;
 
 /// Lays out flow text that shows page numbers with the numbers of the page
 /// it lands on, instead of the stand-in digits: the flows with such text
-/// are laid out and paginated again, until no number changes.
+/// are laid out and paginated again, until no number changes. The page of
+/// a node (`pageOf`) is where the layout of the pass has it.
 pub(super) fn number_flows(
     laid: &mut [Laid<'_>],
     text: &mut Cache<'_, '_, '_>,
@@ -28,13 +29,22 @@ pub(super) fn number_flows(
         let mut found = Vec::new();
         for (k, l) in laid.iter().enumerate() {
             for (node, page) in numbered_text(l, text) {
-                let current = first + page + 1;
-                found.push((k, node, PageNumbers { current, total }));
+                found.push((k, node, first + page + 1));
             }
             first += l.placement.pages;
         }
+        let refs = if found.iter().any(|(_, node, _)| shows_page_of(node)) {
+            Marks::of(laid).page_refs()
+        } else {
+            PageRefs::new()
+        };
         let mut changed = vec![false; laid.len()];
-        for (k, node, numbers) in found {
+        for (k, node, current) in found {
+            let numbers = PageNumbers {
+                current,
+                total,
+                refs: &refs,
+            };
             changed[k] |= text.set_numbers(node, numbers);
         }
         if !changed.contains(&true) {
@@ -46,6 +56,14 @@ pub(super) fn number_flows(
         }
     }
     Ok(())
+}
+
+/// Whether a run of text `node` shows the page of a node.
+fn shows_page_of(node: &Node) -> bool {
+    match &node.kind {
+        NodeKind::Text { runs } => runs.iter().any(|r| r.page_of.is_some()),
+        _ => false,
+    }
 }
 
 /// The flow paragraphs of `l` that show page numbers, with the page of

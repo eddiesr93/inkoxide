@@ -150,7 +150,13 @@ fn painted_lines(json: &str) -> Vec<Vec<(f32, f32, f32)>> {
 
 /// The numbers painted on every page, as they read from left to right.
 fn painted_numbers(json: &str) -> Vec<Vec<String>> {
-    painted(json)
+    numbers_of(painted(json))
+}
+
+/// The numbers among the glyphs of every page, as they read from left to
+/// right.
+fn numbers_of(pages: Vec<Vec<Painted>>) -> Vec<Vec<String>> {
+    pages
         .into_iter()
         .map(|mut glyphs| {
             glyphs.sort_by(|a, b| a.x0.total_cmp(&b.x0));
@@ -922,6 +928,103 @@ fn repeated_flow_text_shows_each_page_s_numbers() {
     for (k, numbers) in pages.iter().enumerate() {
         assert_eq!(numbers, &[(k + 1).to_string(), total.clone()]);
     }
+}
+
+// The pages of nodes.
+
+/// A run that shows the page of the node with id `id`.
+fn page_of(id: &str) -> String {
+    format!(r#"{{"pageOf":"{id}","font":"Inter-Regular","size":10}}"#)
+}
+
+/// A text with `runs` and the node properties `extra`.
+fn text_node(extra: &str, runs: &[String]) -> String {
+    format!(r#"{{"type":"text"{extra},"runs":[{}]}}"#, runs.join(","))
+}
+
+fn word(text: &str) -> String {
+    format!(r#"{{"text":"{text}","font":"Inter-Regular","size":10}}"#)
+}
+
+#[test]
+fn a_run_shows_the_page_of_a_node() {
+    // A table of contents ahead of what it lists, in two page templates;
+    // the second one's footer shows where the first chapter is too.
+    let toc = text_node("", &[word("A "), page_of("a"), word(" B "), page_of("b")]);
+    let filler = |pages: f32| format!(r#"{{"type":"box","style":{{"height":{}}}}}"#, pages * H);
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],"pages":[
+            {{"size":{{"width":{W},"height":{H}}},"children":[{toc},{},{}]}},
+            {{"size":{{"width":{W},"height":{H}}},"footer":{},"children":[{},{}]}}]}}"#,
+        filler(2.0),
+        text_node(r#","id":"a""#, &[word("x")]),
+        text_node("", &[word("see "), page_of("a")]),
+        filler(1.0),
+        text_node(r#","id":"b""#, &[word("y")]),
+    );
+    let (numbers, a, b) = render_with(&store(), &json, |pages, marks, fonts| {
+        let (a, b) = (marks.anchors["a"].page + 1, marks.anchors["b"].page + 1);
+        (numbers_of(glyphs(&pages, fonts)), a, b)
+    });
+    // The box that does not fit under the contents starts on page 2.
+    assert_eq!((a, b), (4, 6));
+    assert_eq!(numbers[0], ["4", "6"]);
+    assert!(numbers[1..4].iter().all(Vec::is_empty), "{numbers:?}");
+    assert_eq!(numbers[4..], [["4"], ["4"]]);
+}
+
+#[test]
+fn the_page_of_a_node_takes_its_own_width() {
+    // Pushed right in a row: the text box is as wide as the text.
+    let pushed = |number: String| {
+        footer(
+            r#""flexDirection":"row","justifyContent":"flex-end","#,
+            &text_node("", &[word("Page "), number]),
+        )
+    };
+    let target = text_node(r#","id":"t""#, &[word("x")]);
+    let json = |number: String| in_flow(6, &format!("{},{target}", pushed(number)));
+    let lines = painted_lines(&json(page_of("t")));
+    let written = painted_lines(&json(word("7")));
+    assert_eq!(lines.len(), 7);
+    assert_eq!(lines[6][0], written[6][0]);
+    assert!(close(lines[6][0].2, W - PAD), "{:?}", lines[6]);
+}
+
+#[test]
+fn the_page_of_a_node_is_where_the_numbers_shown_leave_it() {
+    // "Page 999 of 999" takes two lines in 70 pt, which leaves no room on
+    // the page for the node after it; "Page 1 of 1" takes one, and the
+    // node stays on the page.
+    let toc = text_node(
+        r#","style":{"width":70}"#,
+        &[word("Page "), page_of("t"), word(" of "), page_of("t")],
+    );
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},
+            "children":[{toc},{{"type":"box","style":{{"height":{}}}}},{}]}}]}}"#,
+        H - 26.0,
+        text_node(r#","id":"t""#, &[word("x")]),
+    );
+    assert_eq!(painted_numbers(&json), [["1", "1"]]);
+    let stand_in = json.replace(&page_of("t"), &word("999"));
+    assert_eq!(painted(&stand_in).len(), 2);
+}
+
+#[test]
+fn repeated_text_shows_the_page_of_a_node() {
+    // A fixed node in the flow, painted on every page.
+    let fixed = text_node(FIXED, &[word("at "), page_of("t")]);
+    let target = text_node(r#","id":"t""#, &[word("x")]);
+    let json = with_fixed(3, &fixed).replace("]}]}", &format!(",{target}]}}]}}"));
+    let pages = painted_numbers(&json);
+    assert!(pages.len() >= 3, "{pages:?}");
+    let last = pages.len().to_string();
+    assert!(
+        pages.iter().all(|n| n == std::slice::from_ref(&last)),
+        "{pages:?}"
+    );
 }
 
 /// The ops of each page of a document whose store holds image `logo`.

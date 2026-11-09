@@ -19,22 +19,8 @@ impl Checker<'_> {
             return;
         }
         if let Some(id) = link.strip_prefix('#') {
-            let doc = self.doc;
-            let anchors = self.anchors.get_or_insert_with(|| {
-                let mut out = HashMap::new();
-                for n in doc.pages.iter().flat_map(|p| &p.children) {
-                    if !n.hidden() {
-                        collect_anchors(n, false, &mut out);
-                    }
-                }
-                out
-            });
-            match anchors.get(id).copied() {
-                None => self.err(
-                    Code::UnknownAnchor,
-                    Some("link"),
-                    format!("no displayed node in the page body (flow and overlays) has id `{id}`"),
-                ),
+            match self.anchor(id) {
+                None => self.unknown_anchor("link", id),
                 // PDF/UA-2 links go to their target's element too (ISO
                 // 14289-2, 8.8), and decoration has none.
                 Some(true) if self.profile.pdf_2() => self.lacks(
@@ -66,6 +52,37 @@ impl Checker<'_> {
             ),
             Some(_) => {}
         }
+    }
+
+    /// A run's `pageOf`: the id of a node that lands on a page.
+    pub(super) fn page_of(&mut self, id: &str) {
+        if self.anchor(id).is_none() {
+            self.unknown_anchor("pageOf", id);
+        }
+    }
+
+    /// Whether the displayed node of the page body with `id` is
+    /// decoration; `None` when there is no such node.
+    fn anchor(&mut self, id: &str) -> Option<bool> {
+        let doc = self.doc;
+        let anchors = self.anchors.get_or_insert_with(|| {
+            let mut out = HashMap::new();
+            for n in doc.pages.iter().flat_map(|p| &p.children) {
+                if !n.hidden() {
+                    collect_anchors(n, false, &mut out);
+                }
+            }
+            out
+        });
+        anchors.get(id).copied()
+    }
+
+    fn unknown_anchor(&mut self, field: &'static str, id: &str) {
+        self.err(
+            Code::UnknownAnchor,
+            Some(field),
+            format!("no displayed node in the page body (flow and overlays) has id `{id}`"),
+        );
     }
 
     pub(super) fn bookmark(&mut self, b: &Bookmark) {

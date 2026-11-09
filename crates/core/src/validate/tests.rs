@@ -745,7 +745,8 @@ fn links_and_bookmarks() {
         r##"{"type":"text","id":"a","bookmark":{"title":"A"},"runs":[{"text":"x","font":"Inter-Regular","size":9}]},
             {"type":"box","link":"#a","bookmark":{"title":"B","level":3}},
             {"type":"text","runs":[{"text":"y","font":"Inter-Regular","size":9,"link":"mailto:x@example.com"}]},
-            {"type":"image","src":"logo","link":"https://example.com/ä b"}"##,
+            {"type":"image","src":"logo","link":"https://example.com/ä b"},
+            {"type":"text","runs":[{"pageOf":"a","font":"Inter-Regular","size":9,"link":"#a"}]}"##,
     );
     assert_eq!(run(&ok), vec![]);
 
@@ -796,6 +797,27 @@ fn links_and_bookmarks() {
             C::UnknownField,
             "pages[0].children[1].link",
         ),
+        // The page of a node is that of a destination.
+        (
+            r#"{"type":"text","runs":[{"pageOf":"nope","font":"Inter-Regular","size":9}]}"#,
+            C::UnknownAnchor,
+            "pages[0].children[1].runs[0].pageOf",
+        ),
+        (
+            r#"{"type":"text","runs":[{"pageOf":"t","text":"1","font":"Inter-Regular","size":9}]}"#,
+            C::InvalidValue,
+            "pages[0].children[1].runs[0].pageOf",
+        ),
+        (
+            r#"{"type":"text","runs":[{"pageOf":"t","placeholder":"pageNumber","font":"Inter-Regular","size":9}]}"#,
+            C::InvalidValue,
+            "pages[0].children[1].runs[0].pageOf",
+        ),
+        (
+            r#"{"type":"text","runs":[{"pageOf":"t","note":{"contents":"x"},"font":"Inter-Regular","size":9}]}"#,
+            C::InvalidValue,
+            "pages[0].children[1].runs[0].pageOf",
+        ),
         // An id under `display: none` is not a destination.
         (
             r##"{"type":"box","style":{"display":"none"},"children":[{"type":"box","id":"h"}]},{"type":"box","link":"#h"}"##,
@@ -806,6 +828,13 @@ fn links_and_bookmarks() {
         let d = doc(&format!("{t},{child}"));
         assert_eq!(one(&d), (code, path.to_string()), "{child}");
     }
+
+    // A header shows the page of a node of the body.
+    let d = r#"{"version":1,"fonts":[{"id":"Inter-Regular","family":"Inter"}],
+        "pages":[{"size":{"width":100,"height":100},
+        "header":{"type":"text","runs":[{"pageOf":"b","font":"Inter-Regular","size":9}]},
+        "children":[{"type":"box","id":"b"}]}]}"#;
+    assert_eq!(run(d), vec![]);
 
     // Ids in headers are not destinations; bookmarks are not allowed there.
     let d = r##"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},

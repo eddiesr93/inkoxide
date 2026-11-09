@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use super::Laid;
 use crate::layout::{NodeIdx, Tree};
 use crate::schema::Display;
+use crate::text::PageRefs;
 
 /// A link or outline destination: a page and the top-left corner of the
 /// target on it, in PDF coordinates (origin bottom-left, y up).
@@ -48,11 +49,32 @@ pub(crate) struct Marks<'d> {
     pub outline: Vec<OutlineEntry<'d>>,
 }
 
+impl<'d> Marks<'d> {
+    /// The destinations of every flow of `laid`.
+    pub(super) fn of(laid: &[Laid<'d>]) -> Self {
+        let mut marks = Self::default();
+        let mut first = 0;
+        for l in laid {
+            collect_marks(l, first, &mut marks);
+            first += l.placement.pages;
+        }
+        marks
+    }
+
+    /// The page number of each node with an id, from 1.
+    pub(super) fn page_refs(&self) -> PageRefs<'d> {
+        self.anchors
+            .iter()
+            .map(|(id, d)| (*id, d.page + 1))
+            .collect()
+    }
+}
+
 /// Destinations of the ids and bookmarks in one paginated flow, whose
 /// first page is document page `first`, in document order. Headers and
 /// footers have none; an overlay's point to where it is painted on the
 /// flow's first page.
-pub(super) fn collect_marks<'d>(l: &Laid<'d>, first: u32, out: &mut Marks<'d>) {
+fn collect_marks<'d>(l: &Laid<'d>, first: u32, out: &mut Marks<'d>) {
     let (flow, pl) = (&l.flow, &l.placement);
     let mut flow_nodes = flow.children(0);
     let mut overlays = l.overlays.iter().peekable();
