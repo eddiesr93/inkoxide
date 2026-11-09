@@ -19,6 +19,13 @@ const OPS = {
   // Test hook, not public API: a panic on a thread of the engine's pool, which never returns
   // (examples/browser/tests/threads.spec.ts).
   __testPoolPanic: () => (engine.InkoxideError as unknown as { __testPoolPanic(): void }).__testPoolPanic(),
+  // Test hook, not public API: keeps the worker busy, as a long render does, until it is ended; the
+  // requests after it wait (examples/browser/tests/page.ts).
+  __testHold: (): never => {
+    for (;;) {
+      // Busy until the worker is ended.
+    }
+  },
 } as const;
 
 export type Op = keyof typeof OPS;

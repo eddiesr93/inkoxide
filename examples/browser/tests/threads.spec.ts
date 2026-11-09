@@ -31,6 +31,9 @@ test('a signal ends the worker of a render on the pool, and the next one renders
   const workers = await instrumentWorkers(page);
   await open(page);
   const before = await workers();
+  await page.evaluate(() => {
+    (globalThis as unknown as { inkoxideStop: boolean }).inkoxideStop = true;
+  });
   expect(await call(page, 'abortedRender')).toBe('stopped');
   expect(await call(page, 'invoiceDigest')).toBe(node.invoice);
   expect(await workers()).toBe(before + 1);

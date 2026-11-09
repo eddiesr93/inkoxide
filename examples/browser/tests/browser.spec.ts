@@ -51,6 +51,9 @@ test('a signal ends the worker of a render, and the next one renders', async ({ 
   const workers = await instrumentWorkers(page);
   await open(page);
   const before = await workers();
+  await page.evaluate(() => {
+    (globalThis as unknown as { inkoxideStop: boolean }).inkoxideStop = true;
+  });
   expect(await call(page, 'abortedRender')).toBe('stopped');
   expect(await call(page, 'invoiceDigest')).toBe(expected);
   expect(await workers()).toBe(before + 1);

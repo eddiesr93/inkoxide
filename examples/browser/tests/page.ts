@@ -42,15 +42,18 @@ export const call = <H extends keyof Hooks>(page: Page, hook: H): ReturnType<Hoo
   ) as ReturnType<Hooks[H]>;
 
 /**
- * Instruments the page's workers: counts them, and, through the engine's worker, stops a render once that worker
- * has it (it dispatches `inkoxide:stop`, which `abortedRender` waits for), or, once
- * `inkoxidePoolPanic` is set on the page, makes a thread of the engine's pool panic just before
- * the next render. Call it before `open`; it returns how many workers the page has started.
+ * Instruments the page's workers: counts them, and, through the engine's worker, once
+ * `inkoxideStop` is set on the page, holds that worker busy before the next render and then stops
+ * the render (it dispatches `inkoxide:stop`, which `abortedRender` waits for), so the stop always
+ * comes while the worker has the render; or, once `inkoxidePoolPanic` is set, makes a thread of
+ * the engine's pool panic just before the next render. Call it before `open`; it returns how many
+ * workers the page has started.
  */
 export async function instrumentWorkers(page: Page): Promise<() => Promise<number>> {
   await page.addInitScript(() => {
     const scope = globalThis as unknown as {
       workers: number;
+      inkoxideStop?: boolean;
       inkoxidePoolPanic?: boolean;
       Worker: typeof Worker;
     };
@@ -63,13 +66,20 @@ export async function instrumentWorkers(page: Page): Promise<() => Promise<numbe
       }
       override postMessage(message: unknown, options?: Transferable[] | StructuredSerializeOptions) {
         const render = (message as { op?: string }).op === 'render';
+        const stop = render && scope.inkoxideStop === true;
+        if (stop) {
+          scope.inkoxideStop = false;
+          // The worker answers in order: it is busy in this, and cannot finish the render, until
+          // the stop ends it.
+          super.postMessage({ id: -3, op: '__testHold', args: [] });
+        }
         if (render && scope.inkoxidePoolPanic) {
           scope.inkoxidePoolPanic = false;
           // The worker answers in order: it is stuck in this before it gets to the render.
           super.postMessage({ id: -2, op: '__testPoolPanic', args: [] });
         }
         super.postMessage(message, options as StructuredSerializeOptions);
-        if (render) setTimeout(() => dispatchEvent(new Event('inkoxide:stop')));
+        if (stop) setTimeout(() => dispatchEvent(new Event('inkoxide:stop')));
       }
     };
   });
