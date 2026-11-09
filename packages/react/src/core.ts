@@ -1,6 +1,7 @@
 // The React front end without the renderer: the components, and React templates to document trees.
 export {
   Attachment,
+  BookmarkTitle,
   Canvas,
   Cell,
   Checkbox,

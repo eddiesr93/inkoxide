@@ -35,6 +35,7 @@
 "\"before\""
 "\"blockQuote\""
 "\"bookmark\""
+"\"bookmarkTitle\""
 "\"borderCollapse\""
 "\"borderColor\""
 "\"borderRadius\""

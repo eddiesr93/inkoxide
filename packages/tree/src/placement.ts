@@ -51,6 +51,7 @@ const INLINE = new Set<string>([
   HOST.PageNumber,
   HOST.TotalPages,
   HOST.PageRef,
+  HOST.BookmarkTitle,
 ]);
 const SVG_SHAPES = new Set<string>([
   HOST.Path,
@@ -79,6 +80,7 @@ const LEAF = new Set<string>([
   HOST.PageNumber,
   HOST.TotalPages,
   HOST.PageRef,
+  HOST.BookmarkTitle,
   HOST.Field,
   HOST.Canvas,
   HOST.Stop,
@@ -185,10 +187,15 @@ function placementError(parent: HostContext['parent'], child: string): TemplateE
   }
   if (parent === HOST.Text) {
     return new TemplateError(
-      `${name(child)} cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <Link>, <Image>, <Note>, <Attachment>, <PageNumber>, <TotalPages> and <PageRef>.`,
+      `${name(child)} cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <Link>, <Image>, <Note>, <Attachment>, <PageNumber>, <TotalPages>, <PageRef> and <BookmarkTitle>.`,
     );
   }
-  if (child === HOST.PageNumber || child === HOST.TotalPages || child === HOST.PageRef) {
+  if (
+    child === HOST.PageNumber ||
+    child === HOST.TotalPages ||
+    child === HOST.PageRef ||
+    child === HOST.BookmarkTitle
+  ) {
     return new TemplateError(`${name(child)} must be inside a <Text>.`);
   }
   if (Object.hasOwn(SVG_TAGS, child)) {

@@ -17,6 +17,7 @@ const PROPS = declared(new URL('../../tree/src/', import.meta.url), 'props.ts');
 
 const MAIN_VALUES = [
   'Attachment',
+  'BookmarkTitle',
   'Canvas',
   'Cell',
   'Checkbox',
@@ -109,6 +110,7 @@ const MAIN_TYPES = [
 ];
 const BROWSER_VALUES = [
   'Attachment',
+  'BookmarkTitle',
   'BlobProvider',
   'Canvas',
   'Cell',

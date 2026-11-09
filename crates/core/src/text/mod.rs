@@ -725,6 +725,88 @@ fn node_key(n: &Node) -> usize {
     std::ptr::from_ref::<Node>(n) as usize
 }
 
+/// The paragraphs of headers, footers and overlays that show bookmark
+/// titles (`bookmarkTitle` runs), as they read on each page: a copy of the
+/// text node for each set of titles its runs show, the titles as the
+/// runs' text. A copy is shaped like any text node, so a title takes the
+/// fallback fonts, the direction and the emoji its characters need.
+#[derive(Default)]
+pub(crate) struct TitledText {
+    /// The copies. Shaped paragraphs are keyed by where their node is:
+    /// nothing is added once one is shaped.
+    nodes: Vec<Node>,
+    /// The copy of a text node (by key) on a document page (from 0).
+    on_page: HashMap<(usize, u32), usize>,
+    /// The copies of a text node (by key).
+    of_node: HashMap<usize, Vec<usize>>,
+}
+
+impl TitledText {
+    /// The copy of text node `node` with `titles` as the text of its
+    /// `bookmarkTitle` runs, in order: made the first time.
+    pub fn copy(&mut self, node: &Node, titles: &[&str]) -> usize {
+        let NodeKind::Text { runs } = &node.kind else {
+            unreachable!("only text shows bookmark titles");
+        };
+        let shown = |n: &Node| match &n.kind {
+            NodeKind::Text { runs: copy } => copy
+                .iter()
+                .zip(runs)
+                .filter(|(_, r)| r.bookmark_title.is_some())
+                .map(|(c, _)| c.text.as_deref().unwrap_or(""))
+                .eq(titles.iter().copied()),
+            _ => false,
+        };
+        let copies = self.of_node.entry(node_key(node)).or_default();
+        if let Some(&k) = copies.iter().find(|&&k| shown(&self.nodes[k])) {
+            return k;
+        }
+        let mut titles = titles.iter();
+        let runs = runs
+            .iter()
+            .map(|r| match r.bookmark_title {
+                Some(_) => TextRun {
+                    text: titles.next().map(|&t| t.to_owned()),
+                    bookmark_title: None,
+                    ..r.clone()
+                },
+                None => r.clone(),
+            })
+            .collect();
+        self.nodes.push(Node {
+            kind: NodeKind::Text { runs },
+            ..node.clone()
+        });
+        copies.push(self.nodes.len() - 1);
+        self.nodes.len() - 1
+    }
+
+    /// Shows copy `copy` of text node `node` on document page `page`.
+    pub fn show(&mut self, node: &Node, page: u32, copy: usize) {
+        self.on_page.insert((node_key(node), page), copy);
+    }
+
+    /// Every copy, in the order they were made.
+    pub fn nodes(&self) -> impl Iterator<Item = &Node> {
+        self.nodes.iter()
+    }
+
+    /// The copies of text node `node`.
+    pub fn of(&self, node: &Node) -> impl Iterator<Item = &Node> {
+        let copies = self.of_node.get(&node_key(node));
+        copies.into_iter().flatten().map(|&k| &self.nodes[k])
+    }
+
+    /// What text node `node` reads as on document page `page`: its copy
+    /// there, or itself.
+    fn on<'n>(&'n self, node: &'n Node, page: u32) -> &'n Node {
+        match self.on_page.get(&(node_key(node), page)) {
+            Some(&k) => &self.nodes[k],
+            None => node,
+        }
+    }
+}
+
 impl TextCache<'_, HarfRustShaper<'_, '_>> {
     /// The texts of the images text node `node` draws, once it is shaped:
     /// each image is in a span with its text, the `alt` of an inline object
@@ -1043,15 +1125,22 @@ fn wrapped(l: &LineLayout, boxes: &LineBoxes) -> Wrapped {
 pub(crate) struct PageText<'c, 's, S: TextShaper> {
     cache: &'c TextCache<'s, S>,
     numbers: PageNumbers<'c>,
+    /// The paragraphs that show bookmark titles, as they read on each page.
+    titled: &'c TitledText,
     /// Paragraphs with placeholders, by node.
     entries: HashMap<usize, Entry>,
 }
 
 impl<'c, 's, S: TextShaper> PageText<'c, 's, S> {
-    pub fn new(cache: &'c TextCache<'s, S>, numbers: PageNumbers<'c>) -> Self {
+    pub fn new(
+        cache: &'c TextCache<'s, S>,
+        numbers: PageNumbers<'c>,
+        titled: &'c TitledText,
+    ) -> Self {
         Self {
             cache,
             numbers,
+            titled,
             entries: HashMap::new(),
         }
     }
@@ -1065,6 +1154,8 @@ impl<'c, 's, S: TextShaper> PageText<'c, 's, S> {
         node: &Node,
         boxes: impl FnOnce(&Entry) -> LineBoxes,
     ) -> Option<(Arc<LineLayout>, LineBoxes)> {
+        let titled = self.titled;
+        let node = titled.on(node, self.numbers.current - 1);
         let NodeKind::Text { runs } = &node.kind else {
             return None;
         };
@@ -1086,18 +1177,24 @@ impl<'c, 's, S: TextShaper> PageText<'c, 's, S> {
         Some((own.layout(fonts, runs, &boxes), boxes))
     }
 
-    /// For a paragraph with placeholders measured on this page: its lines
-    /// in `boxes`, and the text and style they were broken from.
+    /// For a paragraph with placeholders measured on this page, or one
+    /// that shows bookmark titles: its lines in `boxes`, and the text and
+    /// style they were broken from.
     pub fn paragraph(
         &self,
         node: &Node,
         boxes: &LineBoxes,
     ) -> Option<(Arc<LineLayout>, &Prepared, &ParaStyle)> {
-        let NodeKind::Text { runs } = &node.kind else {
+        let titled = self.titled;
+        let shown = titled.on(node, self.numbers.current - 1);
+        let NodeKind::Text { runs } = &shown.kind else {
             return None;
         };
-        let e = self.entries.get(&node_key(node))?;
-        Some(e.paragraph(self.cache.shaper.fonts(), runs, boxes))
+        match self.entries.get(&node_key(shown)) {
+            Some(e) => Some(e.paragraph(self.cache.shaper.fonts(), runs, boxes)),
+            None if std::ptr::eq(shown, node) => None,
+            None => self.cache.paragraph(shown, boxes),
+        }
     }
 }
 

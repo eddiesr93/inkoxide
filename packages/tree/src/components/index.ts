@@ -38,6 +38,7 @@ export const HOST = {
   PageNumber: 'ink-page-number',
   TotalPages: 'ink-total-pages',
   PageRef: 'ink-page-ref',
+  BookmarkTitle: 'ink-bookmark-title',
   PageBreak: 'ink-page-break',
   Spacer: 'ink-spacer',
   Field: 'ink-field',
@@ -645,6 +646,12 @@ export interface PageRefProps {
   to: string;
 }
 
+/** A `BookmarkTitle` shows the title of the current bookmark of a level. */
+export interface BookmarkTitleProps {
+  /** The level of the bookmarks it shows, from 1 (the default) to 32. */
+  level?: number;
+}
+
 /**
  * A request for a remote image: `<Image src={{ uri, method, headers, body }} />`. The `uri` must
  * be allowed by the remote image policy, like a URL string.
@@ -1233,6 +1240,7 @@ export interface PropsByComponent {
   PageNumber: Record<string, never>;
   TotalPages: Record<string, never>;
   PageRef: PageRefProps;
+  BookmarkTitle: BookmarkTitleProps;
   PageBreak: PageBreakProps;
   Spacer: SpacerProps;
   Field: FieldProps;

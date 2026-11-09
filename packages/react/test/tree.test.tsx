@@ -8,6 +8,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import { transformText } from '../../tree/src/tree/text.ts';
 import {
+  BookmarkTitle,
   Cell,
   Document,
   Footer,
@@ -475,6 +476,35 @@ describe('placeholders', () => {
         </View>,
       ),
     ).toThrow(/<PageRef> must be inside a <Text>/);
+  });
+
+  it('emits a bookmarkTitle run for a BookmarkTitle', () => {
+    const r = render(
+      <Text>
+        <BookmarkTitle /> / <BookmarkTitle level={2} />
+      </Text>,
+    );
+    const runs = first<TextNode>(r).runs;
+    expect(runs.map((x) => x.bookmarkTitle ?? x.text)).toEqual([1, ' / ', 2]);
+    expect(runs[0]).not.toHaveProperty('text');
+  });
+
+  it('rejects a BookmarkTitle with a bad level, other props or outside Text', () => {
+    const inText = (props: Record<string, unknown>) => () =>
+      render(<Text>{createElement(BookmarkTitle as never, props)}</Text>);
+    expect(inText({ level: 0 })).toThrow(/<BookmarkTitle> takes a `level` from 1 to 32/);
+    expect(inText({ level: 1.5 })).toThrow(/<BookmarkTitle> takes a `level` from 1 to 32/);
+    expect(inText({ level: '2' })).toThrow(/<BookmarkTitle> takes a `level` from 1 to 32/);
+    expect(inText({ className: 'font-bold' })).toThrow(
+      /<BookmarkTitle> takes only `level`, so `className` has no effect/,
+    );
+    expect(() =>
+      render(
+        <View>
+          <BookmarkTitle />
+        </View>,
+      ),
+    ).toThrow(/<BookmarkTitle> must be inside a <Text>/);
   });
 
   it('rejects placeholders outside Text with the component stack', () => {

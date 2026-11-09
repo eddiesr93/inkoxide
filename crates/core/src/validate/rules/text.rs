@@ -2,9 +2,9 @@
 //! OpenType features.
 
 use super::{
-    Checker, MAX_DECORATION_THICKNESS, MAX_EMOJI_SEQUENCE, MAX_FEATURE_SETS, MAX_FEATURE_VALUE,
-    MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_PAGE_EDGE, MAX_STRETCH,
-    MAX_VARIATIONS, MAX_VARIATION_VALUE, MAX_WEIGHT, MIN_STRETCH,
+    Checker, MAX_BOOKMARK_LEVEL, MAX_DECORATION_THICKNESS, MAX_EMOJI_SEQUENCE, MAX_FEATURE_SETS,
+    MAX_FEATURE_VALUE, MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_PAGE_EDGE,
+    MAX_STRETCH, MAX_VARIATIONS, MAX_VARIATION_VALUE, MAX_WEIGHT, MIN_STRETCH,
 };
 use crate::error::ValidationCode as Code;
 use crate::schema::{FontFeature, RunAlign, RunImage, TextRun};
@@ -135,14 +135,37 @@ impl Checker<'_> {
         if let Some(link) = &r.link {
             self.link(link);
         }
-        let one_of =
-            "a run takes one of `text`, `placeholder`, `pageOf`, `image`, `note` and `attachment`";
+        let one_of = "a run takes one of `text`, `placeholder`, `pageOf`, `bookmarkTitle`, `image`, `note` and `attachment`";
+        let other = r.text.is_some() || r.placeholder.is_some() || r.image.is_some() || r.is_icon();
         if let Some(id) = &r.page_of {
-            if r.text.is_some() || r.placeholder.is_some() || r.image.is_some() || r.is_icon() {
+            if other {
                 self.err(Code::InvalidValue, Some("pageOf"), one_of);
             }
             self.page_of(id);
         }
+        if let Some(level) = r.bookmark_title {
+            if other || r.page_of.is_some() {
+                self.err(Code::InvalidValue, Some("bookmarkTitle"), one_of);
+            }
+            if !(1..=MAX_BOOKMARK_LEVEL).contains(&level) {
+                self.err(
+                    Code::OutOfRange,
+                    Some("bookmarkTitle"),
+                    format!("must be within 1..={MAX_BOOKMARK_LEVEL}"),
+                );
+            }
+            // The title changes from page to page: only text laid out on
+            // every page shows it.
+            if !self.in_fixed && !self.in_overlay {
+                self.err(
+                    Code::InvalidValue,
+                    Some("bookmarkTitle"),
+                    "`bookmarkTitle` works in a header, a footer or a fixed, absolutely positioned page child, which are laid out on every page",
+                );
+            }
+        }
+        // What it shows in place of text, other than a placeholder or an image.
+        let shown = r.is_icon() || r.page_of.is_some() || r.bookmark_title.is_some();
         match (&r.text, &r.placeholder, &r.image) {
             (Some(_), Some(_), _) => self.err(
                 Code::InvalidValue,
@@ -154,10 +177,10 @@ impl Checker<'_> {
                 Some("image"),
                 "a run takes one of `text`, `placeholder` and `image`",
             ),
-            (None, None, None) if !r.is_icon() && r.page_of.is_none() => self.err(
+            (None, None, None) if !shown => self.err(
                 Code::MissingField,
                 Some("text"),
-                "a run requires `text` (or a `placeholder`, a `pageOf`, an `image`, a `note` or an `attachment`)",
+                "a run requires `text` (or a `placeholder`, a `pageOf`, a `bookmarkTitle`, an `image`, a `note` or an `attachment`)",
             ),
             (Some(_), _, _) | (_, Some(_), _) | (_, _, Some(_)) if r.is_icon() => self.err(
                 Code::InvalidValue,

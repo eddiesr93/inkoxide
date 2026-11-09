@@ -5,12 +5,14 @@ mod marks;
 mod numbering;
 mod page;
 mod pdfa;
+mod titles;
 
 use estimate::repeated_size;
 pub(crate) use marks::{Dest, Marks, OutlineEntry};
 use numbering::{number_flows, relayout};
 use page::paint_page;
 use pdfa::{transparent_color_glyph, transparent_svg_color_glyph};
+use titles::titled_text;
 
 use rayon::prelude::*;
 
@@ -20,7 +22,7 @@ use crate::layout::{compute, AvailableSpace, LeafMeasure, LineBoxes, Size, Tree,
 use crate::paginate::{paginate, Placement};
 use crate::paint::PageContent;
 use crate::pdf::Profile;
-use crate::schema::{Document, Node, NodeKind, PageSpec, Position, TextRun};
+use crate::schema::{Document, Node, NodeKind, PageSpec, Position};
 use crate::text::{ColorGlyphs, HarfRustShaper, PageNumbers, TextCache};
 use crate::InkoxideError;
 
@@ -79,9 +81,10 @@ struct Laid<'a> {
 }
 
 /// A header, a footer or an overlay, laid out once with stand-in digits for
-/// page numbers. One that shows page numbers is laid out again on every
-/// page, with that page's numbers, so its lines break and its boxes size to
-/// the digits painted; the first layout then only warms the text cache.
+/// page numbers and without bookmark titles. One that shows page numbers
+/// or bookmark titles is laid out again on every page, with that page's
+/// numbers and titles, so its lines break and its boxes size to what is
+/// painted; the first layout then only warms the text cache.
 struct PageBand<'a> {
     node: &'a Node,
     tree: Tree<'a>,
@@ -102,7 +105,9 @@ impl<'a> PageBand<'a> {
         let mut texts = Vec::new();
         collect_texts(node, &mut texts);
         let numbered = texts.iter().any(|n| match &n.kind {
-            NodeKind::Text { runs } => runs.iter().any(TextRun::shows_number),
+            NodeKind::Text { runs } => runs
+                .iter()
+                .any(|r| r.shows_number() || r.bookmark_title.is_some()),
             _ => false,
         });
         Ok(Self {
@@ -166,26 +171,6 @@ pub(crate) fn run<'d, T: Send>(
     if let Some(e) = text.shaping_error() {
         return Err(e);
     }
-    let color = |k| fonts.get(k).has_color();
-    let mut used = text.glyph_colors(&texts, color);
-    drop(texts);
-    // SVG text draws colour glyphs in black.
-    for (k, glyphs) in images.svg_text_glyphs(color) {
-        for g in glyphs {
-            used.entry((k, g))
-                .or_default()
-                .insert(crate::fonts::BLACK_TEXT);
-        }
-    }
-    let colors = ColorGlyphs::load(fonts, &used, images, parallel);
-    if !profile.transparency() {
-        let conflict = transparent_color_glyph(doc, fonts, text, images, &colors, profile)
-            .or_else(|| transparent_svg_color_glyph(doc, fonts, images, &colors, profile));
-        if let Some(conflict) = conflict {
-            return Err(conflict.into());
-        }
-    }
-    let images: &ImageSet = images;
 
     let mut laid = Vec::with_capacity(doc.pages.len());
     for spec in &doc.pages {
@@ -228,6 +213,35 @@ pub(crate) fn run<'d, T: Send>(
     repeated_size(&laid, text, plan.is_some())?;
     let marks = Marks::of(&laid);
     let refs = marks.page_refs();
+    // The bookmark titles headers, footers and overlays show are known
+    // now: their paragraphs are shaped as they read on each page.
+    let titled = titled_text(&laid, &marks);
+    texts.extend(titled.nodes());
+    text.prepare_all(&texts, parallel);
+    if let Some(e) = text.shaping_error() {
+        return Err(e);
+    }
+    let color = |k| fonts.get(k).has_color();
+    let mut used = text.glyph_colors(&texts, color);
+    drop(texts);
+    // SVG text draws colour glyphs in black.
+    for (k, glyphs) in images.svg_text_glyphs(color) {
+        for g in glyphs {
+            used.entry((k, g))
+                .or_default()
+                .insert(crate::fonts::BLACK_TEXT);
+        }
+    }
+    let colors = ColorGlyphs::load(fonts, &used, images, parallel);
+    if !profile.transparency() {
+        let conflict =
+            transparent_color_glyph(doc, fonts, (text, &titled), images, &colors, profile)
+                .or_else(|| transparent_svg_color_glyph(doc, fonts, images, &colors, profile));
+        if let Some(conflict) = conflict {
+            return Err(conflict.into());
+        }
+    }
+    let images: &ImageSet = images;
     let jobs: Vec<(&Laid<'_>, u32)> = laid
         .iter()
         .flat_map(|l| (0..l.placement.pages).map(move |k| (l, k)))
@@ -244,7 +258,7 @@ pub(crate) fn run<'d, T: Send>(
             k,
             numbers,
             fonts,
-            text,
+            (text, &titled),
             (images, &colors),
             plan,
         )?)

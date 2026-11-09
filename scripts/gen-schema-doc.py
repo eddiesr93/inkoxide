@@ -64,6 +64,14 @@ INTRO = """# Document schema v1
   the width of `999` in flow text painted on several pages. The `id` is
   one a `#id` link could name; any other is `UNKNOWN_ANCHOR`. A node
   painted on several pages counts on the first of them.
+- **Bookmark titles.** A run with `bookmarkTitle: level`, in a header, a
+  footer or an overlay (a fixed, absolutely positioned page child), shows
+  the title of the last bookmark of that level that starts on the page
+  it is painted on or on an earlier one: a running header. It is empty
+  before the first such bookmark, and after a bookmark of a lower level
+  until the next of its own. The header, footer or overlay is laid out
+  on each page with the titles as the runs' text, shaped like any text.
+  Anywhere else the run is `INVALID_VALUE`.
 - **Images.** Intrinsic size is the pixel size at 96 dpi (1 px = 0.75 pt),
   like CSS. An image with no `width` and no `height` that is wider than
   the room it has is scaled down to fit it, keeping its aspect ratio

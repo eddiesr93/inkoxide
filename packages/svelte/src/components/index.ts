@@ -14,6 +14,7 @@ export { default as Cell } from './Cell.svelte';
 export { default as PageNumber } from './PageNumber.svelte';
 export { default as TotalPages } from './TotalPages.svelte';
 export { default as PageRef } from './PageRef.svelte';
+export { default as BookmarkTitle } from './BookmarkTitle.svelte';
 export { default as PageBreak } from './PageBreak.svelte';
 export { default as Spacer } from './Spacer.svelte';
 export { default as Field } from './Field.svelte';

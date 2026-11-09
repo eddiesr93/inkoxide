@@ -48,6 +48,7 @@ const COMPAT_TYPES = [
 const MAIN_VALUES = [
   ...COMPAT_VALUES,
   'Attachment',
+  'BookmarkTitle',
   'Canvas',
   'Cell',
   'Checkbox',
@@ -116,6 +117,7 @@ const MAIN_TYPES = [
   'AbsoluteLength',
   'AttachmentFile',
   'AttachmentProps',
+  'BookmarkTitleProps',
   'BookmarkProp',
   'BreakProp',
   'CanvasGradient',

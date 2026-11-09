@@ -47,6 +47,14 @@
   the width of `999` in flow text painted on several pages. The `id` is
   one a `#id` link could name; any other is `UNKNOWN_ANCHOR`. A node
   painted on several pages counts on the first of them.
+- **Bookmark titles.** A run with `bookmarkTitle: level`, in a header, a
+  footer or an overlay (a fixed, absolutely positioned page child), shows
+  the title of the last bookmark of that level that starts on the page
+  it is painted on or on an earlier one: a running header. It is empty
+  before the first such bookmark, and after a bookmark of a lower level
+  until the next of its own. The header, footer or overlay is laid out
+  on each page with the titles as the runs' text, shaped like any text.
+  Anywhere else the run is `INVALID_VALUE`.
 - **Images.** Intrinsic size is the pixel size at 96 dpi (1 px = 0.75 pt),
   like CSS. An image with no `width` and no `height` that is wider than
   the room it has is scaled down to fit it, keeping its aspect ratio
@@ -441,7 +449,7 @@ CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `text` | `string` |  | Required unless `placeholder`, `pageOf`, `image`, `note` or `attachment` is set; forbidden when one is. |
+| `text` | `string` |  | Required unless `placeholder`, `pageOf`, `bookmarkTitle`, `image`, `note` or `attachment` is set; forbidden when one is. |
 | `font` | [`Id`](#id) | yes |  |
 | `size` | `number` | yes | > 0, ≤ 1000 |
 | `color` | [`Color`](#color) |  |  |
@@ -452,6 +460,7 @@ CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not
 | `decorationStyle` | `"solid"` \| `"double"` \| `"dotted"` \| `"dashed"` \| `"wavy"` |  | default `"solid"` |
 | `placeholder` | `"pageNumber"` \| `"totalPages"` |  | The physical number of the page the run is painted on (`pageNumber`), or the document's page count (`totalPages`), in place of text. |
 | `pageOf` | [`Id`](#id) |  | The id of a node of the page body (as a `#id` link's target): the run shows the number of the page that node starts on, in place of text, as a table of contents does. Laid out like a `placeholder`: as three digits first, then again with the number, a few times at most. |
+| `bookmarkTitle` | `integer` |  | ≥ 1, ≤ 32; A bookmark level: the run shows the title of the last bookmark of that level that starts on the page it is painted on or on an earlier one, in place of text, as a running header shows the current chapter. It shows nothing before the first such bookmark, and after a bookmark of a lower level (a new chapter has no section until its first). Only in a header, a footer or a fixed, absolutely positioned page child. |
 | `link` | [`Link`](#link) |  | Makes the run a link; the clickable area covers the run's glyphs on each line. |
 | `hyphenate` | `boolean` |  | Overrides the text node's `hyphenate` for this run's words, in the node's language. |
 | `verticalAlign` | `"baseline"` \| `"super"` \| `"sub"` \| `"middle"` \| `"textTop"` \| `"textBottom"` \| `"top"` \| `"bottom"` or `number` (≥ -14400, ≤ 14400) |  | default `"baseline"`; Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs. An `image` run also takes `middle` (its middle at the baseline plus half the x-height of the run's font), `textTop` and `textBottom` (its top at the font's ascender, its bottom at its descender), `top` and `bottom` (its top or bottom at the line's), and a number: points its bottom sits above the baseline (negative: below). |

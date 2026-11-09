@@ -896,6 +896,10 @@ pub struct TextRun {
     pub placeholder: Option<Placeholder>,
     /// The id of the node whose page number it shows, in place of text.
     pub page_of: Option<String>,
+    /// The level of the bookmarks whose title it shows, in place of text:
+    /// the last one of that level that starts on the page or before it.
+    #[serde(default, deserialize_with = "de::opt_int")]
+    pub bookmark_title: Option<u8>,
     /// Link target of this run (as `Node::link`).
     pub link: Option<String>,
     /// Overrides the paragraph's `hyphenate` for this run's words.

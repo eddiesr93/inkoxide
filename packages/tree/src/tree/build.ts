@@ -189,6 +189,9 @@ class Builder {
   private inCell = 0;
   /** The names of the `<FieldSet>`s being built, each followed by `.`: `address.`. */
   private fieldPrefix = '';
+  /** The bookmarks' titles, each with its element, and whether a `<BookmarkTitle>` shows them. */
+  private bookmarks: Array<[string, Instance]> = [];
+  private showsTitles = false;
   /** The style of each element's `className`, to tell which keys came from it. */
   private readonly classStyles = new WeakMap<Instance, FlatStyle>();
 
@@ -492,6 +495,8 @@ class Builder {
       .filter((c): c is Instance => c.kind === 'element')
       .map((pg) => this.page(pg, ctx));
     if (pages.length === 0) this.fail(root, '<Document> needs at least one <Page>.');
+    // A <BookmarkTitle> draws the bookmarks' titles: their emoji take images too.
+    if (this.showsTitles) for (const [title, owner] of this.bookmarks) this.emojiOf(title, owner);
 
     const fallback = (p.fallbackFonts as string[] | undefined) ?? ['NotoSans-Regular'];
     const fallbackFonts = fallback.filter((id) => this.opts.fonts.has(id));
@@ -726,7 +731,10 @@ class Builder {
     const href = inst.type === HOST.Link ? this.target(inst) : p.href;
     if (typeof href === 'string') node.link = href;
     const bm = toBookmark(p.bookmark as BookmarkProp | undefined);
-    if (bm) node.bookmark = bm;
+    if (bm) {
+      node.bookmark = bm;
+      this.bookmarks.push([bm.title, inst]);
+    }
   }
 
   /**
@@ -798,6 +806,27 @@ class Builder {
       );
     }
     return to.slice(1);
+  }
+
+  /** The level of the bookmarks whose title a `<BookmarkTitle>` shows: its `level`, or 1. */
+  private bookmarkLevel(inst: Instance): number {
+    const key = Object.keys(inst.props).find(
+      (k) => k !== 'level' && k !== 'children' && inst.props[k] !== undefined,
+    );
+    if (key !== undefined) {
+      this.fail(
+        inst,
+        `<BookmarkTitle> takes only \`level\`, so \`${key}\` has no effect. Style the <Text> around it.`,
+        { kind: 'props' },
+      );
+    }
+    const level = inst.props.level ?? 1;
+    if (typeof level !== 'number' || !Number.isInteger(level) || level < 1 || level > 32) {
+      this.fail(inst, '<BookmarkTitle> takes a `level` from 1 to 32: the level of the bookmarks it shows.', {
+        kind: 'props',
+      });
+    }
+    return level;
   }
 
   /** A block element's node, remembering the outermost fixed element while its content is built. */
@@ -972,7 +1001,7 @@ class Builder {
         const patterns = usesPatterns(ctx) && ctx.lang === para.lang;
         const hyphenate = patterns === para.patterns ? undefined : patterns;
         const shown = cb ? this.hyphenator.apply(text, cb, (msg, init) => this.fail(owner, msg, init)) : text;
-        this.push(out, shown, ctx, owner, undefined, hyphenate);
+        this.push(out, shown, ctx, owner, hyphenate);
         continue;
       }
       switch (n.type) {
@@ -1042,10 +1071,16 @@ class Builder {
         case HOST.PageNumber:
         case HOST.TotalPages:
           this.noProps(n);
-          this.push(out, undefined, ctx, n, n.type === HOST.PageNumber ? 'pageNumber' : 'totalPages');
+          this.push(out, undefined, ctx, n, undefined, {
+            placeholder: n.type === HOST.PageNumber ? 'pageNumber' : 'totalPages',
+          });
           break;
         case HOST.PageRef:
-          this.push(out, undefined, ctx, n, undefined, undefined, this.pageOf(n));
+          this.push(out, undefined, ctx, n, undefined, { pageOf: this.pageOf(n) });
+          break;
+        case HOST.BookmarkTitle:
+          this.showsTitles = true;
+          this.push(out, undefined, ctx, n, undefined, { bookmarkTitle: this.bookmarkLevel(n) });
           break;
         default:
           throw new Error(`Internal error: the reconciler let <${n.type}> into a <Text>.`);
@@ -1184,9 +1219,9 @@ class Builder {
     text: string | undefined,
     ctx: TextCtx,
     owner: Instance,
-    placeholder: TextRun['placeholder'],
     hyphenate?: boolean,
-    pageOf?: string,
+    /** What the run shows in place of text. */
+    shows?: Pick<TextRun, 'placeholder' | 'pageOf' | 'bookmarkTitle'>,
   ): void {
     if (text !== undefined) this.emojiOf(text, owner);
     const font = this.font(ctx, owner);
@@ -1203,8 +1238,7 @@ class Builder {
     if (
       text !== undefined &&
       last &&
-      last.placeholder === undefined &&
-      last.pageOf === undefined &&
+      last.text !== undefined &&
       last.font === font &&
       last.size === size &&
       sameColor(last.color, ctx.color) &&
@@ -1221,12 +1255,7 @@ class Builder {
       last.text += text;
       return;
     }
-    const run: TextRun =
-      pageOf !== undefined
-        ? { pageOf, font, size }
-        : placeholder
-          ? { placeholder, font, size }
-          : { text: text ?? '', font, size };
+    const run: TextRun = shows ? { ...shows, font, size } : { text: text ?? '', font, size };
     run.color = ctx.color;
     if (letterSpacing !== 0) run.letterSpacing = letterSpacing;
     if (decoration) run.decoration = decoration;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Painter } from '@inkoxide/svelte';
-  import { Canvas, Checkbox, Circle, Document, Footer, Image, Link, Note, Page, PageRef, Svg, Text, TextField, Tspan, View } from '@inkoxide/svelte';
+  import { BookmarkTitle, Canvas, Checkbox, Circle, Document, Footer, Header, Image, Link, Note, Page, PageRef, Svg, Text, TextField, Tspan, View } from '@inkoxide/svelte';
 
   let { title, items }: { title: string; items: string[] } = $props();
 
@@ -11,12 +11,15 @@
 
 <Document {title}>
   <Page size="A5" style={{ padding: 30 }}>
+    <Header>
+      <Text class="text-gray-500"><BookmarkTitle /></Text>
+    </Header>
     <Footer>
       <Text>
         {#snippet render(page)}Page {page.pageNumber} of {page.totalPages}{/snippet}
       </Text>
     </Footer>
-    <Text style={{ fontSize: 12, '@media (min-width: 400pt)': { fontSize: 18 } }}>{title}</Text>
+    <Text bookmark={title} style={{ fontSize: 12, '@media (min-width: 400pt)': { fontSize: 18 } }}>{title}</Text>
     <View class="flex-row gap-2">
       {#each items as item, i (item)}
         <Text class={i === 0 ? 'font-bold' : 'text-gray-500'}>{item}</Text>

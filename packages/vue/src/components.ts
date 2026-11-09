@@ -76,6 +76,12 @@ export const TotalPages = host('TotalPages');
  * `id="totals"`, as a table of contents shows it. Only inside `Text`.
  */
 export const PageRef = host('PageRef');
+/**
+ * The title of the current bookmark: the last one of `level` (default 1) that starts on the page
+ * or before it, as a running header shows the chapter. Only inside a `Text` in a `Header`, a
+ * `Footer` or a `fixed`, absolutely positioned element of the page.
+ */
+export const BookmarkTitle = host('BookmarkTitle');
 /** Starts a new page when content follows it. */
 export const PageBreak = host('PageBreak');
 export const Spacer = host('Spacer');

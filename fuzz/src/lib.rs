@@ -1092,6 +1092,8 @@ pub struct Src<'a> {
     chaos: bool,
     /// Generating flowing content (not a header, footer or table cell).
     flow: bool,
+    /// Generating a header or a footer.
+    band: bool,
 }
 
 impl<'a> Src<'a> {
@@ -1101,6 +1103,7 @@ impl<'a> Src<'a> {
             pos: 0,
             chaos: false,
             flow: true,
+            band: false,
         };
         s.chaos = s.byte() >= 224;
         s
@@ -1661,7 +1664,8 @@ fn font_size(s: &mut Src) -> Value {
 
 fn run(s: &mut Src) -> Value {
     let mut m = Map::new();
-    // One byte picks a placeholder, a note, a page reference or text.
+    // One byte picks a placeholder, a note, a page reference, a bookmark
+    // title or text.
     let kind = s.byte();
     if kind < 20 {
         m.insert(
@@ -1676,6 +1680,9 @@ fn run(s: &mut Src) -> Value {
             format!("n{}", s.below(4))
         };
         m.insert("pageOf".into(), json!(id));
+    } else if (38..50).contains(&kind) && (s.band || s.chaos) {
+        // The title of the current bookmark: in a header or a footer.
+        m.insert("bookmarkTitle".into(), json!(1 + s.below(3)));
     } else {
         m.insert("text".into(), json!(text(s)));
     }
@@ -1723,6 +1730,7 @@ fn run(s: &mut Src) -> Value {
         m.remove("text");
         m.remove("placeholder");
         m.remove("pageOf");
+        m.remove("bookmarkTitle");
         if s.chaos && s.chance(20) {
             m.insert("text".into(), json!("x"));
         }
@@ -2737,6 +2745,7 @@ pub fn document(data: &[u8]) -> Vec<u8> {
             p.insert("debug".into(), json!(true));
         }
         s.flow = false;
+        s.band = true;
         if s.chance(60) {
             p.insert("header".into(), node(s, 3, &mut budget));
         }
@@ -2744,6 +2753,7 @@ pub fn document(data: &[u8]) -> Vec<u8> {
             p.insert("footer".into(), node(s, 3, &mut budget));
         }
         s.flow = true;
+        s.band = false;
         let kids: Vec<Value> = (0..s.below(8)).map(|_| node(s, 0, &mut budget)).collect();
         p.insert("children".into(), Value::Array(kids));
         pages.push(Value::Object(p));
@@ -3083,6 +3093,7 @@ mod tests {
             r#""image":{"src":"#,
             r#""contents":"In the line""#,
             r#""pageOf":"n"#,
+            r#""bookmarkTitle":"#,
             r#""emojiImages":{"❤"#,
             r#""😀":"logo""#,
             r#""verticalAlign":"textTop""#,

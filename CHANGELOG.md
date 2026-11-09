@@ -18,6 +18,11 @@ schema has its own version and [changelog](packages/schema/CHANGELOG.md).
   [Table of contents](packages/react/GUIDE.md#table-of-contents)). An `id` that no element of the
   page body has is `UNKNOWN_ANCHOR`, as for a `#id` link. Documents without a page reference
   render to the same bytes.
+- **Running titles:** `<BookmarkTitle level />` (`<ink-bookmark-title>` in Angular) in a `Text`
+  of a `Header`, a `Footer` or a `fixed`, absolutely positioned element shows the title of the
+  current bookmark of that level (default 1): the last one that starts on the page or before it,
+  so a header names the chapter each page is in. In the document format, a run's
+  `bookmarkTitle`. Documents without one render to the same bytes.
 - **Roles `toc` and `tocItem`:** a table of contents and its entries in tagged output (`TOC` and
   `TOCI`; under PDF/UA-2, in the PDF 1.7 namespace and role-mapped to `Div`, as PDF 2.0 has
   neither). With `pdfUA`, a `tocItem` outside a `toc` is `UA_CONFLICT`.

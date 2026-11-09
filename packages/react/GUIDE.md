@@ -33,7 +33,7 @@ how each writes them (`class` for `className`, a slot or a template for a `rende
 Components take `className`, `style` and `id`, and those with a box also take `debug`
 ([Debugging layout](#debugging-layout)), with these exceptions: `Document` takes only `debug`;
 `Page` has no `id`; `PageBreak` takes only `id`; `PageNumber` and `TotalPages`
-take no props, and `PageRef` only `to`; the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
+take no props, `PageRef` only `to` and `BookmarkTitle` only `level`; the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
 `transform`, `id`), and their `className` and `style` set SVG presentation
 ([Drawing](#drawing-svg-and-canvas)); and a `Text` or `Link` inside a `Text`,
 a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or `'sub'`),
@@ -51,6 +51,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | `Header`, `Footer` | Repeated on every page, in the top or bottom margin. |
 | `PageNumber`, `TotalPages` | The current page and the page count, inside a `Text`. |
 | `PageRef` | The number of the page another element is on (`to="#id"`), inside a `Text` ([table of contents](#table-of-contents)). |
+| `BookmarkTitle` | The title of the current bookmark (of `level`, default 1), inside a `Text` in a `Header` or `Footer` ([running titles](#pages-headers-and-footers)). |
 | `Table`, `Row`, `Cell` | A table that splits across pages. |
 | `PageBreak`, `Spacer` | A forced page break; empty space. |
 | `Svg`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `G`, `Defs`, `ClipPath`, `Marker`, `LinearGradient`, `RadialGradient`, `Stop`, `Tspan`, `TextPath` | Vector drawing in JSX; a `Text` in an `Svg` is SVG text. |
@@ -60,7 +61,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | `Note` | A text note: an icon that opens its text in the viewer. |
 | `Attachment` | An icon that opens one of the document's [attachments](#attachments) (`file`). |
 
-**The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `PageRef`, `Link`,
+**The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `PageRef`, `BookmarkTitle`, `Link`,
 `Image` (an image in the line), `Note`, `Attachment` and other `Text`, and nothing else. A `View` inside a `Text` is an error that names the component.
 
 ## Styling
@@ -504,6 +505,26 @@ await renderToBuffer(<Doc />, { remoteImages: { allow: ['https://cdn.example.com
   when it does not fit; a `PageBreak` inside it still breaks, and the part before it moves whole.
   A `flex-row`, grid or wrapping `View` moves whole too. Taller than a page, both split: a row
   between the lines of its children, each column continuing on the next page.
+- **Running titles.** `<BookmarkTitle />` in a `Text` of a header or footer shows the title of
+  the current bookmark: the last one that starts on the page or on an earlier one, so the header
+  names the chapter the page is in.
+
+  ```tsx
+  <Header className="flex-row justify-between text-gray-500">
+    <Text><BookmarkTitle /></Text>
+    <Text><BookmarkTitle level={2} /></Text>
+  </Header>
+
+  <Text bookmark="Results" className="text-xl font-bold">Results</Text>
+  <Text bookmark={{ title: 'Revenue', level: 2 }}>Revenue</Text>
+  ```
+
+  `level` picks the bookmarks it follows (default 1, the top level). It shows nothing before the
+  first bookmark of its level, and nothing after a bookmark of a higher level until the next of
+  its own: a new chapter has no section yet. On a page where several start, it shows the last.
+  The title is laid out on every page as text of the `Text` around it, in its style, with the
+  fallback fonts its characters need. It also works in a `fixed` element of the page with
+  `position: 'absolute'`; anywhere else in the page body it is an error.
 - **Content that depends on the page.** Use `render={({ pageNumber, totalPages }) => …}` on a
   `Text` or `View` in a header, a footer or a fixed element. A component rendered by a `render`
   prop can read the same numbers with the `usePage()` hook, which throws anywhere else:
