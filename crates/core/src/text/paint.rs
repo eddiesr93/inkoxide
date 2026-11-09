@@ -1,6 +1,8 @@
 //! Text nodes → `Op::Text` (plus decorations), with alignment,
 //! justification and page-number placeholders.
 
+use std::collections::BTreeMap;
+
 use super::objects::InlineObject;
 use super::optimal::SHRINK;
 use super::prepare::number_glyphs;
@@ -21,20 +23,34 @@ use crate::schema::{
 };
 use crate::tag::{LinkText, Plan, RunTag, StructId};
 
-/// Page numbers substituted for placeholders on the page being painted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PageNumbers {
+/// The page number of each node that has a destination, by its id: what
+/// the runs with a `pageOf` show.
+pub(crate) type PageRefs<'d> = BTreeMap<&'d str, u32>;
+
+/// No page numbers of nodes: for text that is known to show none.
+#[cfg(test)]
+pub(crate) static NO_REFS: PageRefs<'static> = BTreeMap::new();
+
+/// Page numbers substituted for placeholders on the page being painted,
+/// and those of the nodes that runs show the page of.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PageNumbers<'m> {
     pub current: u32,
     pub total: u32,
+    pub refs: &'m PageRefs<'m>,
 }
 
-impl PageNumbers {
-    /// The number placeholder `ph` shows.
-    pub fn of(self, ph: Placeholder) -> u32 {
-        match ph {
+impl PageNumbers<'_> {
+    /// The number `run` shows in place of text, if it shows one. A node
+    /// without a destination has page 0: validation leaves none.
+    pub fn of(self, run: &TextRun) -> Option<u32> {
+        if let Some(id) = &run.page_of {
+            return Some(self.refs.get(id.as_str()).copied().unwrap_or(0));
+        }
+        run.placeholder.map(|ph| match ph {
             Placeholder::PageNumber => self.current,
             Placeholder::TotalPages => self.total,
-        }
+        })
     }
 }
 
@@ -47,7 +63,7 @@ pub(crate) struct TextPainter<'c, 's, 'f, 'a, S: TextShaper> {
     /// The images of inline objects and colour glyphs.
     pub images: &'f ImageSet,
     pub colors: &'f ColorGlyphs,
-    pub numbers: PageNumbers,
+    pub numbers: PageNumbers<'c>,
     /// The page's area, in page coordinates: decorations are drawn only
     /// where the page shows them.
     pub page_box: Rect,
@@ -61,7 +77,7 @@ pub(crate) struct TextPainter<'c, 's, 'f, 'a, S: TextShaper> {
 /// known, nothing is left out).
 #[derive(Clone, Copy)]
 struct Ink<'x> {
-    numbers: PageNumbers,
+    numbers: PageNumbers<'x>,
     images: &'x ImageSet,
     colors: &'x ColorGlyphs,
     view: Option<Rect>,
@@ -162,7 +178,7 @@ impl<S: TextShaper> ContentPainter for TextPainter<'_, '_, '_, '_, S> {
         self.paint_text(node, geo, ctx, ops, Some(lines));
     }
 
-    fn numbers(&self) -> PageNumbers {
+    fn numbers(&self) -> PageNumbers<'_> {
         self.numbers
     }
 }
@@ -352,8 +368,7 @@ fn paint_line(
             count: b - a,
             width: 0.0,
         };
-        if let Some(ph) = run.placeholder.filter(|_| p.placeholders) {
-            let n = ink.numbers.of(ph);
+        if let Some(n) = ink.numbers.of(run).filter(|_| p.placeholders) {
             for (id, advance) in number_glyphs(fonts.get(seg.font), run, n) {
                 piece.glyphs.push(TextGlyph {
                     id,

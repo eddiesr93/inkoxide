@@ -26,6 +26,7 @@ export {
   Page,
   PageBreak,
   PageNumber,
+  PageRef,
   Path,
   Polygon,
   Polyline,

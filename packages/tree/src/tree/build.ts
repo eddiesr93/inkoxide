@@ -775,6 +775,31 @@ class Builder {
     return href;
   }
 
+  /** The id a `<PageRef>` names: its `to`, the `#id` a link to the same element has. */
+  private pageOf(inst: Instance): string {
+    const key = Object.keys(inst.props).find(
+      (k) => k !== 'to' && k !== 'children' && inst.props[k] !== undefined,
+    );
+    if (key !== undefined) {
+      this.fail(
+        inst,
+        `<PageRef> takes only \`to\`, so \`${key}\` has no effect. Style the <Text> around it.`,
+        { kind: 'props' },
+      );
+    }
+    const to = inst.props.to;
+    if (typeof to !== 'string' || !to.startsWith('#') || to.length < 2) {
+      this.fail(
+        inst,
+        '<PageRef> needs a `to`: the id of an element, written like a link to it (to="#totals").',
+        {
+          kind: 'props',
+        },
+      );
+    }
+    return to.slice(1);
+  }
+
   /** A block element's node, remembering the outermost fixed element while its content is built. */
   private blockNode(inst: Instance, ctx: TextCtx): SchemaNode {
     if (this.fixedEl === undefined && isFixed(inst)) {
@@ -1019,6 +1044,9 @@ class Builder {
           this.noProps(n);
           this.push(out, undefined, ctx, n, n.type === HOST.PageNumber ? 'pageNumber' : 'totalPages');
           break;
+        case HOST.PageRef:
+          this.push(out, undefined, ctx, n, undefined, undefined, this.pageOf(n));
+          break;
         default:
           throw new Error(`Internal error: the reconciler let <${n.type}> into a <Text>.`);
       }
@@ -1158,6 +1186,7 @@ class Builder {
     owner: Instance,
     placeholder: TextRun['placeholder'],
     hyphenate?: boolean,
+    pageOf?: string,
   ): void {
     if (text !== undefined) this.emojiOf(text, owner);
     const font = this.font(ctx, owner);
@@ -1175,6 +1204,7 @@ class Builder {
       text !== undefined &&
       last &&
       last.placeholder === undefined &&
+      last.pageOf === undefined &&
       last.font === font &&
       last.size === size &&
       sameColor(last.color, ctx.color) &&
@@ -1191,7 +1221,12 @@ class Builder {
       last.text += text;
       return;
     }
-    const run: TextRun = placeholder ? { placeholder, font, size } : { text: text ?? '', font, size };
+    const run: TextRun =
+      pageOf !== undefined
+        ? { pageOf, font, size }
+        : placeholder
+          ? { placeholder, font, size }
+          : { text: text ?? '', font, size };
     run.color = ctx.color;
     if (letterSpacing !== 0) run.letterSpacing = letterSpacing;
     if (decoration) run.decoration = decoration;

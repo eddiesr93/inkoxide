@@ -62,7 +62,7 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
         }
     }
 
-    fn numbers(&self) -> PageNumbers {
+    fn numbers(&self) -> PageNumbers<'_> {
         self.text.numbers()
     }
 
@@ -87,7 +87,7 @@ impl<T: ContentPainter> ContentPainter for Content<'_, T> {
 pub(super) fn paint_page(
     l: &Laid<'_>,
     k: u32,
-    numbers: PageNumbers,
+    numbers: PageNumbers<'_>,
     fonts: &FontSet<'_>,
     text: &Cache<'_, '_, '_>,
     (images, colors): (&ImageSet, &ColorGlyphs),

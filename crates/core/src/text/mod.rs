@@ -31,7 +31,9 @@ use rayon::prelude::*;
 pub(crate) use color::{ColorGlyphs, Type3Font};
 pub(crate) use emoji::sequences as emoji_sequences;
 pub(crate) use objects::{emoji_key, run_key, InlineObjects, Source as ObjectSource};
-pub(crate) use paint::{PageNumbers, TextPainter, WAVES_PER_GLYPH};
+#[cfg(test)]
+pub(crate) use paint::NO_REFS;
+pub(crate) use paint::{PageNumbers, PageRefs, TextPainter, WAVES_PER_GLYPH};
 pub(crate) use svg::{lay_out as lay_out_svg_text, LaidText, SvgGlyph};
 
 use crate::fonts::{Ask, FontKey, FontSet};
@@ -594,7 +596,12 @@ impl Entry {
 
     /// The entry with `numbers` in place of its placeholders' stand-in
     /// digits.
-    fn with_numbers(&self, fonts: &FontSet<'_>, runs: &[TextRun], numbers: PageNumbers) -> Self {
+    fn with_numbers(
+        &self,
+        fonts: &FontSet<'_>,
+        runs: &[TextRun],
+        numbers: PageNumbers<'_>,
+    ) -> Self {
         let prepared = prepare::fill_numbers(&self.para(fonts, runs), numbers);
         Self::new(fonts, runs, self.style.clone(), prepared)
     }
@@ -709,8 +716,9 @@ pub(crate) struct TextCache<'s, S: TextShaper> {
     doc_lang: Option<&'s str>,
     entries: HashMap<usize, Entry>,
     /// Flow paragraphs laid out with page numbers ([`TextCache::set_numbers`]):
-    /// their entries with the stand-in digits, and the numbers in place of them.
-    numbered: HashMap<usize, (Entry, PageNumbers)>,
+    /// their entries with the stand-in digits, and the numbers in place of
+    /// them, one per run that shows one.
+    numbered: HashMap<usize, (Entry, Vec<u32>)>,
 }
 
 fn node_key(n: &Node) -> usize {
@@ -830,26 +838,30 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         e.prepared
             .segments
             .iter()
-            .find(|s| runs[s.run as usize].placeholder.is_some())
+            .find(|s| runs[s.run as usize].shows_number())
             .map(|s| s.glyphs.start)
     }
 
     /// Lays out flow paragraph `node` with `numbers` in place of its
     /// placeholders' stand-in digits, so its lines break, align and size at
     /// the width they take. Returns whether its numbers changed.
-    pub fn set_numbers(&mut self, node: &Node, numbers: PageNumbers) -> bool {
+    pub fn set_numbers(&mut self, node: &Node, numbers: PageNumbers<'_>) -> bool {
         let NodeKind::Text { runs } = &node.kind else {
             return false;
         };
         let key = node_key(node);
-        if self.numbered.get(&key).is_some_and(|(_, n)| *n == numbers) {
+        let shown: Vec<u32> = runs.iter().filter_map(|r| numbers.of(r)).collect();
+        if self.numbered.get(&key).is_some_and(|(_, n)| *n == shown) {
             return false;
         }
         let Some(current) = self.entries.remove(&key) else {
             return false;
         };
-        let (stand_in, used) = self.numbered.entry(key).or_insert((current, numbers));
-        *used = numbers;
+        let (stand_in, used) = self
+            .numbered
+            .entry(key)
+            .or_insert_with(|| (current, Vec::new()));
+        *used = shown;
         let mut entry = stand_in.with_numbers(self.shaper.fonts(), runs, numbers);
         // The painter still draws the page's own digits: the same glyphs,
         // unless the paragraph ended up on another page than it was laid
@@ -1030,13 +1042,13 @@ fn wrapped(l: &LineLayout, boxes: &LineBoxes) -> Wrapped {
 /// they can be laid out in parallel.
 pub(crate) struct PageText<'c, 's, S: TextShaper> {
     cache: &'c TextCache<'s, S>,
-    numbers: PageNumbers,
+    numbers: PageNumbers<'c>,
     /// Paragraphs with placeholders, by node.
     entries: HashMap<usize, Entry>,
 }
 
 impl<'c, 's, S: TextShaper> PageText<'c, 's, S> {
-    pub fn new(cache: &'c TextCache<'s, S>, numbers: PageNumbers) -> Self {
+    pub fn new(cache: &'c TextCache<'s, S>, numbers: PageNumbers<'c>) -> Self {
         Self {
             cache,
             numbers,

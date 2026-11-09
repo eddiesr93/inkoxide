@@ -71,6 +71,11 @@ export const Cell = host('Cell');
 export const PageNumber = host('PageNumber');
 /** The total page count. Only inside `Text`. */
 export const TotalPages = host('TotalPages');
+/**
+ * The number of the page an element is on: `<PageRef to="#totals" />` for the element with
+ * `id="totals"`, as a table of contents shows it. Only inside `Text`.
+ */
+export const PageRef = host('PageRef');
 /** Starts a new page when content follows it. */
 export const PageBreak = host('PageBreak');
 export const Spacer = host('Spacer');

@@ -37,6 +37,7 @@ export const HOST = {
   Cell: 'ink-cell',
   PageNumber: 'ink-page-number',
   TotalPages: 'ink-total-pages',
+  PageRef: 'ink-page-ref',
   PageBreak: 'ink-page-break',
   Spacer: 'ink-spacer',
   Field: 'ink-field',
@@ -582,7 +583,8 @@ export type RenderProp<Content = unknown> = (page: PageInfo) => Content;
 /**
  * What an element is in tagged output (`<Document tagged>` or `pdfUA`): a heading, a paragraph,
  * a section, a quote, a caption, a figure, a list (`list` holds `listItem`s, each a `label` and a
- * `listBody`), or decoration (`artifact`), which screen readers skip.
+ * `listBody`), a table of contents (`toc` holds `tocItem`s), or decoration (`artifact`), which
+ * screen readers skip.
  */
 export type Role = SchemaRole;
 
@@ -636,6 +638,12 @@ export type LinkProps = Flow &
         src: string;
       }
   );
+
+/** A `PageRef` names the element whose page number it shows. */
+export interface PageRefProps {
+  /** The `id` of an element of the document, as a link writes it: `#totals`. */
+  to: string;
+}
 
 /**
  * A request for a remote image: `<Image src={{ uri, method, headers, body }} />`. The `uri` must
@@ -1224,6 +1232,7 @@ export interface PropsByComponent {
   Cell: CellProps;
   PageNumber: Record<string, never>;
   TotalPages: Record<string, never>;
+  PageRef: PageRefProps;
   PageBreak: PageBreakProps;
   Spacer: SpacerProps;
   Field: FieldProps;

@@ -8,6 +8,20 @@ together, and so does `@inkoxide/wasm` from its first release. From 1.0.0, so do
 `@inkoxide/tree`, `@inkoxide/vue`, `@inkoxide/svelte` and `@inkoxide/angular`. The document
 schema has its own version and [changelog](packages/schema/CHANGELOG.md).
 
+## Unreleased
+
+### Added
+
+- **Page references:** `<PageRef to="#id" />` (`<ink-page-ref>` in Angular) in a `Text` shows the
+  number of the page the element with that `id` starts on, in every front end; in the document
+  format, a run's `pageOf`. A table of contents is a list of links with a `PageRef` each (see
+  [Table of contents](packages/react/GUIDE.md#table-of-contents)). An `id` that no element of the
+  page body has is `UNKNOWN_ANCHOR`, as for a `#id` link. Documents without a page reference
+  render to the same bytes.
+- **Roles `toc` and `tocItem`:** a table of contents and its entries in tagged output (`TOC` and
+  `TOCI`; under PDF/UA-2, in the PDF 1.7 namespace and role-mapped to `Div`, as PDF 2.0 has
+  neither). With `pdfUA`, a `tocItem` outside a `toc` is `UA_CONFLICT`.
+
 ## 1.1.0 - 2026-11-08
 
 Fonts are read with read-fonts and text is shaped with HarfRust, the maintained Rust crates of the

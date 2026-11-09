@@ -7,7 +7,6 @@ mod page;
 mod pdfa;
 
 use estimate::repeated_size;
-use marks::collect_marks;
 pub(crate) use marks::{Dest, Marks, OutlineEntry};
 use numbering::{number_flows, relayout};
 use page::paint_page;
@@ -21,7 +20,7 @@ use crate::layout::{compute, AvailableSpace, LeafMeasure, LineBoxes, Size, Tree,
 use crate::paginate::{paginate, Placement};
 use crate::paint::PageContent;
 use crate::pdf::Profile;
-use crate::schema::{Document, Node, NodeKind, PageSpec, Position};
+use crate::schema::{Document, Node, NodeKind, PageSpec, Position, TextRun};
 use crate::text::{ColorGlyphs, HarfRustShaper, PageNumbers, TextCache};
 use crate::InkoxideError;
 
@@ -103,7 +102,7 @@ impl<'a> PageBand<'a> {
         let mut texts = Vec::new();
         collect_texts(node, &mut texts);
         let numbered = texts.iter().any(|n| match &n.kind {
-            NodeKind::Text { runs } => runs.iter().any(|r| r.placeholder.is_some()),
+            NodeKind::Text { runs } => runs.iter().any(TextRun::shows_number),
             _ => false,
         });
         Ok(Self {
@@ -227,12 +226,8 @@ pub(crate) fn run<'d, T: Send>(
     // and footers that show them are laid out per page.
     let total = page_count(&laid)?;
     repeated_size(&laid, text, plan.is_some())?;
-    let mut marks = Marks::default();
-    let mut first = 0;
-    for l in &laid {
-        collect_marks(l, first, &mut marks);
-        first += l.placement.pages;
-    }
+    let marks = Marks::of(&laid);
+    let refs = marks.page_refs();
     let jobs: Vec<(&Laid<'_>, u32)> = laid
         .iter()
         .flat_map(|l| (0..l.placement.pages).map(move |k| (l, k)))
@@ -242,6 +237,7 @@ pub(crate) fn run<'d, T: Send>(
         let numbers = PageNumbers {
             current: i as u32 + 1,
             total,
+            refs: &refs,
         };
         encode(paint_page(
             l,

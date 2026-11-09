@@ -9,6 +9,7 @@ import {
   Link,
   Note,
   Page,
+  PageRef,
   Svg,
   Text,
   TextField,
@@ -39,7 +40,8 @@ const paint = (p: Painter, w: number, h: number) => {
         }}</Text>
       </View>
       <Text>A <Link href="https://example.com">link</Link> and a note <Note>Read me</Note>.</Text>
-      <Image src="logo" :style="{ width: 24, height: 24 }" />
+      <Text>The logo is on page <PageRef to="#logo" />.</Text>
+      <Image id="logo" src="logo" :style="{ width: 24, height: 24 }" />
       <Svg :width="60" :height="30" view-box="0 0 60 30">
         <Circle :cx="15" :cy="15" :r="10" fill="#0ea5e9" />
         <Text :x="30" :y="20" :font-size="10">S<Tspan fill="red">vg</Tspan></Text>

@@ -295,7 +295,7 @@ export type Link = string;
 export type PageFilter =
   ('first' | 'last' | 'notFirst' | 'notLast' | 'odd' | 'even') | [number, ...number[]];
 /**
- * What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first. Under PDF/UA-2 (`pdfUA: '2'`), the roles inside a box with a `link` make no elements: its link holds what is inside it.
+ * What the node is in tagged output (render option `tagged` or `pdfUA`, or PDF/A-2a or 3a): a heading (`h1` to `h6`), a paragraph, a section, a quote, a caption, a figure, a list (`list`, whose items are `listItem` boxes, each with a `label` and a `listBody`), a table of contents (`toc`, whose entries are `tocItem` boxes), or decoration (`artifact`), which is not read. Without tagging it does nothing. A text takes `h1`–`h6`, `p`, `caption`, `label`, `blockQuote` and `artifact`; an image `figure` and `artifact`; a box any. By default a text is a paragraph, an image a figure, and a box is not an element: its children belong to its parent. Elements are read in document order, whatever `zIndex`, floats or positioning draw first. Under PDF/UA-2 (`pdfUA: '2'`), the roles inside a box with a `link` make no elements: its link holds what is inside it.
  *
  * This interface was referenced by `Document`'s JSON-Schema
  * via the `definition` "Role".
@@ -316,6 +316,8 @@ export type Role =
   | 'listItem'
   | 'label'
   | 'listBody'
+  | 'toc'
+  | 'tocItem'
   | 'artifact';
 /**
  * A flexible size, a share of the free space, of at most 1000000fr, like `"1fr"`.
@@ -1122,7 +1124,7 @@ export interface TextNode {
  */
 export interface TextRun {
   /**
-   * Required unless `placeholder`, `image` or `note` is set; forbidden when one is.
+   * Required unless `placeholder`, `pageOf`, `image`, `note` or `attachment` is set; forbidden when one is.
    */
   text?: string;
   font: Id;
@@ -1139,7 +1141,14 @@ export interface TextRun {
    */
   decorationThickness?: number;
   decorationStyle?: 'solid' | 'double' | 'dotted' | 'dashed' | 'wavy';
+  /**
+   * The physical number of the page the run is painted on (`pageNumber`), or the document's page count (`totalPages`), in place of text.
+   */
   placeholder?: 'pageNumber' | 'totalPages';
+  /**
+   * The id of a node of the page body (as a `#id` link's target): the run shows the number of the page that node starts on, in place of text, as a table of contents does. Laid out like a `placeholder`: as three digits first, then again with the number, a few times at most.
+   */
+  pageOf?: Id;
   /**
    * Makes the run a link; the clickable area covers the run's glyphs on each line.
    */

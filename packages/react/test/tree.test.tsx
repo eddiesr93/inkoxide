@@ -3,7 +3,7 @@ import { inspect } from 'node:util';
 
 import type { BoxNode, TableNode, TextNode } from '@inkoxide/schema';
 import { FontRegistry } from '@inkoxide/tree';
-import { createContext, lazy, type ReactNode, Suspense, use, useContext } from 'react';
+import { createContext, createElement, lazy, type ReactNode, Suspense, use, useContext } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { transformText } from '../../tree/src/tree/text.ts';
@@ -16,6 +16,7 @@ import {
   Link,
   Page,
   PageNumber,
+  PageRef,
   Row,
   renderTemplate,
   Spacer,
@@ -444,6 +445,36 @@ describe('placeholders', () => {
     const runs = first<TextNode>(r).runs;
     expect(runs.map((x) => x.placeholder ?? x.text)).toEqual(['Page ', 'pageNumber', ' of ', 'totalPages']);
     expect(runs[1]).not.toHaveProperty('text');
+  });
+
+  it('emits a pageOf run for a PageRef', () => {
+    const r = render(
+      <Text className="font-bold">
+        Totals, page <PageRef to="#totals" />.
+      </Text>,
+    );
+    const runs = first<TextNode>(r).runs;
+    expect(runs.map((x) => x.pageOf ?? x.text)).toEqual(['Totals, page ', 'totals', '.']);
+    expect(runs[1]).not.toHaveProperty('text');
+    expect(runs[1]?.font).toBe(runs[0]?.font);
+  });
+
+  it('rejects a PageRef without an id, with other props or outside Text', () => {
+    const inText = (props: Record<string, unknown>) => () =>
+      render(<Text>{createElement(PageRef as never, props)}</Text>);
+    expect(inText({})).toThrow(/<PageRef> needs a `to`/);
+    expect(inText({ to: 'totals' })).toThrow(/<PageRef> needs a `to`/);
+    expect(inText({ to: '#' })).toThrow(/<PageRef> needs a `to`/);
+    expect(inText({ to: '#totals', className: 'font-bold' })).toThrow(
+      /<PageRef> takes only `to`, so `className` has no effect/,
+    );
+    expect(() =>
+      render(
+        <View>
+          <PageRef to="#totals" />
+        </View>,
+      ),
+    ).toThrow(/<PageRef> must be inside a <Text>/);
   });
 
   it('rejects placeholders outside Text with the component stack', () => {
