@@ -71,6 +71,11 @@ const OBJECT_TEXT: &str = "\u{FFFC}";
 /// it), so a note never splits a word or stands alone on a line.
 const NOTE_TEXT: &str = "\u{200D}";
 
+/// The text of a leader run: U+2060 WORD JOINER, which line breaking keeps
+/// with the characters on both sides, so a leader stays on the line of
+/// the page number it leads to.
+const LEADER_TEXT: &str = "\u{2060}";
+
 pub(crate) struct ParagraphOptions<'a> {
     pub white_space: WhiteSpace,
     pub direction: Direction,
@@ -122,9 +127,14 @@ fn build_text(opts: &ParagraphOptions<'_>) -> (String, Vec<(usize, usize)>) {
     let mut last_was_space = true;
     for run in opts.runs {
         let start = text.len();
-        if run.is_icon() {
-            // White space collapses across a note as if it were not there.
-            text.push_str(NOTE_TEXT);
+        if run.is_mark() {
+            // White space collapses across a note or a leader as if it
+            // were not there.
+            text.push_str(if run.is_icon() {
+                NOTE_TEXT
+            } else {
+                LEADER_TEXT
+            });
             ranges.push((start, text.len()));
             continue;
         }
@@ -239,7 +249,7 @@ fn itemize(
         let Some(primary) = run.font_key.or_else(|| fonts.key(&run.font)) else {
             continue;
         };
-        if run.is_icon() {
+        if run.is_mark() {
             // No glyphs: its place in the line (see `prepare`).
             segs.push(Segment::new(ri, primary, level_at(start), start..end));
             continue;
@@ -648,8 +658,18 @@ pub(crate) fn prepare(
             continue;
         }
         let run = &opts.runs[seg.run as usize];
-        if run.is_icon() {
-            // A note: an object cluster that takes no room.
+        if run.is_mark() {
+            // A leader draws the characters of its pattern, unshaped.
+            if let Some(pattern) = &run.leader {
+                let font = fonts.get(seg.font);
+                let mut buf = [0; 4];
+                for c in pattern.chars() {
+                    if let Some(g) = font.glyph(c).filter(|_| !font.is_deferred()) {
+                        unicode.record(seg.font, g, c.encode_utf8(&mut buf));
+                    }
+                }
+            }
+            // A note or a leader: an object cluster that takes no room.
             let first = glyphs.len() as u32;
             glyphs.push(Glyph {
                 id: 0,
@@ -1011,6 +1031,7 @@ mod tests {
             placeholder: None,
             page_of: None,
             bookmark_title: None,
+            leader: None,
             link: None,
             hyphenate: None,
             font_key: None,

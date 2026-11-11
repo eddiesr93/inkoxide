@@ -8,6 +8,7 @@ import {
   Footer,
   Header,
   Image,
+  Leader,
   Link,
   Note,
   Page,
@@ -47,7 +48,7 @@ const paint = (p: Painter, w: number, h: number) => {
         }}</Text>
       </View>
       <Text>A <Link href="https://example.com">link</Link> and a note <Note>Read me</Note>.</Text>
-      <Text>The logo is on page <PageRef to="#logo" />.</Text>
+      <Text>The logo<Leader /><PageRef to="#logo" /></Text>
       <Image id="logo" src="logo" :style="{ width: 24, height: 24 }" />
       <Svg :width="60" :height="30" view-box="0 0 60 30">
         <Circle :cx="15" :cy="15" :r="10" fill="#0ea5e9" />

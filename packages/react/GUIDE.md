@@ -33,7 +33,7 @@ how each writes them (`class` for `className`, a slot or a template for a `rende
 Components take `className`, `style` and `id`, and those with a box also take `debug`
 ([Debugging layout](#debugging-layout)), with these exceptions: `Document` takes only `debug`;
 `Page` has no `id`; `PageBreak` takes only `id`; `PageNumber` and `TotalPages`
-take no props, `PageRef` only `to` and `BookmarkTitle` only `level`; the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
+take no props, `PageRef` only `to`, `BookmarkTitle` only `level` and `Leader` only `pattern`; the shapes inside an `Svg` take SVG attributes (`fill`, `stroke`,
 `transform`, `id`), and their `className` and `style` set SVG presentation
 ([Drawing](#drawing-svg-and-canvas)); and a `Text` or `Link` inside a `Text`,
 a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or `'sub'`),
@@ -51,6 +51,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | `Header`, `Footer` | Repeated on every page, in the top or bottom margin. |
 | `PageNumber`, `TotalPages` | The current page and the page count, inside a `Text`. |
 | `PageRef` | The number of the page another element is on (`to="#id"`), inside a `Text` ([table of contents](#table-of-contents)). |
+| `Leader` | Dots that fill the room its line has left (`pattern`, default `'. '`), inside a `Text` ([table of contents](#table-of-contents)). |
 | `BookmarkTitle` | The title of the current bookmark (of `level`, default 1), inside a `Text` in a `Header` or `Footer` ([running titles](#pages-headers-and-footers)). |
 | `Table`, `Row`, `Cell` | A table that splits across pages. |
 | `PageBreak`, `Spacer` | A forced page break; empty space. |
@@ -61,7 +62,7 @@ a run of the paragraph, takes only text styles (with `verticalAlign: 'super'` or
 | `Note` | A text note: an icon that opens its text in the viewer. |
 | `Attachment` | An icon that opens one of the document's [attachments](#attachments) (`file`). |
 
-**The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `PageRef`, `BookmarkTitle`, `Link`,
+**The one rule:** a `Text` contains strings, numbers, `PageNumber`, `TotalPages`, `PageRef`, `BookmarkTitle`, `Leader`, `Link`,
 `Image` (an image in the line), `Note`, `Attachment` and other `Text`, and nothing else. A `View` inside a `Text` is an error that names the component.
 
 ## Styling
@@ -696,10 +697,12 @@ const sections = [
 
 <View role="toc" className="gap-1">
   {sections.map((s) => (
-    <Link key={s.id} role="tocItem" href={`#${s.id}`} className="flex-row items-end gap-1">
-      <Text>{s.title}</Text>
-      <View className="mb-[3pt] flex-1 border-b border-dotted border-gray-400" />
-      <Text><PageRef to={`#${s.id}`} /></Text>
+    <Link key={s.id} role="tocItem" href={`#${s.id}`}>
+      <Text>
+        {s.title}
+        <Leader />
+        <PageRef to={`#${s.id}`} />
+      </Text>
     </Link>
   ))}
 </View>
@@ -711,8 +714,17 @@ const sections = [
 ))}
 ```
 
-The `View` between the title and the number draws the dotted leader: it takes the room the two
-leave. `PageRef` works in any `Text` ("see page `<PageRef to="#results" />`"), takes the style of
+`<Leader />` fills the room the line has left with dots, so the number ends at the right edge.
+It repeats its `pattern` (`'. '` by default; `'.'`, `'_'` or `' ·'` are others, of 1 to 8
+characters) in the font, size and colour of the `Text` around it. The patterns are whole and on
+a grid from the right edge of the line, so the dots of every entry line up. A leader takes no
+room when the lines are broken and stays on the line of what follows it: a title too long for
+one line wraps, and the dots and the number end its last line. In a `Text` only as wide as its
+words (in a `flex-row`, say) there is no room to fill; give it `flex-1` or a width. Several
+leaders on a line share the room, so `left<Leader pattern=" " />right` sets two words at the two
+edges.
+
+`PageRef` works in any `Text` ("see page `<PageRef to="#results" />`"), takes the style of
 the text around it, and names an element as a `#id` link does: an `id` no element of the page
 body has is an error (`UNKNOWN_ANCHOR`). The table of contents may come before or after what it
 lists, and may itself push the sections to later pages: the numbers are the ones of the finished

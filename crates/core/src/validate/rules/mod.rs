@@ -256,6 +256,8 @@ pub(crate) const MAX_FONT_SIZE: f32 = 1000.0;
 pub(crate) const MAX_BOOKMARK_TITLE: usize = 1024;
 /// Deepest bookmark `level`.
 pub(crate) const MAX_BOOKMARK_LEVEL: u8 = 32;
+/// Longest pattern of a leader run, in characters.
+pub(crate) const MAX_LEADER: usize = 8;
 /// Largest bookmark `zoom` scale (6400%, the most viewers offer).
 pub(crate) const MAX_BOOKMARK_ZOOM: f32 = 64.0;
 /// Longest alternative text of an inline image, in characters.

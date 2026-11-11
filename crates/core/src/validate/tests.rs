@@ -895,6 +895,31 @@ fn links_and_bookmarks() {
         assert_eq!(one(&d), (code, path.to_string()), "{header} {child}");
     }
 
+    // A leader is a short pattern, in place of text.
+    let led = |run: &str| doc(&format!(r#"{{"type":"text","runs":[{run}]}}"#));
+    assert_eq!(
+        run(&led(
+            r#"{"text":"A","font":"Inter-Regular","size":9},{"leader":". ","font":"Inter-Regular","size":9}"#
+        )),
+        vec![]
+    );
+    for bad in [
+        r#"{"leader":"","font":"Inter-Regular","size":9}"#,
+        r#"{"leader":".........","font":"Inter-Regular","size":9}"#,
+        r#"{"leader":".\n","font":"Inter-Regular","size":9}"#,
+        r#"{"leader":".","text":"x","font":"Inter-Regular","size":9}"#,
+        r#"{"leader":".","placeholder":"pageNumber","font":"Inter-Regular","size":9}"#,
+    ] {
+        assert_eq!(
+            one(&led(bad)),
+            (
+                C::InvalidValue,
+                "pages[0].children[0].runs[0].leader".to_string()
+            ),
+            "{bad}"
+        );
+    }
+
     // Ids in headers are not destinations; bookmarks are not allowed there.
     let d = r##"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},
         "header":{"type":"box","id":"h","bookmark":{"title":"H"}},

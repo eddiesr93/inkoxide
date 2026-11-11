@@ -64,6 +64,18 @@ INTRO = """# Document schema v1
   the width of `999` in flow text painted on several pages. The `id` is
   one a `#id` link could name; any other is `UNKNOWN_ANCHOR`. A node
   painted on several pages counts on the first of them.
+- **Leaders.** A run with `leader: ". "` fills the room its line has
+  left with the pattern repeated: the dots between an entry of a table
+  of contents and its page number. It takes no room when the
+  lines are broken, and it stays on the line of what follows it. When
+  the line is painted, the leaders on it share the room between the
+  line's width and its box's, and the line then fills its box whatever
+  its `textAlign`; a justified line's spaces keep their width. Each
+  draws its pattern whole, in the run's font and unshaped (a pattern
+  with a character the font lacks, or in a colour font, draws nothing),
+  on a grid from the right edge of the line box, so the leaders of
+  several lines line up. A text node as wide as its content has no room
+  to fill.
 - **Bookmark titles.** A run with `bookmarkTitle: level`, in a header, a
   footer or an overlay (a fixed, absolutely positioned page child), shows
   the title of the last bookmark of that level that starts on the page

@@ -312,7 +312,12 @@ fn paint_line(
 
     // Justification: spread the free space over the spaces of the line.
     let space_count = p.glyphs[s..e].iter().filter(|g| g.is_space()).count();
+    // A leader takes the free space instead.
+    let led = p
+        .segments_in(s, e)
+        .any(|seg| runs[seg.run as usize].leader.is_some());
     let justify_extra = if align == TextAlign::Justify
+        && !led
         && !line.forced
         && space_count > 0
         && line.ellipsis.is_none()
@@ -438,6 +443,25 @@ fn paint_line(
         } else {
             pieces.push(piece);
         }
+    }
+
+    // Leaders share the free room of the line, which then fills its box.
+    let leaders = pieces
+        .iter()
+        .filter(|piece| runs[piece.run as usize].leader.is_some())
+        .count();
+    if leaders > 0 && cw - width > 0.0 && cw.is_finite() {
+        let share = (cw - width) / leaders as f32;
+        let mut at = 0.0;
+        for piece in &mut pieces {
+            let run = &runs[piece.run as usize];
+            if let Some(pattern) = &run.leader {
+                piece.width = share;
+                fill_leader(piece, pattern, run, fonts, (at, cw));
+            }
+            at += piece.width;
+        }
+        width = cw;
     }
 
     // Placeholders may change the width: align with the painted width.
@@ -681,6 +705,66 @@ fn extra_piece(e: &ExtraGlyph, text: &'static str) -> Piece<'static> {
         count: usize::from(e.count),
         width: e.advance * f32::from(e.count),
     }
+}
+
+/// Most times a leader draws its pattern on a line.
+const MAX_LEADER_UNITS: usize = 2000;
+
+/// Fills leader `piece` of run `run`, which starts `at` from the left edge
+/// of a line box `line_width` wide, with `pattern` repeated: the
+/// characters' glyphs in the run's font, unshaped. The patterns are on a
+/// grid from the right edge of the line box, so the leaders of the lines
+/// of a table of contents line up, and only whole patterns are drawn.
+fn fill_leader(
+    piece: &mut Piece<'_>,
+    pattern: &str,
+    run: &TextRun,
+    fonts: &FontSet<'_>,
+    (at, line_width): (f32, f32),
+) {
+    let font = fonts.get(piece.font);
+    // A colour glyph is an image, made from the text that is shaped.
+    if font.is_deferred() || font.has_color() {
+        return;
+    }
+    let scale = font.scale(run.size);
+    let letter_spacing = run.letter_spacing.unwrap_or(0.0);
+    let unit: Option<Vec<(u16, f32)>> = pattern
+        .chars()
+        .map(|c| {
+            let id = font.glyph(c)?;
+            Some((id, font.advance(id) * scale + letter_spacing))
+        })
+        .collect();
+    let Some(unit) = unit else {
+        return;
+    };
+    let step: f32 = unit.iter().map(|u| u.1).sum();
+    if step < 0.01 {
+        return;
+    }
+    // The pattern `m` steps from the right edge starts at
+    // `line_width - m * step`.
+    let end = at + piece.width;
+    let first = ((line_width - at) / step + WIDTH_EPS).floor();
+    let last = ((line_width - end) / step - WIDTH_EPS).ceil() + 1.0;
+    if first < last {
+        return;
+    }
+    let count = ((first - last) as usize + 1).min(MAX_LEADER_UNITS);
+    for k in 0..count {
+        let mut x = line_width - (first - k as f32) * step - at;
+        for &(id, advance) in &unit {
+            piece.glyphs.push(TextGlyph {
+                id,
+                x,
+                y_offset: 0.0,
+                continues: false,
+            });
+            x += advance;
+        }
+    }
+    piece.count = piece.glyphs.len();
 }
 
 /// UAX #9 rule L2: from the highest level down to the lowest odd one,

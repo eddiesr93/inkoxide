@@ -82,6 +82,12 @@ export const PageRef = host('PageRef');
  * `Footer` or a `fixed`, absolutely positioned element of the page.
  */
 export const BookmarkTitle = host('BookmarkTitle');
+/**
+ * Dots that fill the room its line has left, as between an entry of a table of contents and its
+ * page number: `Summary<Leader /><PageRef to="#summary" />`. `pattern` is what it repeats, by
+ * default `'. '`. Only inside `Text`.
+ */
+export const Leader = host('Leader');
 /** Starts a new page when content follows it. */
 export const PageBreak = host('PageBreak');
 export const Spacer = host('Spacer');

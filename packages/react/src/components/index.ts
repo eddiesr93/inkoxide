@@ -59,6 +59,12 @@ export const PageRef = host('PageRef');
  */
 export const BookmarkTitle = host('BookmarkTitle');
 /**
+ * Dots that fill the room its line has left, as between an entry of a table of contents and its
+ * page number: `Summary<Leader /><PageRef to="#summary" />`. `pattern` is what it repeats, by
+ * default `'. '`. Only inside `Text`.
+ */
+export const Leader = host('Leader');
+/**
  * Starts a new page when content follows it, at any depth of the body. An error inside a
  * `flex-row`, grid, wrapping or reversed `View` and inside an absolutely positioned, rotated or
  * transformed element.
