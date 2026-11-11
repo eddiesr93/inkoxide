@@ -1074,7 +1074,7 @@ fn painted_text(json: &str) -> Vec<(String, Vec<String>)> {
                     if font.glyph(' ') == Some(g.id) {
                         continue;
                     }
-                    let c = ('0'..='z').find(|&c| font.glyph(c) == Some(g.id));
+                    let c = ('.'..='z').find(|&c| font.glyph(c) == Some(g.id));
                     glyphs.push((t.x + g.x, c.unwrap_or('?')));
                 }
             }
@@ -1157,6 +1157,117 @@ fn an_overlay_shows_the_title_of_the_current_bookmark() {
     );
     let read: Vec<String> = painted_text(&json).into_iter().map(|p| p.0).collect();
     assert_eq!(read, ["", "TT"]);
+}
+
+/// A leader run with the pattern `pattern`.
+fn leader(pattern: &str) -> String {
+    format!(r#"{{"leader":"{pattern}","font":"Inter-Regular","size":10}}"#)
+}
+
+/// A page of the text nodes `texts` in a box `width` wide.
+fn in_box(width: f32, texts: &[String]) -> String {
+    format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"box","style":{{"width":{width}}},"children":[{}]}}]}}]}}"#,
+        texts.join(",")
+    )
+}
+
+/// The dots painted on the first page: each one's baseline and left edge.
+fn dots(json: &str) -> Vec<(f32, f32)> {
+    render_with(&store(), json, |pages, _, fonts| {
+        let mut out = Vec::new();
+        for op in &pages[0].ops {
+            let Op::Text(t) = op else { continue };
+            let dot = fonts.get(t.font).glyph('.');
+            let dots = t.glyphs.iter().filter(|g| Some(g.id) == dot);
+            out.extend(dots.map(|g| (t.y, t.x + g.x)));
+        }
+        out
+    })
+}
+
+#[test]
+fn a_leader_fills_the_room_its_line_has_left() {
+    let width = 150.0;
+    let entry = |title: &str, page: &str| text_node("", &[word(title), leader("."), word(page)]);
+    let json = in_box(width, &[entry("Ab", "7"), entry("Abcdef", "123")]);
+    // Each line ends at the edge of the box, the number after the dots.
+    let lines = &painted_lines(&json)[0];
+    assert_eq!(lines.len(), 2);
+    for line in lines {
+        assert!(close(line.1, 0.0) && close(line.2, width), "{lines:?}");
+    }
+    // The dots are whole, between the title and the number, and on one
+    // grid from the right edge on both lines.
+    let step = render_with(&store(), &json, |_, _, fonts| {
+        let font = fonts.get(fonts.key("Inter-Regular").unwrap());
+        font.advance(font.glyph('.').unwrap()) * font.scale(10.0)
+    });
+    let dots = dots(&json);
+    let on_line = |y: f32| dots.iter().filter(move |d| close(d.0, y)).map(|d| d.1);
+    let (first, second): (Vec<f32>, Vec<f32>) =
+        (on_line(lines[0].0).collect(), on_line(lines[1].0).collect());
+    assert!(first.len() > second.len() && second.len() > 10, "{dots:?}");
+    for x in first.iter().chain(&second) {
+        let steps = (width - x) / step;
+        assert!((steps - steps.round()).abs() < 0.01, "{x} of {dots:?}");
+    }
+    // Nearly all the room: less than a dot is left on each side.
+    let free = |title: &str, page: &str| {
+        let plain = in_box(width, &[text_node("", &[word(title), word(page)])]);
+        let line = painted_lines(&plain)[0][0];
+        width - (line.2 - line.1)
+    };
+    assert!(free("Ab", "7") - first.len() as f32 * step < 2.0 * step);
+    assert!(free("Abcdef", "123") - second.len() as f32 * step < 2.0 * step);
+}
+
+#[test]
+fn a_leader_stays_on_the_line_of_what_follows_it() {
+    // Too narrow for both words and the number: the second word goes down
+    // with the leader and the number, and the first line has no dots.
+    let entry = text_node("", &[word("Aaaaaa Bbbbbb"), leader(". "), word("7")]);
+    let json = in_box(70.0, &[entry]);
+    let lines = &painted_lines(&json)[0];
+    assert_eq!(lines.len(), 2);
+    assert!(lines[0].2 < 60.0, "{lines:?}");
+    assert!(close(lines[1].2, 70.0), "{lines:?}");
+    let dots = dots(&json);
+    assert!(
+        !dots.is_empty() && dots.iter().all(|d| close(d.0, lines[1].0)),
+        "{dots:?}"
+    );
+}
+
+#[test]
+fn a_leader_takes_no_room_of_its_own() {
+    // In a row, the text is as wide as its words: nothing to fill.
+    let entry = text_node("", &[word("Ab"), leader("."), word("7")]);
+    let plain = text_node("", &[word("Ab"), word("7")]);
+    let row = |text: &str| {
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"children":[
+            {{"type":"box","style":{{"flexDirection":"row"}},"children":[{text}]}}]}}]}}"#
+        )
+    };
+    assert!(dots(&row(&entry)).is_empty());
+    assert_eq!(painted_lines(&row(&entry)), painted_lines(&row(&plain)));
+    // Two leaders share the room: the middle word is centred.
+    let both = text_node(
+        "",
+        &[word("A"), leader("."), word("B"), leader("."), word("C")],
+    );
+    let json = in_box(150.0, &[both]);
+    let glyphs = &painted(&json)[0];
+    let dot_count = dots(&json).len();
+    assert!(dot_count > 20 && dot_count.is_multiple_of(2), "{dot_count}");
+    assert!(close(
+        glyphs.iter().map(|g| g.x1).fold(0.0, f32::max),
+        150.0
+    ));
 }
 
 fn ops_with_logo(json: &str) -> Vec<Vec<Op>> {

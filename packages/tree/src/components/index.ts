@@ -39,6 +39,7 @@ export const HOST = {
   TotalPages: 'ink-total-pages',
   PageRef: 'ink-page-ref',
   BookmarkTitle: 'ink-bookmark-title',
+  Leader: 'ink-leader',
   PageBreak: 'ink-page-break',
   Spacer: 'ink-spacer',
   Field: 'ink-field',
@@ -652,6 +653,12 @@ export interface BookmarkTitleProps {
   level?: number;
 }
 
+/** A `Leader` fills the room its line has left with a pattern. */
+export interface LeaderProps {
+  /** What it repeats: 1 to 8 characters, by default a dot and a space (`'. '`). */
+  pattern?: string;
+}
+
 /**
  * A request for a remote image: `<Image src={{ uri, method, headers, body }} />`. The `uri` must
  * be allowed by the remote image policy, like a URL string.
@@ -1241,6 +1248,7 @@ export interface PropsByComponent {
   TotalPages: Record<string, never>;
   PageRef: PageRefProps;
   BookmarkTitle: BookmarkTitleProps;
+  Leader: LeaderProps;
   PageBreak: PageBreakProps;
   Spacer: SpacerProps;
   Field: FieldProps;

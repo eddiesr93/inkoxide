@@ -1124,7 +1124,7 @@ export interface TextNode {
  */
 export interface TextRun {
   /**
-   * Required unless `placeholder`, `pageOf`, `bookmarkTitle`, `image`, `note` or `attachment` is set; forbidden when one is.
+   * Required unless `placeholder`, `pageOf`, `bookmarkTitle`, `leader`, `image`, `note` or `attachment` is set; forbidden when one is.
    */
   text?: string;
   font: Id;
@@ -1153,6 +1153,10 @@ export interface TextRun {
    * A bookmark level: the run shows the title of the last bookmark of that level that starts on the page it is painted on or on an earlier one, in place of text, as a running header shows the current chapter. It shows nothing before the first such bookmark, and after a bookmark of a lower level (a new chapter has no section until its first). Only in a header, a footer or a fixed, absolutely positioned page child.
    */
   bookmarkTitle?: number;
+  /**
+   * A pattern, such as `. `: the run fills the room its line has left with the pattern repeated, in place of text, as the dots between an entry of a table of contents and its page number. It takes no room when the lines are broken and stays on the line of what follows it; the patterns are whole, on a grid from the right edge of the line, so the leaders of several lines line up. Several leaders on a line share the room. The characters are drawn in the run's font, unshaped; control characters are not allowed.
+   */
+  leader?: string;
   /**
    * Makes the run a link; the clickable area covers the run's glyphs on each line.
    */

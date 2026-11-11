@@ -18,6 +18,10 @@ schema has its own version and [changelog](packages/schema/CHANGELOG.md).
   [Table of contents](packages/react/GUIDE.md#table-of-contents)). An `id` that no element of the
   page body has is `UNKNOWN_ANCHOR`, as for a `#id` link. Documents without a page reference
   render to the same bytes.
+- **Leaders:** `<Leader />` (`<ink-leader>` in Angular) in a `Text` fills the room its line has
+  left with a pattern repeated (`pattern`, by default `'. '`): the dots between an entry of a
+  table of contents and its page number, on a grid from the right edge so every entry's dots
+  line up. In the document format, a run's `leader`.
 - **Running titles:** `<BookmarkTitle level />` (`<ink-bookmark-title>` in Angular) in a `Text`
   of a `Header`, a `Footer` or a `fixed`, absolutely positioned element shows the title of the
   current bookmark of that level (default 1): the last one that starts on the page or before it,

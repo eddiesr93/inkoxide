@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Prints the download size of the WebAssembly engine (packages/wasm/inkoxide.wasm, from
 // scripts/build-wasm.sh, and inkoxide-threads.wasm, from scripts/build-wasm.sh --threads, when it
-// is built) and fails when one is over BUDGET with brotli. The budget is 1.65 MB, a little over
+// is built) and fails when one is over BUDGET with brotli. The budget is 1.66 MB, a little over
 // the build without its hyphenation patterns, which it fetches as documents need them, with
 // variable fonts (subsetter's instancer), and with the Unicode tables of SASLprep (NFKC), which
 // prepares passwords (about 50 kB), PDF/UA-2, the tagging of the parts of SVG images, and fonts
 // read by read-fonts and shaped by HarfRust (about 110 kB more than ttf-parser and rustybuzz), and
-// page references. The
+// page references, running titles and leaders. The
 // module with threads is about ten kilobytes over the other, and has the same budget. Raise it
 // deliberately, in the pull request that needs it.
 // In CI the sizes also go to the job summary, and a module not built fails.
@@ -14,7 +14,7 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 
-const BUDGET = 1_650_000;
+const BUDGET = 1_660_000;
 
 const mb = (n) => `${(n / 1e6).toFixed(2)} MB`;
 let failed = false;

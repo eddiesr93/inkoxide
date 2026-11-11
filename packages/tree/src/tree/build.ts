@@ -808,6 +808,33 @@ class Builder {
     return to.slice(1);
   }
 
+  /** What a `<Leader>` repeats: its `pattern`, or a dot and a space. */
+  private leaderPattern(inst: Instance): string {
+    const key = Object.keys(inst.props).find(
+      (k) => k !== 'pattern' && k !== 'children' && inst.props[k] !== undefined,
+    );
+    if (key !== undefined) {
+      this.fail(
+        inst,
+        `<Leader> takes only \`pattern\`, so \`${key}\` has no effect. Style the <Text> around it.`,
+        { kind: 'props' },
+      );
+    }
+    const pattern = inst.props.pattern ?? '. ';
+    // Control characters have no glyph to repeat.
+    if (
+      typeof pattern !== 'string' ||
+      [...pattern].length < 1 ||
+      [...pattern].length > 8 ||
+      /\p{Cc}/u.test(pattern)
+    ) {
+      this.fail(inst, '<Leader> takes a `pattern` of 1 to 8 characters, such as ". " or "_".', {
+        kind: 'props',
+      });
+    }
+    return pattern;
+  }
+
   /** The level of the bookmarks whose title a `<BookmarkTitle>` shows: its `level`, or 1. */
   private bookmarkLevel(inst: Instance): number {
     const key = Object.keys(inst.props).find(
@@ -1078,6 +1105,9 @@ class Builder {
         case HOST.PageRef:
           this.push(out, undefined, ctx, n, undefined, { pageOf: this.pageOf(n) });
           break;
+        case HOST.Leader:
+          this.push(out, undefined, ctx, n, undefined, { leader: this.leaderPattern(n) });
+          break;
         case HOST.BookmarkTitle:
           this.showsTitles = true;
           this.push(out, undefined, ctx, n, undefined, { bookmarkTitle: this.bookmarkLevel(n) });
@@ -1221,7 +1251,7 @@ class Builder {
     owner: Instance,
     hyphenate?: boolean,
     /** What the run shows in place of text. */
-    shows?: Pick<TextRun, 'placeholder' | 'pageOf' | 'bookmarkTitle'>,
+    shows?: Pick<TextRun, 'placeholder' | 'pageOf' | 'bookmarkTitle' | 'leader'>,
   ): void {
     if (text !== undefined) this.emojiOf(text, owner);
     const font = this.font(ctx, owner);

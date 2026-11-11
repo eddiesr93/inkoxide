@@ -1,7 +1,7 @@
 /**
  * A document that uses what the examples leave out: per-page content, `@media` blocks in a style,
- * Canvas, SVG text, an image by id, a note, form fields, a link, a page reference and a bookmark
- * title in the header. Each front end writes it again.
+ * Canvas, SVG text, an image by id, a note, form fields, a link, a page reference after a leader and a
+ * bookmark title in the header. Each front end writes it again.
  */
 import {
   BookmarkTitle,
@@ -12,6 +12,7 @@ import {
   Footer,
   Header,
   Image,
+  Leader,
   Link,
   Note,
   Page,
@@ -51,7 +52,9 @@ export default function Features({ title, items }: typeof sample) {
           A <Link href="https://example.com">link</Link> and a note <Note>Read me</Note>.
         </Text>
         <Text>
-          The logo is on page <PageRef to="#logo" />.
+          The logo
+          <Leader />
+          <PageRef to="#logo" />
         </Text>
         <Image id="logo" src="logo" style={{ width: 24, height: 24 }} />
         <Svg width={60} height={30} viewBox="0 0 60 30">

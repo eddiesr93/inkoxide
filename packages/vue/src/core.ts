@@ -16,6 +16,7 @@ export {
   G,
   Header,
   Image,
+  Leader,
   ImageBackground,
   type InkComponent,
   Line,

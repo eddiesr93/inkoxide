@@ -3,8 +3,8 @@
 
 use super::{
     Checker, MAX_BOOKMARK_LEVEL, MAX_DECORATION_THICKNESS, MAX_EMOJI_SEQUENCE, MAX_FEATURE_SETS,
-    MAX_FEATURE_VALUE, MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LETTER_SPACING, MAX_PAGE_EDGE,
-    MAX_STRETCH, MAX_VARIATIONS, MAX_VARIATION_VALUE, MAX_WEIGHT, MIN_STRETCH,
+    MAX_FEATURE_VALUE, MAX_FONT_FEATURES, MAX_FONT_SIZE, MAX_LEADER, MAX_LETTER_SPACING,
+    MAX_PAGE_EDGE, MAX_STRETCH, MAX_VARIATIONS, MAX_VARIATION_VALUE, MAX_WEIGHT, MIN_STRETCH,
 };
 use crate::error::ValidationCode as Code;
 use crate::schema::{FontFeature, RunAlign, RunImage, TextRun};
@@ -135,7 +135,7 @@ impl Checker<'_> {
         if let Some(link) = &r.link {
             self.link(link);
         }
-        let one_of = "a run takes one of `text`, `placeholder`, `pageOf`, `bookmarkTitle`, `image`, `note` and `attachment`";
+        let one_of = "a run takes one of `text`, `placeholder`, `pageOf`, `bookmarkTitle`, `leader`, `image`, `note` and `attachment`";
         let other = r.text.is_some() || r.placeholder.is_some() || r.image.is_some() || r.is_icon();
         if let Some(id) = &r.page_of {
             if other {
@@ -164,8 +164,21 @@ impl Checker<'_> {
                 );
             }
         }
+        if let Some(pattern) = &r.leader {
+            if other || r.page_of.is_some() || r.bookmark_title.is_some() {
+                self.err(Code::InvalidValue, Some("leader"), one_of);
+            }
+            let length = pattern.chars().count();
+            if !(1..=MAX_LEADER).contains(&length) || pattern.chars().any(char::is_control) {
+                self.err(
+                    Code::InvalidValue,
+                    Some("leader"),
+                    format!("a leader is 1 to {MAX_LEADER} characters, none of them a control character"),
+                );
+            }
+        }
         // What it shows in place of text, other than a placeholder or an image.
-        let shown = r.is_icon() || r.page_of.is_some() || r.bookmark_title.is_some();
+        let shown = r.is_mark() || r.page_of.is_some() || r.bookmark_title.is_some();
         match (&r.text, &r.placeholder, &r.image) {
             (Some(_), Some(_), _) => self.err(
                 Code::InvalidValue,
@@ -180,7 +193,7 @@ impl Checker<'_> {
             (None, None, None) if !shown => self.err(
                 Code::MissingField,
                 Some("text"),
-                "a run requires `text` (or a `placeholder`, a `pageOf`, a `bookmarkTitle`, an `image`, a `note` or an `attachment`)",
+                "a run requires `text` (or a `placeholder`, a `pageOf`, a `bookmarkTitle`, a `leader`, an `image`, a `note` or an `attachment`)",
             ),
             (Some(_), _, _) | (_, Some(_), _) | (_, _, Some(_)) if r.is_icon() => self.err(
                 Code::InvalidValue,

@@ -900,6 +900,9 @@ pub struct TextRun {
     /// the last one of that level that starts on the page or before it.
     #[serde(default, deserialize_with = "de::opt_int")]
     pub bookmark_title: Option<u8>,
+    /// The characters it fills the free room of its line with, repeated,
+    /// in place of text: the dots between an entry and its page number.
+    pub leader: Option<String>,
     /// Link target of this run (as `Node::link`).
     pub link: Option<String>,
     /// Overrides the paragraph's `hyphenate` for this run's words.
@@ -933,6 +936,12 @@ impl TextRun {
     /// the page of a node (`page_of`).
     pub fn shows_number(&self) -> bool {
         self.placeholder.is_some() || self.page_of.is_some()
+    }
+
+    /// Whether it holds a place in the line without text to shape: an
+    /// icon, or a leader.
+    pub fn is_mark(&self) -> bool {
+        self.is_icon() || self.leader.is_some()
     }
 
     /// Whether it is an icon in place of text ([`icon`](Self::icon)).

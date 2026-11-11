@@ -33,6 +33,7 @@ export type {
   Length,
   LengthAuto,
   LengthPercent,
+  LeaderProps,
   LineProps,
   LinkProps,
   ListProps,

@@ -11,6 +11,7 @@ import {
   BookmarkTitle,
   Cell,
   Document,
+  Leader,
   Footer,
   Header,
   Image,
@@ -505,6 +506,39 @@ describe('placeholders', () => {
         </View>,
       ),
     ).toThrow(/<BookmarkTitle> must be inside a <Text>/);
+  });
+
+  it('emits a leader run for a Leader', () => {
+    const r = render(
+      <Text>
+        Summary
+        <Leader />
+        <PageRef to="#summary" />
+        <Leader pattern="_" />
+      </Text>,
+    );
+    const runs = first<TextNode>(r).runs;
+    expect(runs.map((x) => x.leader ?? x.pageOf ?? x.text)).toEqual(['Summary', '. ', 'summary', '_']);
+    expect(runs[1]).not.toHaveProperty('text');
+  });
+
+  it('rejects a Leader with a bad pattern, other props or outside Text', () => {
+    const inText = (props: Record<string, unknown>) => () =>
+      render(<Text>{createElement(Leader as never, props)}</Text>);
+    expect(inText({ pattern: '' })).toThrow(/<Leader> takes a `pattern` of 1 to 8 characters/);
+    expect(inText({ pattern: '.........' })).toThrow(/<Leader> takes a `pattern` of 1 to 8 characters/);
+    expect(inText({ pattern: '.\n' })).toThrow(/<Leader> takes a `pattern` of 1 to 8 characters/);
+    expect(inText({ pattern: 3 })).toThrow(/<Leader> takes a `pattern` of 1 to 8 characters/);
+    expect(inText({ className: 'font-bold' })).toThrow(
+      /<Leader> takes only `pattern`, so `className` has no effect/,
+    );
+    expect(() =>
+      render(
+        <View>
+          <Leader />
+        </View>,
+      ),
+    ).toThrow(/<Leader> must be inside a <Text>/);
   });
 
   it('rejects placeholders outside Text with the component stack', () => {

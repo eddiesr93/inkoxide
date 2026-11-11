@@ -636,7 +636,7 @@ export class Resume {
           >A <ink-link href="https://example.com">link</ink-link> and a note
           <ink-note>Read me</ink-note>.</ink-text
         >
-        <ink-text>The logo is on page <ink-page-ref to="#logo" />.</ink-text>
+        <ink-text>The logo<ink-leader /><ink-page-ref to="#logo" /></ink-text>
         <ink-image id="logo" src="logo" [style]="{ width: 24, height: 24 }" />
         <ink-svg [width]="60" [height]="30" viewBox="0 0 60 30">
           <ink-circle [cx]="15" [cy]="15" [r]="10" fill="#0ea5e9" />

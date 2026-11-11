@@ -47,6 +47,18 @@
   the width of `999` in flow text painted on several pages. The `id` is
   one a `#id` link could name; any other is `UNKNOWN_ANCHOR`. A node
   painted on several pages counts on the first of them.
+- **Leaders.** A run with `leader: ". "` fills the room its line has
+  left with the pattern repeated: the dots between an entry of a table
+  of contents and its page number. It takes no room when the
+  lines are broken, and it stays on the line of what follows it. When
+  the line is painted, the leaders on it share the room between the
+  line's width and its box's, and the line then fills its box whatever
+  its `textAlign`; a justified line's spaces keep their width. Each
+  draws its pattern whole, in the run's font and unshaped (a pattern
+  with a character the font lacks, or in a colour font, draws nothing),
+  on a grid from the right edge of the line box, so the leaders of
+  several lines line up. A text node as wide as its content has no room
+  to fill.
 - **Bookmark titles.** A run with `bookmarkTitle: level`, in a header, a
   footer or an overlay (a fixed, absolutely positioned page child), shows
   the title of the last bookmark of that level that starts on the page
@@ -449,7 +461,7 @@ CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not
 
 | Property | Type | Required | Notes |
 |---|---|---|---|
-| `text` | `string` |  | Required unless `placeholder`, `pageOf`, `bookmarkTitle`, `image`, `note` or `attachment` is set; forbidden when one is. |
+| `text` | `string` |  | Required unless `placeholder`, `pageOf`, `bookmarkTitle`, `leader`, `image`, `note` or `attachment` is set; forbidden when one is. |
 | `font` | [`Id`](#id) | yes |  |
 | `size` | `number` | yes | > 0, ≤ 1000 |
 | `color` | [`Color`](#color) |  |  |
@@ -461,6 +473,7 @@ CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not
 | `placeholder` | `"pageNumber"` \| `"totalPages"` |  | The physical number of the page the run is painted on (`pageNumber`), or the document's page count (`totalPages`), in place of text. |
 | `pageOf` | [`Id`](#id) |  | The id of a node of the page body (as a `#id` link's target): the run shows the number of the page that node starts on, in place of text, as a table of contents does. Laid out like a `placeholder`: as three digits first, then again with the number, a few times at most. |
 | `bookmarkTitle` | `integer` |  | ≥ 1, ≤ 32; A bookmark level: the run shows the title of the last bookmark of that level that starts on the page it is painted on or on an earlier one, in place of text, as a running header shows the current chapter. It shows nothing before the first such bookmark, and after a bookmark of a lower level (a new chapter has no section until its first). Only in a header, a footer or a fixed, absolutely positioned page child. |
+| `leader` | `string` |  | min length 1, max length 8; A pattern, such as `. `: the run fills the room its line has left with the pattern repeated, in place of text, as the dots between an entry of a table of contents and its page number. It takes no room when the lines are broken and stays on the line of what follows it; the patterns are whole, on a grid from the right edge of the line, so the leaders of several lines line up. Several leaders on a line share the room. The characters are drawn in the run's font, unshaped; control characters are not allowed. |
 | `link` | [`Link`](#link) |  | Makes the run a link; the clickable area covers the run's glyphs on each line. |
 | `hyphenate` | `boolean` |  | Overrides the text node's `hyphenate` for this run's words, in the node's language. |
 | `verticalAlign` | `"baseline"` \| `"super"` \| `"sub"` \| `"middle"` \| `"textTop"` \| `"textBottom"` \| `"top"` \| `"bottom"` or `number` (≥ -14400, ≤ 14400) |  | default `"baseline"`; Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs. An `image` run also takes `middle` (its middle at the baseline plus half the x-height of the run's font), `textTop` and `textBottom` (its top at the font's ascender, its bottom at its descender), `top` and `bottom` (its top or bottom at the line's), and a number: points its bottom sits above the baseline (negative: below). |

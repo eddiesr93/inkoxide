@@ -1683,6 +1683,10 @@ fn run(s: &mut Src) -> Value {
     } else if (38..50).contains(&kind) && (s.band || s.chaos) {
         // The title of the current bookmark: in a header or a footer.
         m.insert("bookmarkTitle".into(), json!(1 + s.below(3)));
+    } else if (50..58).contains(&kind) {
+        // A leader: mostly a pattern a font has, at times one too long.
+        let pattern = s.pick(&[".", ". ", "_", " ·", "-=", ".........", "😀"]);
+        m.insert("leader".into(), json!(pattern));
     } else {
         m.insert("text".into(), json!(text(s)));
     }
@@ -1731,6 +1735,7 @@ fn run(s: &mut Src) -> Value {
         m.remove("placeholder");
         m.remove("pageOf");
         m.remove("bookmarkTitle");
+        m.remove("leader");
         if s.chaos && s.chance(20) {
             m.insert("text".into(), json!("x"));
         }
@@ -3094,6 +3099,7 @@ mod tests {
             r#""contents":"In the line""#,
             r#""pageOf":"n"#,
             r#""bookmarkTitle":"#,
+            r#""leader":""#,
             r#""emojiImages":{"❤"#,
             r#""😀":"logo""#,
             r#""verticalAlign":"textTop""#,

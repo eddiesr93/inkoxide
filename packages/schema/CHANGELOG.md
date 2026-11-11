@@ -15,8 +15,10 @@ Still document schema version 1.
   the page that node starts on.
 - **Bookmark titles:** `bookmarkTitle` on a text run, a bookmark level (1 to 32): in a header, a
   footer or a fixed, absolutely positioned page child, the run shows the title of the last
-  bookmark of that level that starts on the page or before it. A run takes one of `text`,
-  `placeholder`, `pageOf`, `bookmarkTitle`, `image`, `note` and `attachment`.
+  bookmark of that level that starts on the page or before it.
+- **Leaders:** `leader` on a text run, a pattern of 1 to 8 characters: the run fills the room its
+  line has left with the pattern repeated. A run takes one of `text`, `placeholder`, `pageOf`,
+  `bookmarkTitle`, `leader`, `image`, `note` and `attachment`.
 - **Roles:** `toc` and `tocItem`, a table of contents and its entries.
 
 ## 2.7.0 - 2026-10-25
