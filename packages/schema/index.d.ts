@@ -1124,7 +1124,7 @@ export interface TextNode {
  */
 export interface TextRun {
   /**
-   * Required unless `placeholder`, `pageOf`, `image`, `note` or `attachment` is set; forbidden when one is.
+   * Required unless `placeholder`, `pageOf`, `bookmarkTitle`, `image`, `note` or `attachment` is set; forbidden when one is.
    */
   text?: string;
   font: Id;
@@ -1149,6 +1149,10 @@ export interface TextRun {
    * The id of a node of the page body (as a `#id` link's target): the run shows the number of the page that node starts on, in place of text, as a table of contents does. Laid out like a `placeholder`: as three digits first, then again with the number, a few times at most.
    */
   pageOf?: Id;
+  /**
+   * A bookmark level: the run shows the title of the last bookmark of that level that starts on the page it is painted on or on an earlier one, in place of text, as a running header shows the current chapter. It shows nothing before the first such bookmark, and after a bookmark of a lower level (a new chapter has no section until its first). Only in a header, a footer or a fixed, absolutely positioned page child.
+   */
+  bookmarkTitle?: number;
   /**
    * Makes the run a link; the clickable area covers the run's glyphs on each line.
    */

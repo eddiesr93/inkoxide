@@ -11,7 +11,7 @@ use crate::paint::{
 };
 use crate::schema::{Node, NodeKind};
 use crate::tag::{Plan, StructId};
-use crate::text::{ColorGlyphs, PageNumbers, PageText, TextPainter};
+use crate::text::{ColorGlyphs, PageNumbers, PageText, TextPainter, TitledText};
 use crate::InkoxideError;
 
 /// Leaf painting: text through `T`; images and form fields.
@@ -89,7 +89,7 @@ pub(super) fn paint_page(
     k: u32,
     numbers: PageNumbers<'_>,
     fonts: &FontSet<'_>,
-    text: &Cache<'_, '_, '_>,
+    (text, titled): (&Cache<'_, '_, '_>, &TitledText),
     (images, colors): (&ImageSet, &ColorGlyphs),
     plan: Option<&Plan>,
 ) -> Result<PageContent, InkoxideError> {
@@ -106,7 +106,7 @@ pub(super) fn paint_page(
     }
     // Headers, footers and overlays with page numbers, laid out for this
     // page.
-    let mut page_text = PageText::new(text, numbers);
+    let mut page_text = PageText::new(text, numbers, titled);
     let mut leaves = Leaves {
         text: &mut page_text,
         images,

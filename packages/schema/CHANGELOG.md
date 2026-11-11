@@ -12,8 +12,11 @@ Still document schema version 1.
 ### Added
 
 - **Page references:** `pageOf` on a text run, the `id` of a node: the run shows the number of
-  the page that node starts on. A run takes one of `text`, `placeholder`, `pageOf`, `image`,
-  `note` and `attachment`.
+  the page that node starts on.
+- **Bookmark titles:** `bookmarkTitle` on a text run, a bookmark level (1 to 32): in a header, a
+  footer or a fixed, absolutely positioned page child, the run shows the title of the last
+  bookmark of that level that starts on the page or before it. A run takes one of `text`,
+  `placeholder`, `pageOf`, `bookmarkTitle`, `image`, `note` and `attachment`.
 - **Roles:** `toc` and `tocItem`, a table of contents and its entries.
 
 ## 2.7.0 - 2026-10-25

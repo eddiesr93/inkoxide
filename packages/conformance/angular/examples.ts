@@ -615,13 +615,18 @@ export class Resume {
   template: `
     <ink-document [title]="title">
       <ink-page size="A5" [style]="{ padding: 30 }">
+        <ink-header>
+          <ink-text class="text-gray-500"><ink-bookmark-title /></ink-text>
+        </ink-header>
         <ink-footer>
           <ink-text [render]="footer" />
           <ng-template #footer let-page>Page {{ page.pageNumber }} of {{ page.totalPages }}</ng-template>
         </ink-footer>
-        <ink-text [inkStyle]="{ fontSize: 12, '@media (min-width: 400pt)': { fontSize: 18 } }">{{
-          title
-        }}</ink-text>
+        <ink-text
+          [bookmark]="title"
+          [inkStyle]="{ fontSize: 12, '@media (min-width: 400pt)': { fontSize: 18 } }"
+          >{{ title }}</ink-text
+        >
         <ink-view class="flex-row gap-2">
           @for (item of items; track item; let i = $index) {
             <ink-text [class]="i === 0 ? 'font-bold' : 'text-gray-500'">{{ item }}</ink-text>

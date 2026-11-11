@@ -411,6 +411,7 @@ fn shape<S: TextShaper>(
                 decoration_style: None,
                 placeholder: None,
                 page_of: None,
+                bookmark_title: None,
                 link: None,
                 hyphenate: Some(false),
                 // SVG text shifts baselines itself (`baseline-shift`).

@@ -1,6 +1,7 @@
 // The Vue front end without the renderer: the components, and Vue templates to document trees.
 export {
   Attachment,
+  BookmarkTitle,
   Canvas,
   Cell,
   Checkbox,

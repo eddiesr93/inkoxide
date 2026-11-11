@@ -1010,6 +1010,7 @@ mod tests {
             decoration_style: None,
             placeholder: None,
             page_of: None,
+            bookmark_title: None,
             link: None,
             hyphenate: None,
             font_key: None,

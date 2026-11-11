@@ -5,6 +5,7 @@ export type {
   AttachmentFile,
   AttachmentProps,
   BookmarkProp,
+  BookmarkTitleProps,
   BreakProp,
   CanvasProps,
   CellProps,

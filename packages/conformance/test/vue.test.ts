@@ -82,7 +82,7 @@ it('names the components above a misplaced element', () => {
   }
   expect(err).toBeInstanceOf(V.TemplateError);
   expect((err as V.TemplateError).message).toBe(
-    '<View> cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <Link>, <Image>, <Note>, <Attachment>, <PageNumber>, <TotalPages> and <PageRef>.',
+    '<View> cannot be inside <Text>. A Text contains only strings, numbers, <Text>, <Link>, <Image>, <Note>, <Attachment>, <PageNumber>, <TotalPages>, <PageRef> and <BookmarkTitle>.',
   );
   expect((err as V.TemplateError).componentStack).toBe(
     '\n    in View\n    in Inner\n    in Text\n    in Page\n    in Document\n    in Outer',

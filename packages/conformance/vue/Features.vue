@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import {
+  BookmarkTitle,
   Canvas,
   Checkbox,
   Circle,
   Document,
   Footer,
+  Header,
   Image,
   Link,
   Note,
@@ -28,12 +30,17 @@ const paint = (p: Painter, w: number, h: number) => {
 <template>
   <Document :title="title">
     <Page size="A5" :style="{ padding: 30 }">
+      <Header>
+        <Text class="text-gray-500"><BookmarkTitle /></Text>
+      </Header>
       <Footer>
         <Text>
           <template #render="{ pageNumber, totalPages }">Page {{ pageNumber }} of {{ totalPages }}</template>
         </Text>
       </Footer>
-      <Text :style="{ fontSize: 12, '@media (min-width: 400pt)': { fontSize: 18 } }">{{ title }}</Text>
+      <Text :bookmark="title" :style="{ fontSize: 12, '@media (min-width: 400pt)': { fontSize: 18 } }">{{
+        title
+      }}</Text>
       <View class="flex-row gap-2">
         <Text v-for="(item, i) in items" :key="item" :class="i === 0 ? 'font-bold' : 'text-gray-500'">{{
           item

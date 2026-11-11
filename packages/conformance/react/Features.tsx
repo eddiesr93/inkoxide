@@ -1,14 +1,16 @@
 /**
  * A document that uses what the examples leave out: per-page content, `@media` blocks in a style,
- * Canvas, SVG text, an image by id, a note, form fields, a link and a page reference. Each front
- * end writes it again.
+ * Canvas, SVG text, an image by id, a note, form fields, a link, a page reference and a bookmark
+ * title in the header. Each front end writes it again.
  */
 import {
+  BookmarkTitle,
   Canvas,
   Checkbox,
   Circle,
   Document,
   Footer,
+  Header,
   Image,
   Link,
   Note,
@@ -27,10 +29,17 @@ export default function Features({ title, items }: typeof sample) {
   return (
     <Document title={title}>
       <Page size="A5" style={{ padding: 30 }}>
+        <Header>
+          <Text className="text-gray-500">
+            <BookmarkTitle />
+          </Text>
+        </Header>
         <Footer>
           <Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
         </Footer>
-        <Text style={{ fontSize: 12, '@media (min-width: 400pt)': { fontSize: 18 } }}>{title}</Text>
+        <Text bookmark={title} style={{ fontSize: 12, '@media (min-width: 400pt)': { fontSize: 18 } }}>
+          {title}
+        </Text>
         <View className="flex-row gap-2">
           {items.map((item, i) => (
             <Text key={item} className={i === 0 ? 'font-bold' : 'text-gray-500'}>

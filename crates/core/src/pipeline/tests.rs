@@ -1028,6 +1028,137 @@ fn repeated_text_shows_the_page_of_a_node() {
 }
 
 /// The ops of each page of a document whose store holds image `logo`.
+/// A run that shows the title of the current bookmark of level `level`.
+fn title_of(level: u8, font: &str) -> String {
+    format!(r#"{{"bookmarkTitle":{level},"font":"{font}","size":10}}"#)
+}
+
+/// A box that takes a page, with the node properties `extra`.
+fn page_box(extra: &str) -> String {
+    format!(
+        r#"{{"type":"box"{extra},"style":{{"height":{}}}}}"#,
+        H - 1.0
+    )
+}
+
+fn bookmark(title: &str, level: u8) -> String {
+    format!(r#","bookmark":{{"title":"{title}","level":{level}}}"#)
+}
+
+/// A document with the header `header` over the flow `children`.
+fn with_header(header: &str, children: &[String]) -> String {
+    format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}},
+            {{"id":"NotoSansHebrew-Regular","family":"Noto Sans Hebrew"}}],
+            "fallbackFonts":["Inter-Regular","NotoSansHebrew-Regular"],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"header":{header},
+            "children":[{}]}}]}}"#,
+        children.join(",")
+    )
+}
+
+/// What each page's text reads, from left to right, of the letters and
+/// digits of the fonts it is painted in, and those fonts' ids.
+fn painted_text(json: &str) -> Vec<(String, Vec<String>)> {
+    render_with(&store(), json, |pages, _, fonts| {
+        let read = |page: &PageContent| {
+            let mut glyphs = Vec::new();
+            let mut used = Vec::new();
+            for op in &page.ops {
+                let Op::Text(t) = op else { continue };
+                let font = fonts.get(t.font);
+                if !used.contains(&font.id.to_string()) {
+                    used.push(font.id.to_string());
+                }
+                for g in &t.glyphs {
+                    if font.glyph(' ') == Some(g.id) {
+                        continue;
+                    }
+                    let c = ('0'..='z').find(|&c| font.glyph(c) == Some(g.id));
+                    glyphs.push((t.x + g.x, c.unwrap_or('?')));
+                }
+            }
+            glyphs.sort_by(|a, b| a.0.total_cmp(&b.0));
+            (glyphs.into_iter().map(|g| g.1).collect(), used)
+        };
+        pages.iter().map(read).collect()
+    })
+}
+
+#[test]
+fn a_header_shows_the_title_of_the_current_bookmark() {
+    // A chapter and its sections, then a chapter without one yet.
+    let header = text_node(
+        "",
+        &[
+            title_of(1, "Inter-Regular"),
+            word("x"),
+            title_of(2, "Inter-Regular"),
+        ],
+    );
+    let half = |extra: &str| format!(r#"{{"type":"box"{extra},"style":{{"height":40}}}}"#);
+    let flow = [
+        page_box(""),
+        page_box(&bookmark("A", 1)),
+        page_box(""),
+        page_box(&bookmark("b", 2)),
+        page_box(&bookmark("C", 1)),
+        half(&bookmark("d", 2)),
+        half(&bookmark("e", 2)),
+    ];
+    let read: Vec<String> = painted_text(&with_header(&header, &flow))
+        .into_iter()
+        .map(|page| page.0)
+        .collect();
+    assert_eq!(read, ["x", "Ax", "Ax", "Axb", "Cx", "Cxe"]);
+}
+
+#[test]
+fn a_bookmark_title_takes_its_own_width_and_fonts() {
+    // Right-aligned, after the page number; the run's font has no Hebrew
+    // letters, so the title is shaped in the fallback font.
+    let text = text_node(
+        r#","style":{"textAlign":"right"}"#,
+        &[
+            r#"{"placeholder":"pageNumber","font":"Inter-Regular","size":10}"#.to_string(),
+            word(" "),
+            title_of(1, "Inter-Regular"),
+        ],
+    );
+    let header = format!(
+        r#"{{"type":"box","style":{{"padding":{{"left":{PAD},"right":{PAD}}}}},"children":[{text}]}}"#
+    );
+    let flow = [page_box(&bookmark("שלום", 1)), page_box("")];
+    let json = with_header(&header, &flow);
+    let read = painted_text(&json);
+    assert_eq!(read[0].0, "1????");
+    assert_eq!(read[1].0, "2????");
+    assert_eq!(read[0].1, ["Inter-Regular", "NotoSansHebrew-Regular"]);
+    each_line(&json, 2, |_, lines| {
+        assert_eq!(lines.len(), 1);
+        assert!(close(lines[0].2, W - PAD), "{lines:?}");
+    });
+}
+
+#[test]
+fn an_overlay_shows_the_title_of_the_current_bookmark() {
+    let overlay = format!(
+        r#"{{"type":"box","break":{{"fixed":true}},"style":{{"position":"absolute","inset":{{"top":0,"left":0}}}},
+            "children":[{}]}}"#,
+        text_node("", &[title_of(1, "Inter-Regular")])
+    );
+    let footer = text_node("", &[title_of(1, "Inter-Regular")]);
+    let json = format!(
+        r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":{W},"height":{H}}},"footer":{footer},
+            "children":[{overlay},{},{}]}}]}}"#,
+        page_box(""),
+        page_box(&bookmark("T", 1)),
+    );
+    let read: Vec<String> = painted_text(&json).into_iter().map(|p| p.0).collect();
+    assert_eq!(read, ["", "TT"]);
+}
+
 fn ops_with_logo(json: &str) -> Vec<Vec<Op>> {
     let doc = crate::validate::parse(json.as_bytes(), crate::InputFormat::Json).unwrap();
     let store = store();

@@ -836,6 +836,65 @@ fn links_and_bookmarks() {
         "children":[{"type":"box","id":"b"}]}]}"#;
     assert_eq!(run(d), vec![]);
 
+    // A header, a footer and an overlay show the title of a bookmark; the
+    // flow does not, and the level is a bookmark's.
+    let titled = |header: &str, child: &str| {
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+            "pages":[{{"size":{{"width":100,"height":100}},
+            "header":{{"type":"box","children":[{{"type":"text","runs":[{header}]}}]}},
+            "footer":{{"type":"text","runs":[{{"bookmarkTitle":2,"font":"Inter-Regular","size":9}}]}},
+            "children":[{{"type":"box","bookmark":{{"title":"B"}}}},{child}]}}]}}"#
+        )
+    };
+    let title = r#"{"bookmarkTitle":1,"font":"Inter-Regular","size":9}"#;
+    let overlay = format!(
+        r#"{{"type":"box","break":{{"fixed":true}},"style":{{"position":"absolute"}},
+            "children":[{{"type":"text","runs":[{title}]}}]}}"#
+    );
+    assert_eq!(run(&titled(title, &overlay)), vec![]);
+    for (header, child, code, path) in [
+        (
+            title,
+            format!(r#"{{"type":"text","runs":[{title}]}}"#),
+            C::InvalidValue,
+            "pages[0].children[1].runs[0].bookmarkTitle",
+        ),
+        (
+            title,
+            format!(r#"{{"type":"text","break":{{"fixed":true}},"runs":[{title}]}}"#),
+            C::InvalidValue,
+            "pages[0].children[1].runs[0].bookmarkTitle",
+        ),
+        (
+            r#"{"bookmarkTitle":1,"text":"x","font":"Inter-Regular","size":9}"#,
+            r#"{"type":"box"}"#.to_string(),
+            C::InvalidValue,
+            "pages[0].header.children[0].runs[0].bookmarkTitle",
+        ),
+        (
+            r#"{"bookmarkTitle":1,"pageOf":"b","font":"Inter-Regular","size":9}"#,
+            r#"{"type":"box","id":"b"}"#.to_string(),
+            C::InvalidValue,
+            "pages[0].header.children[0].runs[0].bookmarkTitle",
+        ),
+        (
+            r#"{"bookmarkTitle":0,"font":"Inter-Regular","size":9}"#,
+            r#"{"type":"box"}"#.to_string(),
+            C::OutOfRange,
+            "pages[0].header.children[0].runs[0].bookmarkTitle",
+        ),
+        (
+            r#"{"bookmarkTitle":33,"font":"Inter-Regular","size":9}"#,
+            r#"{"type":"box"}"#.to_string(),
+            C::OutOfRange,
+            "pages[0].header.children[0].runs[0].bookmarkTitle",
+        ),
+    ] {
+        let d = titled(header, &child);
+        assert_eq!(one(&d), (code, path.to_string()), "{header} {child}");
+    }
+
     // Ids in headers are not destinations; bookmarks are not allowed there.
     let d = r##"{"version":1,"fonts":[],"pages":[{"size":{"width":100,"height":100},
         "header":{"type":"box","id":"h","bookmark":{"title":"H"}},

@@ -123,6 +123,7 @@ pub(crate) fn check(
         doc,
         anchors: None,
         in_fixed: false,
+        in_overlay: false,
         fields: HashMap::new(),
         conflict: None,
         image_transparency: HashMap::new(),
@@ -197,6 +198,9 @@ struct Checker<'a> {
     anchors: Option<HashMap<&'a str, bool>>,
     /// Inside a header or footer (at any depth).
     in_fixed: bool,
+    /// Inside an overlay (at any depth): a fixed, absolutely positioned
+    /// page child.
+    in_overlay: bool,
     /// Form field names seen so far, with their kind.
     fields: HashMap<String, FieldKind>,
     /// The first thing the PDF/A level does not allow.
@@ -765,7 +769,10 @@ impl<'a> Checker<'a> {
         }
         let outer = self.structure;
         self.structure = outer.enter(node);
+        let overlay = ctx == Ctx::Page && crate::pipeline::is_overlay(node);
+        self.in_overlay |= overlay;
         self.node_body(node, ctx);
+        self.in_overlay &= !overlay;
         self.structure = outer;
         self.decoration -= u32::from(decoration);
     }

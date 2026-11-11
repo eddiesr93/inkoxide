@@ -9,7 +9,7 @@ use crate::fonts::{FontKey, FontSet};
 use crate::images::{ImageBody, ImageKey, ImageSet};
 use crate::pdf::{image_transparency, Profile};
 use crate::schema::{Display, Document, ImageSource, Node, NodeKind};
-use crate::text::ColorGlyphs;
+use crate::text::{ColorGlyphs, TitledText};
 use crate::ValidationError;
 
 /// The first run, in document order, that draws a colour glyph needing
@@ -17,14 +17,18 @@ use crate::ValidationError;
 pub(super) fn transparent_color_glyph(
     doc: &Document,
     fonts: &FontSet<'_>,
-    text: &Cache<'_, '_, '_>,
+    (text, titled): (&Cache<'_, '_, '_>, &TitledText),
     images: &ImageSet,
     colors: &ColorGlyphs,
     profile: Profile,
 ) -> Option<ValidationError> {
     let mut seen: HashMap<(FontKey, u16), Option<&'static str>> = HashMap::new();
     find_shown(doc, |node, path| {
-        for (run, font, gid) in text.run_glyphs(node) {
+        // A paragraph that shows bookmark titles: as it reads on any page.
+        let glyphs = std::iter::once(node)
+            .chain(titled.of(node))
+            .flat_map(|n| text.run_glyphs(n));
+        for (run, font, gid) in glyphs {
             let need = *seen.entry((font, gid)).or_insert_with(|| {
                 let image = colors.image(font, gid, images)?;
                 image_transparency(image, profile)

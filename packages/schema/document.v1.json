@@ -1338,7 +1338,7 @@
       "properties": {
         "text": {
           "type": "string",
-          "description": "Required unless `placeholder`, `pageOf`, `image`, `note` or `attachment` is set; forbidden when one is."
+          "description": "Required unless `placeholder`, `pageOf`, `bookmarkTitle`, `image`, `note` or `attachment` is set; forbidden when one is."
         },
         "font": {
           "$ref": "#/$defs/Id"
@@ -1393,6 +1393,12 @@
         "pageOf": {
           "$ref": "#/$defs/Id",
           "description": "The id of a node of the page body (as a `#id` link's target): the run shows the number of the page that node starts on, in place of text, as a table of contents does. Laid out like a `placeholder`: as three digits first, then again with the number, a few times at most."
+        },
+        "bookmarkTitle": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32,
+          "description": "A bookmark level: the run shows the title of the last bookmark of that level that starts on the page it is painted on or on an earlier one, in place of text, as a running header shows the current chapter. It shows nothing before the first such bookmark, and after a bookmark of a lower level (a new chapter has no section until its first). Only in a header, a footer or a fixed, absolutely positioned page child."
         },
         "link": {
           "$ref": "#/$defs/Link",
@@ -1469,6 +1475,11 @@
               },
               {
                 "required": [
+                  "bookmarkTitle"
+                ]
+              },
+              {
+                "required": [
                   "image"
                 ]
               },
@@ -1503,6 +1514,11 @@
               },
               {
                 "required": [
+                  "bookmarkTitle"
+                ]
+              },
+              {
+                "required": [
                   "image"
                 ]
               },
@@ -1533,6 +1549,50 @@
               {
                 "required": [
                   "placeholder"
+                ]
+              },
+              {
+                "required": [
+                  "bookmarkTitle"
+                ]
+              },
+              {
+                "required": [
+                  "image"
+                ]
+              },
+              {
+                "required": [
+                  "note"
+                ]
+              },
+              {
+                "required": [
+                  "attachment"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "bookmarkTitle"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "text"
+                ]
+              },
+              {
+                "required": [
+                  "placeholder"
+                ]
+              },
+              {
+                "required": [
+                  "pageOf"
                 ]
               },
               {
@@ -1576,6 +1636,11 @@
               },
               {
                 "required": [
+                  "bookmarkTitle"
+                ]
+              },
+              {
+                "required": [
                   "note"
                 ]
               },
@@ -1610,6 +1675,11 @@
               },
               {
                 "required": [
+                  "bookmarkTitle"
+                ]
+              },
+              {
+                "required": [
                   "image"
                 ]
               },
@@ -1640,6 +1710,11 @@
               {
                 "required": [
                   "pageOf"
+                ]
+              },
+              {
+                "required": [
+                  "bookmarkTitle"
                 ]
               },
               {
