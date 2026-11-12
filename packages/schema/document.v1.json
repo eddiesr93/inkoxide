@@ -2483,7 +2483,7 @@
               "maxItems": 1000
             }
           ],
-          "description": "text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select and list: the selected option (one of `options`), or for a list with `multiSelect` an array of them, each at most once; radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). A string is at most 8000 characters."
+          "description": "text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select and list: the selected option (one of `options`), or for a list with `multiSelect` an array of them, each at most once; radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`); checkbox: the value it exports when on, non-empty (`INVALID_VALUE`), `Yes` without one. A string is at most 8000 characters."
         },
         "checked": {
           "type": "boolean",
@@ -2578,6 +2578,14 @@
           ],
           "default": "left",
           "description": "text, select and list only: where the text sits across the field, as written and as viewers lay out what is typed (`/Q`)."
+        },
+        "mark": {
+          "enum": [
+            "check",
+            "cross"
+          ],
+          "default": "check",
+          "description": "checkbox only: the mark it shows when on, a check mark or a cross."
         }
       }
     },

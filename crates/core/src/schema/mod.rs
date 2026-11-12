@@ -623,7 +623,8 @@ pub struct Field {
     pub kind: FieldKind,
     /// Text: the initial text. Select and list: the selected option (or
     /// options: a list with `multi_select`). Radio: the value this button
-    /// exports when selected.
+    /// exports when selected. Checkbox: the value it exports when on
+    /// (`Yes` without one).
     pub value: Option<FieldValue>,
     /// Checkbox and radio: initially on. At most one button of a radio
     /// group; buttons of the group with the same value are on together.
@@ -666,6 +667,17 @@ pub struct Field {
     pub no_spell: bool,
     /// Text, select and list: where the text sits across the field.
     pub align: Option<FieldAlign>,
+    /// Checkbox: the mark it shows when on.
+    pub mark: Option<FieldMark>,
+}
+
+/// The mark of a checkbox that is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FieldMark {
+    #[default]
+    Check,
+    Cross,
 }
 
 /// Where a field's text sits across it (`/Q`).

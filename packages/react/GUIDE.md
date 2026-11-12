@@ -1174,6 +1174,10 @@ array of them. `Field` is any of these, picked by its `kind` (`"text"`, `"checkb
 `align` (`'left'`, `'center'` or `'right'`) puts the value of a `TextField`, `Select` or `List`
 in the middle or at the right of its box, in the appearance drawn and in viewers.
 
+A `Checkbox` exports `Yes` when it is checked; `value` is what it exports instead, as the
+`value` of a `Radio` is. `mark="cross"` draws a cross in a checked box in place of the check
+mark. The mark takes the text colour (`text-red-600`), the box its border and background.
+
 A `FieldSet` groups fields: it is a `View`, with the same props (`render` too), whose `name`
 goes in front of the name of every field inside it, at any depth. Viewers show and export the
 fields by those full names, and sets nest:

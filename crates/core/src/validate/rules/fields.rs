@@ -176,10 +176,17 @@ impl Checker<'_> {
         );
         only(
             self,
-            is(FieldKind::Checkbox) && f.value.is_some(),
-            "value",
-            "text, select, list and radio",
+            !is(FieldKind::Checkbox) && f.mark.is_some(),
+            "mark",
+            "checkbox",
         );
+        if is(FieldKind::Checkbox) && f.value_str().is_some_and(str::is_empty) {
+            self.err(
+                Code::InvalidValue,
+                Some("value"),
+                "a checkbox's `value` (what it exports when on) is not empty",
+            );
+        }
         if f.options.len() > MAX_FIELD_OPTIONS {
             self.err(
                 Code::InvalidValue,

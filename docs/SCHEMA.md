@@ -661,7 +661,7 @@ Fields with the same `name` are one field with several widgets (for example a fi
 |---|---|---|---|
 | `name` | `string` matching `^[^.]{1,128}(\.[^.]{1,128}){0,31}$` | yes | min length 1, max length 512; Field name; unique in the document except for the buttons of one radio group. Dots make groups: `address.street` is the field `street` in the group `address`, as in PDF's own field names. At most 32 parts of 1 to 128 characters, and 512 characters in all. A name used again, or used both for a field and for a group (`a` and `a.b`), is `DUPLICATE_ID`. |
 | `kind` | `"text"` \| `"checkbox"` \| `"radio"` \| `"select"` \| `"list"` | yes | `select` is a drop-down list, `list` a list box that shows several options at once |
-| `value` | `string` (max length 8000) or array of `string` (each max length 1000) (max items 1000) |  | text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select and list: the selected option (one of `options`), or for a list with `multiSelect` an array of them, each at most once; radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). A string is at most 8000 characters. |
+| `value` | `string` (max length 8000) or array of `string` (each max length 1000) (max items 1000) |  | text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select and list: the selected option (one of `options`), or for a list with `multiSelect` an array of them, each at most once; radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`); checkbox: the value it exports when on, non-empty (`INVALID_VALUE`), `Yes` without one. A string is at most 8000 characters. |
 | `checked` | `boolean` |  | default `false`; checkbox and radio: initially selected; at most one button of a radio group (`INVALID_VALUE`), and buttons of the group with the same value are selected together |
 | `options` | array of `string` (each max length 1000) |  | min items 1, max items 1000; select and list only (required there): the choices, at most 1000 of at most 1000 characters each |
 | `multiSelect` | `boolean` |  | default `false`; list only: several options can be selected at once |
@@ -679,6 +679,7 @@ Fields with the same `name` are one field with several widgets (for example a fi
 | `format` | [`FieldFormat`](#fieldformat) |  |  |
 | `label` | `string` |  | min length 1, max length 1024; What the field is for, which screen readers say and viewers show as its tooltip (`/TU`). PDF/UA requires it. A radio group's tooltip is the label of its first button that has one; a button with another label says it in its widget (`/Contents`). |
 | `align` | `"left"` \| `"center"` \| `"right"` |  | default `"left"`; text, select and list only: where the text sits across the field, as written and as viewers lay out what is typed (`/Q`). |
+| `mark` | `"check"` \| `"cross"` |  | default `"check"`; checkbox only: the mark it shows when on, a check mark or a cross. |
 
 ### FieldFormat
 

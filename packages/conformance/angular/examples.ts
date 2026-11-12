@@ -645,7 +645,13 @@ export class Resume {
         <ink-canvas [width]="40" [height]="20" [paint]="paint" />
         <ink-view class="flex-row gap-2">
           <ink-text-field name="name" value="Ada" class="h-5 w-24 border border-gray-300" />
-          <ink-checkbox name="agree" checked class="h-3 w-3 border border-gray-400" />
+          <ink-checkbox
+            name="agree"
+            checked
+            value="agreed"
+            mark="cross"
+            class="h-3 w-3 border border-gray-400"
+          />
         </ink-view>
       </ink-page>
     </ink-document>

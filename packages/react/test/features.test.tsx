@@ -1254,6 +1254,27 @@ describe('form fields', () => {
     expect(r.validate()).toEqual([]);
   });
 
+  it('gives a checkbox its export value and its mark', () => {
+    const r = tree(
+      <View>
+        <Checkbox name="plain" />
+        <Checkbox name="terms" checked value="agreed" mark="cross" />
+        <Field kind="checkbox" name="news" value="weekly" />
+      </View>,
+    );
+    const [plain, terms, news] = (first<BoxNode>(r).children ?? []) as FieldNode[];
+    expect(plain?.field).toEqual({ name: 'plain', kind: 'checkbox' });
+    expect(terms?.field).toEqual({
+      name: 'terms',
+      kind: 'checkbox',
+      checked: true,
+      value: 'agreed',
+      mark: 'cross',
+    });
+    expect(news?.field).toMatchObject({ kind: 'checkbox', value: 'weekly' });
+    expect(r.validate()).toEqual([]);
+  });
+
   it('passes sort, edit, noSpell and align to the engine', () => {
     const r = tree(
       <View>

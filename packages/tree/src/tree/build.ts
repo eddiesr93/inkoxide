@@ -1458,6 +1458,8 @@ class Builder {
         break;
       case 'checkbox':
         if (p.checked) field.checked = true;
+        if (p.value !== undefined) field.value = p.value;
+        if (p.mark !== undefined) field.mark = p.mark;
         break;
       case 'radio':
         field.value = p.value;

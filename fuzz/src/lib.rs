@@ -2086,6 +2086,9 @@ fn field(s: &mut Src) -> Value {
     if (kind == "text" || typed || s.chaos) && s.chance(40) {
         m.insert("noSpell".into(), json!(true));
     }
+    if (kind == "checkbox" || s.chaos) && s.chance(60) {
+        m.insert("mark".into(), json!(s.pick(&["check", "cross"])));
+    }
     if (matches!(kind, "text" | "select" | "list") || s.chaos) && s.chance(60) {
         m.insert("align".into(), json!(s.pick(&["left", "center", "right"])));
     }

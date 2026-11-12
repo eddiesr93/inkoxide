@@ -825,6 +825,10 @@ export interface TextFormat {
 
 export interface CheckboxProps extends FieldCommon {
   checked?: boolean;
+  /** What the field exports when it is checked; default `'Yes'`. */
+  value?: string;
+  /** The mark of a checked box: a check mark or a cross; default `'check'`. */
+  mark?: 'check' | 'cross';
 }
 
 export interface RadioProps extends FieldCommon {

@@ -72,7 +72,13 @@ export default function Features({ title, items }: typeof sample) {
         />
         <View className="flex-row gap-2">
           <TextField name="name" value="Ada" className="h-5 w-24 border border-gray-300" />
-          <Checkbox name="agree" checked className="h-3 w-3 border border-gray-400" />
+          <Checkbox
+            name="agree"
+            checked
+            value="agreed"
+            mark="cross"
+            className="h-3 w-3 border border-gray-400"
+          />
         </View>
       </Page>
     </Document>

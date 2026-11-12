@@ -57,7 +57,7 @@ const paint = (p: Painter, w: number, h: number) => {
       <Canvas :width="40" :height="20" :paint="paint" />
       <View class="flex-row gap-2">
         <TextField name="name" value="Ada" class="h-5 w-24 border border-gray-300" />
-        <Checkbox name="agree" checked class="h-3 w-3 border border-gray-400" />
+        <Checkbox name="agree" checked value="agreed" mark="cross" class="h-3 w-3 border border-gray-400" />
       </View>
     </Page>
   </Document>

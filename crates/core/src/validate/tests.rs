@@ -1263,6 +1263,16 @@ fn form_fields() {
             "multiline",
         ),
         (
+            r#"{"type":"field","field":{"name":"a","kind":"checkbox","value":""}}"#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"a","kind":"radio","value":"x","mark":"cross"}}"#,
+            C::InvalidValue,
+            "mark",
+        ),
+        (
             r#"{"type":"field","field":{"name":"a","kind":"text","font":"Inter-Regular","value":"long","maxLength":2}}"#,
             C::OutOfRange,
             "value",
