@@ -135,6 +135,7 @@ impl Checker<'_> {
         if let Some(link) = &r.link {
             self.link(link);
         }
+        self.link_slop(r.link_slop.as_deref(), r.link.is_some());
         let one_of = "a run takes one of `text`, `placeholder`, `pageOf`, `bookmarkTitle`, `leader`, `image`, `note` and `attachment`";
         let other = r.text.is_some() || r.placeholder.is_some() || r.image.is_some() || r.is_icon();
         if let Some(id) = &r.page_of {

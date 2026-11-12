@@ -302,7 +302,10 @@ impl BoxPainter<'_, '_, '_, '_> {
         if let Some(target) = &node.link {
             if bottom > top && w > 0.0 {
                 let link = Op::Link {
-                    rect: Rect::new(x, top, w, bottom - top),
+                    rect: super::grown(
+                        Rect::new(x, top, w, bottom - top),
+                        node.link_slop.as_deref(),
+                    ),
                     target: target.clone(),
                     label: self
                         .content

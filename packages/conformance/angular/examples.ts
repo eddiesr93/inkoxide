@@ -633,7 +633,7 @@ export class Resume {
           }
         </ink-view>
         <ink-text
-          >A <ink-link href="https://example.com">link</ink-link> and a note
+          >A <ink-link href="https://example.com" [hitSlop]="4">link</ink-link> and a note
           <ink-note>Read me</ink-note>.</ink-text
         >
         <ink-text>The logo<ink-leader /><ink-page-ref to="#logo" /></ink-text>

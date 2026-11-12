@@ -170,6 +170,7 @@
 "\"lineHeight\""
 "\"lineThrough\""
 "\"link\""
+"\"linkSlop\""
 "\"list\""
 "\"listBody\""
 "\"listItem\""

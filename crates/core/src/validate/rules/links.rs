@@ -6,9 +6,30 @@ use super::{
     collect_anchors, Checker, MAX_BOOKMARK_LEVEL, MAX_BOOKMARK_TITLE, MAX_BOOKMARK_ZOOM, MAX_LINK,
 };
 use crate::error::ValidationCode as Code;
-use crate::schema::{Bookmark, BookmarkZoom};
+use crate::schema::{Bookmark, BookmarkZoom, Edges};
 
 impl Checker<'_> {
+    /// `linkSlop`: sides that are lengths, on something that is a link.
+    pub(super) fn link_slop(&mut self, slop: Option<&Edges<f32>>, linked: bool) {
+        let Some(slop) = slop else { return };
+        if !linked {
+            self.err(
+                Code::InvalidValue,
+                Some("linkSlop"),
+                "`linkSlop` only applies with `link`",
+            );
+            return;
+        }
+        self.at("linkSlop", |c| {
+            for (side, v) in ["top", "right", "bottom", "left"]
+                .into_iter()
+                .zip(slop.to_array())
+            {
+                c.non_neg(side, Some(v));
+            }
+        });
+    }
+
     pub(super) fn link(&mut self, link: &str) {
         if link.is_empty() || link.chars().count() > MAX_LINK {
             self.err(

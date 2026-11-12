@@ -714,6 +714,10 @@ export interface BoxNode {
   style?: Style;
   break?: Break;
   link?: Link;
+  /**
+   * With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`.
+   */
+  linkSlop?: EdgesNumber;
   bookmark?: Bookmark;
   pages?: PageFilter;
   debug?: Debug;
@@ -1112,6 +1116,10 @@ export interface TextNode {
   style?: Style;
   break?: Break;
   link?: Link;
+  /**
+   * With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`.
+   */
+  linkSlop?: EdgesNumber;
   bookmark?: Bookmark;
   pages?: PageFilter;
   debug?: Debug;
@@ -1161,6 +1169,10 @@ export interface TextRun {
    * Makes the run a link; the clickable area covers the run's glyphs on each line.
    */
   link?: Link;
+  /**
+   * With `link`: how far the clickable area reaches past the run's part of each line, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`.
+   */
+  linkSlop?: EdgesNumber;
   /**
    * Overrides the text node's `hyphenate` for this run's words, in the node's language.
    */
@@ -1272,6 +1284,10 @@ export interface ImageNode {
   style?: Style;
   break?: Break;
   link?: Link;
+  /**
+   * With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`.
+   */
+  linkSlop?: EdgesNumber;
   bookmark?: Bookmark;
   pages?: PageFilter;
   debug?: Debug;
@@ -1304,6 +1320,10 @@ export interface TableNode {
   style?: Style;
   break?: Break;
   link?: Link;
+  /**
+   * With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`.
+   */
+  linkSlop?: EdgesNumber;
   bookmark?: Bookmark;
   pages?: PageFilter;
   debug?: Debug;
@@ -1374,6 +1394,10 @@ export interface SpacerNode {
   style?: Style;
   break?: Break;
   link?: Link;
+  /**
+   * With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`.
+   */
+  linkSlop?: EdgesNumber;
   bookmark?: Bookmark;
   pages?: PageFilter;
   debug?: Debug;

@@ -373,6 +373,9 @@ pub struct Node {
     /// Link target: a URI, or `#id` of a node (boxed: rare, and nodes are
     /// numerous).
     pub link: Option<Box<str>>,
+    /// How far the link's clickable area reaches past the node's box, in
+    /// points per side (boxed: rare).
+    pub link_slop: Option<Box<Edges<f32>>>,
     pub bookmark: Option<Box<Bookmark>>,
     /// Pages the node is painted on (boxed: rare). It takes its space in
     /// the layout on every page.
@@ -917,6 +920,9 @@ pub struct TextRun {
     pub leader: Option<String>,
     /// Link target of this run (as `Node::link`).
     pub link: Option<String>,
+    /// How far the link's clickable area reaches past the run's part of
+    /// each line, in points per side (boxed: rare).
+    pub link_slop: Option<Box<Edges<f32>>>,
     /// Overrides the paragraph's `hyphenate` for this run's words.
     pub hyphenate: Option<bool>,
     /// Where the run sits on its line; default its baseline on the line's.

@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use super::{
     Attachment, AttachmentDecl, BackgroundImage, Bookmark, BookmarkZoom, BorderRadius, BorderStyle,
-    BorderStyles, Break, ColumnSpec, ColumnWidth, Corners, Field, FieldValue, FontFeature,
+    BorderStyles, Break, ColumnSpec, ColumnWidth, Corners, Edges, Field, FieldValue, FontFeature,
     FontVariation, ImageFit, ImageSource, InlineData, Node, NodeKind, Note, ObjectPosition,
     OptEdges, PageFilter, PagePattern, Relationship, Role, RunAlign, RunImage, ShapeOutside, Style,
     Table, TableRow, TextRun, TransformOp,
@@ -773,7 +773,9 @@ pub(super) enum NodeType {
 }
 
 /// Properties that most node types take.
-const COMMON: &[&str] = &["style", "break", "link", "bookmark", "pages", "debug"];
+const COMMON: &[&str] = &[
+    "style", "break", "link", "linkSlop", "bookmark", "pages", "debug",
+];
 
 impl NodeType {
     #[cfg(test)]
@@ -838,6 +840,7 @@ pub struct RawNode {
     #[serde(rename = "break")]
     brk: Option<Break>,
     link: Option<Box<str>>,
+    link_slop: Option<Box<Edges<f32>>>,
     bookmark: Option<Box<Bookmark>>,
     pages: Option<Box<PageFilter>>,
     debug: Option<bool>,
@@ -885,6 +888,7 @@ impl TryFrom<RawNode> for Node {
             ("style", r.style.is_some()),
             ("break", r.brk.is_some()),
             ("link", r.link.is_some()),
+            ("linkSlop", r.link_slop.is_some()),
             ("bookmark", r.bookmark.is_some()),
             ("pages", r.pages.is_some()),
             ("debug", r.debug.is_some()),
@@ -953,6 +957,7 @@ impl TryFrom<RawNode> for Node {
                 .unwrap_or_default(),
             brk: r.brk.unwrap_or_default(),
             link: r.link,
+            link_slop: r.link_slop,
             bookmark: r.bookmark,
             pages: r.pages,
             debug: r.debug.unwrap_or(false),

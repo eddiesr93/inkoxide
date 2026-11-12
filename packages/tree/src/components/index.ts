@@ -632,8 +632,14 @@ export interface TextProps extends Flow {
 }
 
 /** A `Link` needs a target: `href`, or `src`, which is the same. */
-export type LinkProps = Flow &
-  (
+export type LinkProps = Flow & {
+  /**
+   * Makes the clickable area larger than the link, which helps small links on touch screens:
+   * points on every side, or `{ top, right, bottom, left }`. In a `Text`, around the link's
+   * part of each line.
+   */
+  hitSlop?: number | { top?: number; right?: number; bottom?: number; left?: number };
+} & (
     | { href: string; src?: string }
     | {
         /** The same as `href`. */

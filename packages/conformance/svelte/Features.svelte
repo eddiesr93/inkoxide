@@ -25,7 +25,7 @@
         <Text class={i === 0 ? 'font-bold' : 'text-gray-500'}>{item}</Text>
       {/each}
     </View>
-    <Text>A <Link href="https://example.com">link</Link> and a note <Note>Read me</Note>.</Text>
+    <Text>A <Link href="https://example.com" hitSlop={4}>link</Link> and a note <Note>Read me</Note>.</Text>
     <Text>The logo<Leader /><PageRef to="#logo" /></Text>
     <Image id="logo" src="logo" style={{ width: 24, height: 24 }} />
     <Svg width={60} height={30} viewBox="0 0 60 30">

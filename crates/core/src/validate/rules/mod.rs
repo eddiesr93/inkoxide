@@ -860,6 +860,7 @@ impl<'a> Checker<'a> {
         if let Some(link) = &node.link {
             self.link(link);
         }
+        self.link_slop(node.link_slop.as_deref(), node.link.is_some());
         if let Some(b) = &node.bookmark {
             self.bookmark(b);
         }

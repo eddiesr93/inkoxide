@@ -1225,6 +1225,39 @@ describe('fixed', () => {
   });
 });
 
+describe('link hit slop', () => {
+  it('grows the clickable area of a block link and of a link in text', () => {
+    const r = tree(
+      <View>
+        <Link href="https://example.com" hitSlop={6} className="h-4 w-4" />
+        <Text>
+          Read{' '}
+          <Link href="#terms" hitSlop={{ top: 4, bottom: 4, left: 0 }}>
+            the terms
+          </Link>{' '}
+          first.
+        </Text>
+        <Link href="https://example.com" hitSlop={0} className="h-4 w-4" />
+      </View>,
+    );
+    const [block, text, none] = (first<BoxNode>(r).children ?? []) as [BoxNode, TextNode, BoxNode];
+    expect(block.linkSlop).toEqual({ top: 6, right: 6, bottom: 6, left: 6 });
+    const runs = text.runs.filter((run) => run.link);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.linkSlop).toEqual({ top: 4, bottom: 4 });
+    expect(text.runs.filter((run) => !run.link).every((run) => run.linkSlop === undefined)).toBe(true);
+    expect(none).not.toHaveProperty('linkSlop');
+  });
+
+  it('rejects a slop that is not a length', () => {
+    for (const bad of [-1, Number.NaN, '4', { top: -2 }, { all: 2 }]) {
+      const e = thrown(() => tree(<Link href="https://example.com" hitSlop={bad as never} />));
+      expect(e.kind).toBe('props');
+      expect(e.message).toContain('hitSlop');
+    }
+  });
+});
+
 describe('form fields', () => {
   it('builds fields with the inherited font, size and colour', () => {
     const r = tree(

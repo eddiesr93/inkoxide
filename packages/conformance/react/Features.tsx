@@ -49,7 +49,11 @@ export default function Features({ title, items }: typeof sample) {
           ))}
         </View>
         <Text>
-          A <Link href="https://example.com">link</Link> and a note <Note>Read me</Note>.
+          A{' '}
+          <Link href="https://example.com" hitSlop={4}>
+            link
+          </Link>{' '}
+          and a note <Note>Read me</Note>.
         </Text>
         <Text>
           The logo

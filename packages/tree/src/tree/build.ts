@@ -1,4 +1,5 @@
 import type {
+  EdgesNumber,
   AttachmentDecl,
   AttachmentNode,
   BackgroundImage,
@@ -730,6 +731,8 @@ class Builder {
     if (b) node.break = b;
     const href = inst.type === HOST.Link ? this.target(inst) : p.href;
     if (typeof href === 'string') node.link = href;
+    const slop = inst.type === HOST.Link ? this.slop(inst) : undefined;
+    if (slop) node.linkSlop = slop;
     const bm = toBookmark(p.bookmark as BookmarkProp | undefined);
     if (bm) {
       node.bookmark = bm;
@@ -781,6 +784,31 @@ class Builder {
       this.fail(inst, '<Link> needs an href: https://…, mailto:… or #id.', { kind: 'props' });
     }
     return href;
+  }
+
+  /** A `<Link>`'s `hitSlop` as the four sides of `linkSlop`; nothing when every side is 0. */
+  private slop(inst: Instance): EdgesNumber | undefined {
+    const v = inst.props.hitSlop as unknown;
+    if (v === undefined || v === null) return undefined;
+    const sides = ['top', 'right', 'bottom', 'left'] as const;
+    const length = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0;
+    const given: Record<string, unknown> =
+      typeof v === 'number'
+        ? { top: v, right: v, bottom: v, left: v }
+        : typeof v === 'object'
+          ? { ...v }
+          : { bad: v };
+    const out: EdgesNumber = {};
+    for (const [k, n] of Object.entries(given)) {
+      if (n === undefined) continue;
+      if (!sides.includes(k as (typeof sides)[number]) || !length(n)) {
+        this.fail(inst, '<Link hitSlop>: a number of points, at least 0, or { top, right, bottom, left }.', {
+          kind: 'props',
+        });
+      }
+      if (n > 0) out[k as (typeof sides)[number]] = n;
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
   }
 
   /** The id a `<PageRef>` names: its `to`, the `#id` a link to the same element has. */
@@ -1076,6 +1104,7 @@ class Builder {
             n.props.hyphenationCallback !== undefined
               ? inherit(ctx, own, {
                   link: href,
+                  linkSlop: n.type === HOST.Link ? this.slop(n) : undefined,
                   verticalAlign: align,
                   lang: n.props.lang as string | undefined,
                   hyphenate: n.props.hyphenate as boolean | undefined,
@@ -1163,6 +1192,7 @@ class Builder {
     const align = own.verticalAlign ?? ctx.verticalAlign;
     if (align !== undefined && align !== 'baseline') run.verticalAlign = align as TextRun['verticalAlign'];
     if (ctx.link !== undefined) run.link = ctx.link;
+    if (ctx.linkSlop !== undefined) run.linkSlop = ctx.linkSlop;
     return this.mark(run, n);
   }
 
@@ -1278,6 +1308,7 @@ class Builder {
       last.decorationThickness === decoThickness &&
       last.decorationStyle === decoStyle &&
       last.link === ctx.link &&
+      last.linkSlop === ctx.linkSlop &&
       last.hyphenate === hyphenate &&
       last.verticalAlign === verticalAlign &&
       sameFeatures(last.fontFeatures, features)
@@ -1293,6 +1324,7 @@ class Builder {
     if (decoThickness !== undefined) run.decorationThickness = decoThickness;
     if (decoStyle) run.decorationStyle = decoStyle;
     if (ctx.link !== undefined) run.link = ctx.link;
+    if (ctx.linkSlop !== undefined) run.linkSlop = ctx.linkSlop;
     if (hyphenate !== undefined) run.hyphenate = hyphenate;
     if (verticalAlign !== undefined) run.verticalAlign = verticalAlign;
     if (features !== undefined) run.fontFeatures = features;

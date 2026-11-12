@@ -1724,6 +1724,10 @@ fn run(s: &mut Src) -> Value {
     }
     if s.chance(20) {
         m.insert("link".into(), link(s));
+        // A larger clickable area; with chaos, sides that are no lengths.
+        if s.chance(60) {
+            m.insert("linkSlop".into(), edges(s, num));
+        }
     }
     if s.chance(10) {
         m.insert("hyphenate".into(), json!(s.chance(50)));
@@ -2538,6 +2542,9 @@ fn node(s: &mut Src, depth: usize, budget: &mut usize) -> Value {
     let linkable = !matches!(kind, "pageBreak" | "field" | "note") || s.chaos;
     if linkable && s.chance(20) {
         m.insert("link".into(), link(s));
+        if s.chance(60) {
+            m.insert("linkSlop".into(), edges(s, num));
+        }
     }
     if linkable && (s.flow || s.chaos) && s.chance(20) {
         let level = if s.chaos { s.below(40) } else { 1 + s.below(4) };

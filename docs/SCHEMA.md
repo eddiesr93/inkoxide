@@ -475,6 +475,7 @@ CSS `inset()`: a rectangle inset from the margin box's sides, by 0 on a side not
 | `bookmarkTitle` | `integer` |  | ≥ 1, ≤ 32; A bookmark level: the run shows the title of the last bookmark of that level that starts on the page it is painted on or on an earlier one, in place of text, as a running header shows the current chapter. It shows nothing before the first such bookmark, and after a bookmark of a lower level (a new chapter has no section until its first). Only in a header, a footer or a fixed, absolutely positioned page child. |
 | `leader` | `string` |  | min length 1, max length 8; A pattern, such as `. `: the run fills the room its line has left with the pattern repeated, in place of text, as the dots between an entry of a table of contents and its page number. It takes no room when the lines are broken and stays on the line of what follows it; the patterns are whole, on a grid from the right edge of the line, so the leaders of several lines line up. Several leaders on a line share the room. The characters are drawn in the run's font, unshaped; control characters are not allowed. |
 | `link` | [`Link`](#link) |  | Makes the run a link; the clickable area covers the run's glyphs on each line. |
+| `linkSlop` | [`EdgesNumber`](#edgesnumber) |  | With `link`: how far the clickable area reaches past the run's part of each line, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`. |
 | `hyphenate` | `boolean` |  | Overrides the text node's `hyphenate` for this run's words, in the node's language. |
 | `verticalAlign` | `"baseline"` \| `"super"` \| `"sub"` \| `"middle"` \| `"textTop"` \| `"textBottom"` \| `"top"` \| `"bottom"` or `number` (≥ -14400, ≤ 14400) |  | default `"baseline"`; Moves the run's baseline: `super` raises it and `sub` lowers it, by the offsets the font gives for superscripts and subscripts (OS/2), for text of the run's `size`. The size stays the run's own: give a superscript a smaller `size`. The line grows to fit the moved glyphs. An `image` run also takes `middle` (its middle at the baseline plus half the x-height of the run's font), `textTop` and `textBottom` (its top at the font's ascender, its bottom at its descender), `top` and `bottom` (its top or bottom at the line's), and a number: points its bottom sits above the baseline (negative: below). |
 | `fontFeatures` | `object` |  | max properties 32; OpenType features by tag, as CSS `font-feature-settings`: 1 turns a feature on, 0 off, and a larger number picks an alternate (`{"tnum": 1, "liga": 0}`). Tags are four printable ASCII characters, and a value is 0 to 65535. A run may have at most 32 features, and a document at most 64 different sets of features. |
@@ -539,6 +540,7 @@ An image in a line of text, as wide as `width` and as high as `height`, in point
 | `style` | [`Style`](#style) |  |  |
 | `break` | [`Break`](#break) |  |  |
 | `link` | [`Link`](#link) |  |  |
+| `linkSlop` | [`EdgesNumber`](#edgesnumber) |  | With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`. |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
@@ -556,6 +558,7 @@ An image in a line of text, as wide as `width` and as high as `height`, in point
 | `style` | [`Style`](#style) |  |  |
 | `break` | [`Break`](#break) |  |  |
 | `link` | [`Link`](#link) |  |  |
+| `linkSlop` | [`EdgesNumber`](#edgesnumber) |  | With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`. |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
@@ -571,6 +574,7 @@ An image in a line of text, as wide as `width` and as high as `height`, in point
 | `style` | [`Style`](#style) |  |  |
 | `break` | [`Break`](#break) |  |  |
 | `link` | [`Link`](#link) |  |  |
+| `linkSlop` | [`EdgesNumber`](#edgesnumber) |  | With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`. |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
@@ -610,6 +614,7 @@ An image painted behind the box's children and over its `backgroundColor`, under
 | `style` | [`Style`](#style) |  |  |
 | `break` | [`Break`](#break) |  |  |
 | `link` | [`Link`](#link) |  |  |
+| `linkSlop` | [`EdgesNumber`](#edgesnumber) |  | With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`. |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
@@ -635,6 +640,7 @@ Starts a new page when in-flow content follows it: at the end of the flow it add
 | `style` | [`Style`](#style) |  |  |
 | `break` | [`Break`](#break) |  |  |
 | `link` | [`Link`](#link) |  |  |
+| `linkSlop` | [`EdgesNumber`](#edgesnumber) |  | With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`. |
 | `bookmark` | [`Bookmark`](#bookmark) |  |  |
 | `pages` | [`PageFilter`](#pagefilter) |  |  |
 | `debug` | [`Debug`](#debug) |  |  |
