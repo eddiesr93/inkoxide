@@ -9,7 +9,7 @@ use super::prepare::number_glyphs;
 use super::{
     baseline_shift, ColorGlyphs, ExtraGlyph, Line, PageText, Para, TextCache, TextShaper, WIDTH_EPS,
 };
-use crate::fonts::{FontKey, FontSet};
+use crate::fonts::{FontKey, FontSet, LoadedFont};
 use crate::geom::Rect;
 use crate::images::{ImageKey, ImagePlacement, ImageSet};
 use crate::layout::{Geometry, LineBox, LineBoxes};
@@ -710,6 +710,53 @@ fn extra_piece(e: &ExtraGlyph, text: &'static str) -> Piece<'static> {
 /// Most times a leader draws its pattern on a line.
 const MAX_LEADER_UNITS: usize = 2000;
 
+/// The glyphs of leader pattern `pattern` of run `run` in `font`, each
+/// with its advance, and the room they take together; `None` for a
+/// pattern that draws nothing: a font that has not all its characters or
+/// draws them as images, or one without width.
+fn leader_unit(
+    pattern: &str,
+    run: &TextRun,
+    font: &LoadedFont<'_>,
+) -> Option<(Vec<(u16, f32)>, f32)> {
+    // A colour glyph is an image, made from the text that is shaped.
+    if font.is_deferred() || font.has_color() {
+        return None;
+    }
+    let scale = font.scale(run.size);
+    let letter_spacing = run.letter_spacing.unwrap_or(0.0);
+    let unit: Vec<(u16, f32)> = pattern
+        .chars()
+        .map(|c| {
+            let id = font.glyph(c)?;
+            Some((id, font.advance(id) * scale + letter_spacing))
+        })
+        .collect::<Option<_>>()?;
+    let step: f32 = unit.iter().map(|u| u.1).sum();
+    (step >= 0.01).then_some((unit, step))
+}
+
+/// At most the glyphs a leader of run `run` draws on a line `line_width`
+/// wide, with `pattern` in `font`: what [`fill_leader`] draws when the
+/// leader has the whole line.
+pub(super) fn most_leader_glyphs(
+    pattern: &str,
+    run: &TextRun,
+    font: &LoadedFont<'_>,
+    line_width: f32,
+) -> u64 {
+    let Some((unit, step)) = leader_unit(pattern, run, font) else {
+        return 0;
+    };
+    if !(line_width > 0.0 && line_width.is_finite()) {
+        return 0;
+    }
+    // Whole patterns between two points at most `line_width` apart, each
+    // rounded by `WIDTH_EPS`.
+    let units = ((line_width / step) as usize).saturating_add(2);
+    (units.min(MAX_LEADER_UNITS) * unit.len()) as u64
+}
+
 /// Fills leader `piece` of run `run`, which starts `at` from the left edge
 /// of a line box `line_width` wide, with `pattern` repeated: the
 /// characters' glyphs in the run's font, unshaped. The patterns are on a
@@ -722,27 +769,9 @@ fn fill_leader(
     fonts: &FontSet<'_>,
     (at, line_width): (f32, f32),
 ) {
-    let font = fonts.get(piece.font);
-    // A colour glyph is an image, made from the text that is shaped.
-    if font.is_deferred() || font.has_color() {
-        return;
-    }
-    let scale = font.scale(run.size);
-    let letter_spacing = run.letter_spacing.unwrap_or(0.0);
-    let unit: Option<Vec<(u16, f32)>> = pattern
-        .chars()
-        .map(|c| {
-            let id = font.glyph(c)?;
-            Some((id, font.advance(id) * scale + letter_spacing))
-        })
-        .collect();
-    let Some(unit) = unit else {
+    let Some((unit, step)) = leader_unit(pattern, run, fonts.get(piece.font)) else {
         return;
     };
-    let step: f32 = unit.iter().map(|u| u.1).sum();
-    if step < 0.01 {
-        return;
-    }
     // The pattern `m` steps from the right edge starts at
     // `line_width - m * step`.
     let end = at + piece.width;

@@ -50,6 +50,8 @@ pub(super) fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Ch
     let mut text_found = false;
     let mut selectors: Vec<usize> = Vec::new();
     let (mut sheet_work, mut sheet_values) = (0usize, 0);
+    let mut sheet_fonts = FontBound::default();
+    let mut sheet_em_radius = 0f64;
     for n in root.descendants().filter(Node::is_element) {
         let d = n
             .parent_element()
@@ -74,6 +76,15 @@ pub(super) fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Ch
                     sheet_values += body.len();
                 }
                 for (p, v) in declarations(t) {
+                    match property(p).as_str() {
+                        "font-size" => sheet_fonts.size(v),
+                        "font" => sheet_fonts.shorthand(v),
+                        "r" | "rx" | "ry" => {
+                            sheet_em_radius = sheet_em_radius.max(Radius::of(v)?.em);
+                        }
+                        "d" if scan_numbers(v).1 > MAX_COORDINATE => return Err(too_large()),
+                        _ => {}
+                    }
                     sheet.file(p, v, &mut rest);
                 }
             }
@@ -98,6 +109,8 @@ pub(super) fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Ch
         sheet: &sheet,
         rule_matches,
         sheet_values,
+        sheet_fonts,
+        sheet_em_radius,
         level,
         cost: Cost::default(),
         own: 0,
@@ -117,6 +130,7 @@ pub(super) fn check(doc: &Document<'_>, level: usize, depth: usize) -> Result<Ch
         depth,
         shared: false,
         in_text: false,
+        em: f64::from(crate::images::svg_text::DEFAULT_FONT_SIZE),
     };
     walk.visit(root, &mut Vec::new(), at)?;
     let mut text = SvgTextDoc::default();
@@ -279,21 +293,29 @@ pub(super) fn url_refs(v: &str) -> impl Iterator<Item = &str> {
 }
 
 /// Work for the CSS parser `usvg` uses to read a `style` attribute or
-/// sheet. Each time it fails to read a name, which happens at least once
-/// per declaration, after every unitless number and on `#` before a digit,
-/// it scans the text from its start to report a line and column: the sum
-/// of those offsets. Counting every `:`, `#` and digit run overestimates.
+/// sheet. Each time it fails to read a name it scans the text from its
+/// start to report a line and column: the sum of those offsets. It fails
+/// at the end of a declaration's value (one per `:`), after `#` and `@`,
+/// after a number that no unit or `%` follows (a sign or a point alone is
+/// a number), and up to twice more when it gives up on a block (one per
+/// `}`) or on the text. Counting each of those bytes overestimates.
 pub(super) fn css_work(css: &str) -> usize {
     let bytes = css.as_bytes();
-    let fails = |&(i, &c): &(usize, &u8)| {
-        matches!(c, b':' | b'#')
-            || (c.is_ascii_digit() && !bytes.get(i + 1).is_some_and(u8::is_ascii_digit))
+    let fails = |&(i, &c): &(usize, &u8)| match c {
+        b':' | b'#' | b'@' | b'}' => true,
+        // Bytes 128 to 237 start no name, so no other byte counts as one.
+        b'0'..=b'9' | b'+' | b'-' | b'.' => !bytes.get(i + 1).is_some_and(|&next| {
+            next.is_ascii_digit() || next.is_ascii_alphabetic() || matches!(next, b'_' | b'%')
+        }),
+        _ => false,
     };
     bytes
         .iter()
         .enumerate()
         .filter(fails)
-        .fold(0, |sum, (i, _)| sum.saturating_add(i))
+        .fold(bytes.len().saturating_mul(2), |sum, (i, _)| {
+            sum.saturating_add(i + 1)
+        })
 }
 
 /// `property: value` pairs in a style attribute or style sheet.
@@ -341,6 +363,100 @@ pub(super) fn scan_numbers(v: &str) -> (usize, f64) {
         end_number(s, bytes.len(), &mut count);
     }
     (count, largest)
+}
+
+/// The name of the property a declaration starts with: its last word,
+/// after any comment, in lower case.
+fn property(p: &str) -> String {
+    let p = p.trim().to_ascii_lowercase();
+    p.rsplit(char::is_whitespace).next().unwrap_or("").into()
+}
+
+/// What the `font-size` and `font` declarations an element may have say
+/// about the font size `usvg` resolves for it, read once however many
+/// there are.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct FontBound {
+    /// The largest size in user units.
+    absolute: f64,
+    /// The largest multiple of the parent's size (`em`, `ex`, `%`, a
+    /// keyword).
+    factor: f64,
+}
+
+impl FontBound {
+    /// Three steps of 1.2 up from the parent's, the most a keyword gives.
+    const NAMED: f64 = 1.728;
+
+    /// Counts a `font-size` value.
+    pub(super) fn size(&mut self, v: &str) {
+        let v = v.trim().to_ascii_lowercase();
+        let (count, n) = scan_numbers(&v);
+        if count == 0 {
+            self.factor = self.factor.max(Self::NAMED);
+        } else if v.ends_with("em") || v.ends_with("ex") {
+            self.factor = self.factor.max(n);
+        } else if v.ends_with('%') {
+            self.factor = self.factor.max(n / 100.0);
+        } else {
+            self.absolute = self.absolute.max(n * unit_scale(&v));
+        }
+    }
+
+    /// Counts a `font` shorthand, whose size is one of its numbers, in
+    /// any unit, or a keyword.
+    pub(super) fn shorthand(&mut self, v: &str) {
+        let n = scan_numbers(v).1;
+        self.absolute = self.absolute.max(n * INCH);
+        self.factor = self.factor.max(n).max(Self::NAMED);
+    }
+
+    /// The largest font size of an element with these declarations, under
+    /// a parent of at most `parent`: never less than the parent's, which
+    /// is what `usvg` keeps for a value it does not read.
+    pub(super) fn over(self, parent: f64) -> f64 {
+        // `max` drops a NaN (zero times infinity).
+        parent.max(self.absolute).max(self.factor * parent)
+    }
+}
+
+/// User units per inch, the largest absolute unit.
+const INCH: f64 = 96.0;
+
+/// At least the user units per unit of length `v` (lower case), which is
+/// not in `em`, `ex` or `%`.
+fn unit_scale(v: &str) -> f64 {
+    match v.get(v.len().saturating_sub(2)..) {
+        Some("in") => INCH,
+        Some("cm") => 38.0,
+        Some("pc") => 16.0,
+        Some("mm") => 4.0,
+        Some("pt") => 2.0,
+        _ => 1.0,
+    }
+}
+
+/// A radius (`r`, `rx`, `ry`): an arc is split into more curves the larger
+/// it is, so it is held to [`MAX_COORDINATE`] user units.
+struct Radius {
+    /// In `em` (an `ex` is at most one), when that is its unit: checked
+    /// against the font size of each copy ([`Walk::visit`]).
+    em: f64,
+}
+
+impl Radius {
+    fn of(v: &str) -> Result<Self, Reject> {
+        let v = v.trim().to_ascii_lowercase();
+        let n = scan_numbers(&v).1;
+        if v.ends_with("em") || v.ends_with("ex") {
+            return Ok(Self { em: n });
+        }
+        // A `%` is of the viewport, which `MAX_SIDE` bounds.
+        if n * unit_scale(&v) > MAX_COORDINATE {
+            return Err(too_large());
+        }
+        Ok(Self { em: 0.0 })
+    }
 }
 
 pub(super) fn too_large() -> Reject {
@@ -460,6 +576,10 @@ pub(super) struct Info<'d> {
     pub(super) inherited_bytes: usize,
     /// Work to parse its `style` (see [`MAX_STYLE_WORK`]).
     pub(super) style_work: usize,
+    /// The font sizes its `font-size` attribute and its `style` give it.
+    pub(super) fonts: FontBound,
+    /// Its largest radius in `em` or `ex`, in `em`.
+    pub(super) em_radius: f64,
     /// Most vertices it draws markers at; `None`: it draws no markers.
     pub(super) vertices: Option<usize>,
     /// A `text`: the characters in it.
@@ -498,11 +618,16 @@ impl<'d> Info<'d> {
                 "style" => {
                     info.style_work = css_work(v);
                     for (p, value) in declarations(v) {
-                        let prop = p.trim().to_ascii_lowercase();
-                        if matches!(prop.as_str(), "r" | "rx" | "ry" | "d")
-                            && scan_numbers(value).1 > MAX_COORDINATE
-                        {
-                            return Err(too_large());
+                        match property(p).as_str() {
+                            "r" | "rx" | "ry" => {
+                                info.em_radius = info.em_radius.max(Radius::of(value)?.em);
+                            }
+                            "d" if scan_numbers(value).1 > MAX_COORDINATE => {
+                                return Err(too_large());
+                            }
+                            "font-size" => info.fonts.size(value),
+                            "font" => info.fonts.shorthand(value),
+                            _ => {}
                         }
                         info.drawn.file(p, value, &mut styled);
                     }
@@ -520,11 +645,11 @@ impl<'d> Info<'d> {
                         vertices += v.bytes().filter(|c| matches!(c, b'z' | b'Z')).count();
                     }
                 }
-                "r" | "rx" | "ry" => {
-                    if scan_numbers(v).1 > MAX_COORDINATE {
-                        return Err(too_large());
-                    }
-                }
+                "r" | "rx" | "ry" => info.em_radius = info.em_radius.max(Radius::of(v)?.em),
+                // A `textPath`'s own path data, which the text layout reads
+                // (`svg_text/path.rs`): its arcs are split like those of `d`.
+                "path" if scan_numbers(v).1 > MAX_COORDINATE => return Err(too_large()),
+                "font-size" => info.fonts.size(v),
                 _ => info.drawn.file(name, v, &mut info.refs),
             }
         }
@@ -581,6 +706,8 @@ pub(super) struct At {
     pub(super) shared: bool,
     /// Inside a `text`.
     pub(super) in_text: bool,
+    /// At least the font size the parent has in this copy.
+    pub(super) em: f64,
 }
 
 impl At {
@@ -613,6 +740,10 @@ pub(super) struct Walk<'d, 'i, 'w> {
     /// Declaration text of the style sheets, copied onto the elements
     /// rules match (charged to each).
     pub(super) sheet_values: usize,
+    /// The font sizes style sheets give: any element may have them.
+    pub(super) sheet_fonts: FontBound,
+    /// The largest radius in `em` style sheets give.
+    pub(super) sheet_em_radius: f64,
     /// SVG images around this document.
     pub(super) level: usize,
     pub(super) cost: Cost,
@@ -647,6 +778,7 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
             depth,
             shared,
             in_text,
+            em,
         } = at;
         if depth > MAX_DEPTH {
             return Err(Reject::Limit(format!(
@@ -665,6 +797,12 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
         };
         if self.active.contains(&n.id()) {
             return Ok(());
+        }
+        // A radius in `em` is as large as the font size of this copy,
+        // which `use` and the sheets may raise at every level.
+        let em = info.fonts.over(em).max(self.sheet_fonts.over(em));
+        if info.em_radius.max(self.sheet_em_radius) * em > MAX_COORDINATE {
+            return Err(too_large());
         }
         self.active.push(n.id());
         self.own += 1;
@@ -720,6 +858,7 @@ impl<'d, 'i, 'w> Walk<'d, 'i, 'w> {
         let at = At {
             inherited: inherited.saturating_add(info.inherited_bytes),
             in_text,
+            em,
             ..at
         };
         if let Some(r) = info.link {

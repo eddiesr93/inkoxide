@@ -7,7 +7,7 @@ mod page;
 mod pdfa;
 mod titles;
 
-use estimate::repeated_size;
+use estimate::{leader_glyphs, repeated_size};
 pub(crate) use marks::{Dest, Marks, OutlineEntry};
 use numbering::{number_flows, relayout};
 use page::paint_page;
@@ -210,8 +210,10 @@ pub(crate) fn run<'d, T: Send>(
     // The painter draws each page's digits in placeholders, and headers
     // and footers that show them are laid out per page.
     let total = page_count(&laid)?;
-    repeated_size(&laid, text, plan.is_some())?;
     let marks = Marks::of(&laid);
+    let longest_title = marks.outline.iter().map(|e| e.title.len()).max();
+    repeated_size(&laid, text, plan.is_some(), longest_title.unwrap_or(0))?;
+    leader_glyphs(&laid, text)?;
     let refs = marks.page_refs();
     // The bookmark titles headers, footers and overlays show are known
     // now: their paragraphs are shaped as they read on each page.

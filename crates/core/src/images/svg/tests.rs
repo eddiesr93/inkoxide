@@ -489,11 +489,23 @@ fn limits_styles() {
     let declarations = |n: usize| svg(&format!(r#"<g style="{}"/>"#, "fill:none;".repeat(n)));
     let numbers = |n: usize| svg(&format!(r#"<rect style="{}"/>"#, dashes(n)));
     let in_sheet = |n: usize| svg(&format!("<style>rect{{{}}}</style><rect/>", dashes(n)));
-    let docs: [(&str, usize, Doc); 4] = [
+    // A sign or a point alone is a number too, an at-rule needs a name,
+    // and a block the parser gives up on costs a scan as well.
+    let signs = |n: usize| svg(&format!(r#"<path style="fill:{}"/>"#, "+".repeat(n)));
+    let points = |n: usize| svg(&format!(r#"<path style="fill:{}"/>"#, "-.".repeat(n)));
+    let at_rules = |n: usize| svg(&format!("<style>{}</style><rect/>", "@".repeat(n)));
+    let blocks = |n: usize| svg(&format!("<style>{}</style><rect/>", "a{!}".repeat(n)));
+    let values = |n: usize| svg(&format!("<style>a{{{}}}</style><rect/>", "b:c !".repeat(n)));
+    let docs: [(&str, usize, Doc); 9] = [
         ("declarations", 25_000, &declarations),
         ("numbers", 20_000, &numbers),
         ("numbers in a sheet", 20_000, &in_sheet),
         ("copies", 7_500, &copied),
+        ("signs", 25_000, &signs),
+        ("points", 15_000, &points),
+        ("at-rules", 25_000, &at_rules),
+        ("blocks", 15_000, &blocks),
+        ("values", 15_000, &values),
     ];
     for (what, n, doc) in docs {
         crate::test_timing::assert_linear(what, n, |n| {
@@ -574,6 +586,22 @@ fn refuses_huge_radii() {
         r#"<ellipse rx="1" ry="1e300"/>"#,
         r#"<rect width="5" height="5" rx="1e9"/>"#,
         r#"<circle style="r: 1e20"/>"#,
+        r#"<circle style="/**/ r: 1e20"/>"#,
+        r#"<circle r="1e6in"/>"#,
+        // A `textPath`'s own path data.
+        r#"<text><textPath path="M-1e42 0A1e42 1e42 0 1 0 1e42 0">x</textPath></text>"#,
+        // A radius in `em` is as large as the font size, which the element,
+        // an ancestor, a `use`, nested relative sizes or a sheet may set.
+        r#"<circle font-size="1e30" r="1e7em"/>"#,
+        r#"<g font-size="1e30"><circle r="1e7ex"/></g>"#,
+        r#"<g style="font-size:1e7pt"><ellipse rx="2EM" ry="1"/></g>"#,
+        r#"<g style="font:bold 1e9px serif"><circle r="1em"/></g>"#,
+        r##"<defs><circle id="c" r="1e4em"/></defs><use href="#c" font-size="1e4"/>"##,
+        r#"<g font-size="100em"><g font-size="100em"><g font-size="100em"><circle r="1em"/></g></g></g>"#,
+        r#"<g font-size="xx-large"><g font-size="1e9%"><circle r="1em"/></g></g>"#,
+        r#"<style>g{font-size:1e30px}</style><g><circle r="1em"/></g>"#,
+        r#"<style>circle{r:1e7em}</style><g font-size="100"><circle/></g>"#,
+        r"<style>circle{r:1e30}</style><circle/>",
     ] {
         let ordinary = svg(r#"<path d="M0 0A5 5 0 1 1 10 0"/><circle r="4"/>"#);
         crate::test_timing::assert_as_fast(
@@ -591,6 +619,19 @@ fn refuses_huge_radii() {
                 took
             },
         );
+    }
+}
+
+#[test]
+fn radii_in_em_fit_ordinary_font_sizes() {
+    for shapes in [
+        r#"<circle r="2em"/>"#,
+        r#"<g font-size="24"><g font-size="150%"><circle r=".5em"/><ellipse rx="1ex" ry="2em"/></g></g>"#,
+        r#"<style>text{font-size:1.2em} .big{font:bold 32px serif}</style><g font-size="larger"><rect width="9em" height="9em" rx="1em"/></g>"#,
+        r##"<defs><circle id="c" r="1em"/></defs><use href="#c" font-size="40pt"/>"##,
+        r#"<text><textPath path="M0 0A5 5 0 1 0 10 0">x</textPath></text>"#,
+    ] {
+        parse(svg(shapes).as_bytes()).unwrap_or_else(|e| panic!("{shapes}: {e}"));
     }
 }
 
