@@ -47,7 +47,9 @@ const paint = (p: Painter, w: number, h: number) => {
           item
         }}</Text>
       </View>
-      <Text>A <Link href="https://example.com">link</Link> and a note <Note>Read me</Note>.</Text>
+      <Text
+        >A <Link href="https://example.com" :hit-slop="4">link</Link> and a note <Note>Read me</Note>.</Text
+      >
       <Text>The logo<Leader /><PageRef to="#logo" /></Text>
       <Image id="logo" src="logo" :style="{ width: 24, height: 24 }" />
       <Svg :width="60" :height="30" view-box="0 0 60 30">
@@ -57,7 +59,7 @@ const paint = (p: Painter, w: number, h: number) => {
       <Canvas :width="40" :height="20" :paint="paint" />
       <View class="flex-row gap-2">
         <TextField name="name" value="Ada" class="h-5 w-24 border border-gray-300" />
-        <Checkbox name="agree" checked class="h-3 w-3 border border-gray-400" />
+        <Checkbox name="agree" checked value="agreed" mark="cross" class="h-3 w-3 border border-gray-400" />
       </View>
     </Page>
   </Document>

@@ -16,7 +16,7 @@ use super::{
 use crate::fonts::{FontKey, FontSet};
 use crate::forms::{format, FieldOp};
 use crate::paint::{polygon, PathSeg, KAPPA};
-use crate::schema::{FieldAlign, FieldKind, FieldValue, BLACK};
+use crate::schema::{FieldAlign, FieldKind, FieldMark, FieldValue, BLACK};
 use crate::InkoxideError;
 
 /// What the catalog's `/AcroForm` needs.
@@ -190,16 +190,17 @@ struct OnStates {
     names: Vec<String>,
     /// The names are positions, and `/Opt` holds the widgets' values.
     positions: bool,
-    /// A radio group's value (`/V`): the on state of its first checked
-    /// button, `None` when none is.
+    /// The field's value (`/V`): the on state of a checked checkbox, or of
+    /// a radio group's first checked button; `None` when none is on.
     value: Option<String>,
     /// Whether each widget is on; for radio buttons, those whose on
     /// state is the group's value.
     on: Vec<bool>,
 }
 
-/// A checkbox is on in state `Yes`, a radio button in the state named
-/// after its value. A value that cannot name a state (`Off` is the off
+/// A checkbox is on in state `Yes`, or the state named after its value
+/// when it has one; a radio button in the state named after its value. A
+/// value that cannot name a state (`Off` is the off
 /// state, and a name has at most [`MAX_NAME`] bytes) makes every button of
 /// its group use a position instead, with the values in `/Opt`. So does
 /// encryption (`hidden`): names are not encrypted, the strings of `/Opt`
@@ -210,11 +211,12 @@ fn on_states(widgets: &[(usize, &FieldOp)], hidden: bool) -> OnStates {
     fn value(op: &FieldOp) -> &str {
         op.field.value_str().unwrap_or_default()
     }
-    if widgets[0].1.field.kind != FieldKind::Radio {
+    let radio = widgets[0].1.field.kind == FieldKind::Radio;
+    if !radio && widgets.iter().all(|(_, w)| w.field.value.is_none()) {
         return OnStates {
             names: vec!["Yes".to_string(); widgets.len()],
             positions: false,
-            value: None,
+            value: widgets[0].1.field.checked.then(|| "Yes".to_string()),
             on: widgets.iter().map(|(_, w)| w.field.checked).collect(),
         };
     }
@@ -375,11 +377,11 @@ fn field_entries(
         }
         FieldKind::Checkbox => {
             f.field_type(FieldType::Button);
-            f.checkbox_value(if spec.checked {
-                pdf_writer::types::CheckBoxState::Yes
-            } else {
-                pdf_writer::types::CheckBoxState::Off
-            });
+            let on = states.value.as_deref().unwrap_or("Off");
+            f.pair(Name(b"V"), Name(on.as_bytes()));
+            if states.positions {
+                options(f, out, &[spec.value_str().unwrap_or("")]);
+            }
         }
         FieldKind::Radio => {
             f.field_type(FieldType::Button);
@@ -522,10 +524,10 @@ impl Ctx<'_, '_, '_> {
             FieldKind::Checkbox | FieldKind::Radio => {
                 let mut c = Content::new();
                 set_fill(&mut c, &op.field.color.unwrap_or(BLACK));
-                let segs = if op.field.kind == FieldKind::Radio {
-                    dot(w, h, op.field.size)
-                } else {
-                    check(w, h, op.field.size)
+                let segs = match (op.field.kind, op.field.mark.unwrap_or_default()) {
+                    (FieldKind::Radio, _) => dot(w, h, op.field.size),
+                    (_, FieldMark::Check) => check(w, h, op.field.size),
+                    (_, FieldMark::Cross) => cross(w, h, op.field.size),
                 };
                 super::path(&mut c, &segs);
                 c.fill_nonzero();
@@ -593,6 +595,32 @@ fn check(w: f32, h: f32, size: f32) -> Vec<PathSeg> {
         p(0.42, 0.18),
     ];
     polygon(&pts).segs
+}
+
+/// A cross of `size`, centred in a `w`×`h` box: two bars along the
+/// diagonals, wound the same way so that they fill as one shape.
+fn cross(w: f32, h: f32, size: f32) -> Vec<PathSeg> {
+    let s = mark_side(w, h, size);
+    let (ox, oy) = ((w - s) / 2.0, (h - s) / 2.0);
+    let p = |x: f32, y: f32| (ox + x * s, oy + y * s);
+    // Half the bar's thickness, along each axis.
+    let t = 0.045;
+    let (lo, hi) = (0.2, 0.8);
+    let rising = [
+        p(lo - t, lo + t),
+        p(hi - t, hi + t),
+        p(hi + t, hi - t),
+        p(lo + t, lo - t),
+    ];
+    let falling = [
+        p(lo + t, hi + t),
+        p(hi + t, lo + t),
+        p(hi - t, lo - t),
+        p(lo - t, hi - t),
+    ];
+    let mut segs = polygon(&rising).segs;
+    segs.extend(polygon(&falling).segs);
+    segs
 }
 
 /// A centred dot of `size` for a selected radio button.
@@ -987,6 +1015,59 @@ mod tests {
         // Values that are names stay the states.
         let pdf = render(&format!("{},{}", radio("gas", true), radio("oil", false)));
         assert!(pdf.contains("/V /gas") && pdf.contains("/oil") && !pdf.contains("/Opt"));
+    }
+
+    #[test]
+    fn a_checkbox_exports_its_value() {
+        let checkbox = |extra: &str| {
+            format!(r#"{{"type":"field","field":{{"name":"c","kind":"checkbox"{extra}}}}}"#)
+        };
+        // Without a value, the state is `Yes`.
+        let pdf = render(&checkbox(r#","checked":true"#));
+        assert!(pdf.contains("/V /Yes") && pdf.contains("/AS /Yes"), "{pdf}");
+        let pdf = render(&checkbox(""));
+        assert!(pdf.contains("/V /Off") && pdf.contains("/AS /Off"), "{pdf}");
+        // A value names the on state, checked or not.
+        let pdf = render(&checkbox(r#","value":"agreed","checked":true"#));
+        assert!(
+            pdf.contains("/V /agreed") && pdf.contains("/AS /agreed"),
+            "{pdf}"
+        );
+        assert!(!pdf.contains("/Yes") && !pdf.contains("/Opt"), "{pdf}");
+        let pdf = render(&checkbox(r#","value":"agreed""#));
+        assert!(pdf.contains("/V /Off") && pdf.contains("/agreed "), "{pdf}");
+        // A value that cannot name a state is exported through `/Opt`.
+        let pdf = render(&checkbox(r#","value":"Off","checked":true"#));
+        assert!(
+            pdf.contains("/Opt [(Off)]") && pdf.contains("/V /0"),
+            "{pdf}"
+        );
+        assert!(pdf.contains("/AS /0"), "{pdf}");
+    }
+
+    #[test]
+    fn a_checkbox_mark_is_a_check_or_a_cross() {
+        let on = |mark: &str| {
+            let pdf = render(&format!(
+                r#"{{"type":"field","field":{{"name":"c","kind":"checkbox","checked":true{mark}}}}}"#
+            ));
+            // The appearance stream of the on state: the first with a path.
+            let stream = pdf.split("stream\n").find(|s| s.contains(" m\n")).unwrap();
+            stream.split("endstream").next().unwrap().to_string()
+        };
+        let check = on("");
+        assert_eq!(check, on(r#","mark":"check""#));
+        assert_eq!(check.matches(" m\n").count(), 1, "{check}");
+        // Two bars, each a closed polygon of four points.
+        let cross = on(r#","mark":"cross""#);
+        assert_eq!(cross.matches(" m\n").count(), 2, "{cross}");
+        assert_eq!(cross.matches(" l\n").count(), 6, "{cross}");
+        // Both marks fit the same square.
+        let (cw, ch) = extent(&super::cross(12.0, 12.0, 10.0));
+        assert!(
+            cw <= 12.0 && ch <= 12.0 && (cw - ch).abs() < 1e-4,
+            "{cw} {ch}"
+        );
     }
 
     #[test]

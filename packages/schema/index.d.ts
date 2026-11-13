@@ -714,6 +714,10 @@ export interface BoxNode {
   style?: Style;
   break?: Break;
   link?: Link;
+  /**
+   * With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`.
+   */
+  linkSlop?: EdgesNumber;
   bookmark?: Bookmark;
   pages?: PageFilter;
   debug?: Debug;
@@ -1112,6 +1116,10 @@ export interface TextNode {
   style?: Style;
   break?: Break;
   link?: Link;
+  /**
+   * With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`.
+   */
+  linkSlop?: EdgesNumber;
   bookmark?: Bookmark;
   pages?: PageFilter;
   debug?: Debug;
@@ -1161,6 +1169,10 @@ export interface TextRun {
    * Makes the run a link; the clickable area covers the run's glyphs on each line.
    */
   link?: Link;
+  /**
+   * With `link`: how far the clickable area reaches past the run's part of each line, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`.
+   */
+  linkSlop?: EdgesNumber;
   /**
    * Overrides the text node's `hyphenate` for this run's words, in the node's language.
    */
@@ -1272,6 +1284,10 @@ export interface ImageNode {
   style?: Style;
   break?: Break;
   link?: Link;
+  /**
+   * With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`.
+   */
+  linkSlop?: EdgesNumber;
   bookmark?: Bookmark;
   pages?: PageFilter;
   debug?: Debug;
@@ -1304,6 +1320,10 @@ export interface TableNode {
   style?: Style;
   break?: Break;
   link?: Link;
+  /**
+   * With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`.
+   */
+  linkSlop?: EdgesNumber;
   bookmark?: Bookmark;
   pages?: PageFilter;
   debug?: Debug;
@@ -1374,6 +1394,10 @@ export interface SpacerNode {
   style?: Style;
   break?: Break;
   link?: Link;
+  /**
+   * With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`.
+   */
+  linkSlop?: EdgesNumber;
   bookmark?: Bookmark;
   pages?: PageFilter;
   debug?: Debug;
@@ -1409,7 +1433,7 @@ export interface Field {
    */
   kind: 'text' | 'checkbox' | 'radio' | 'select' | 'list';
   /**
-   * text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select and list: the selected option (one of `options`), or for a list with `multiSelect` an array of them, each at most once; radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). A string is at most 8000 characters.
+   * text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select and list: the selected option (one of `options`), or for a list with `multiSelect` an array of them, each at most once; radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`); checkbox: the value it exports when on, non-empty (`INVALID_VALUE`), `Yes` without one. A string is at most 8000 characters.
    */
   value?: string | string[];
   /**
@@ -1480,6 +1504,10 @@ export interface Field {
    * text, select and list only: where the text sits across the field, as written and as viewers lay out what is typed (`/Q`).
    */
   align?: 'left' | 'center' | 'right';
+  /**
+   * checkbox only: the mark it shows when on, a check mark or a cross.
+   */
+  mark?: 'check' | 'cross';
 }
 /**
  * Single-line, non-password text fields only: how the field shows and takes its value. The field shows `value` formatted; viewers format what the user types with the standard form scripts (`AFNumber_Format` and the like), which PDF/A leaves out (the formatted text and value stay). `value` must fit the format (`INVALID_VALUE`): a number or percent is `-?digits[.digits]` (at most 15 digits on each side; a percent is a fraction, `0.125` shows `12.50%`), a date `YYYY-MM-DD` with an optional `THH:MM[:SS]`, a time `HH:MM[:SS]` or a date with a time, `zip` 5 digits, `zipPlus4` 9, `phone` 10 and `ssn` 9. A key that does not apply to the `type` is `INVALID_VALUE`.

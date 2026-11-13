@@ -30,6 +30,12 @@ schema has its own version and [changelog](packages/schema/CHANGELOG.md).
 - **Roles `toc` and `tocItem`:** a table of contents and its entries in tagged output (`TOC` and
   `TOCI`; under PDF/UA-2, in the PDF 1.7 namespace and role-mapped to `Div`, as PDF 2.0 has
   neither). With `pdfUA`, a `tocItem` outside a `toc` is `UA_CONFLICT`.
+- **Checkbox value and mark:** a `Checkbox` takes `value`, what the field exports when it is
+  checked (`Yes` without one), and `mark="cross"`, a cross in the checked box in place of the
+  check mark. In the document format, a checkbox field's `value` and `mark`.
+- **Link hit slop:** `hitSlop` on a `Link` makes its clickable area reach past it, by a number of
+  points on every side or by `{ top, right, bottom, left }`, so that a small link is easier to
+  hit. In the document format, `linkSlop` on a node or a run with `link`.
 
 ### Changed
 

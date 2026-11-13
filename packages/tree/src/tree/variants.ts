@@ -4,7 +4,7 @@ import type { Node as SchemaNode, Style } from '@inkoxide/schema';
  * The props of an element in the flow (`Builder.flowProps`) that a per-page wrapper takes from its
  * variants. `debug` is apart: both are outlined.
  */
-export const FLOW_KEYS = ['id', 'break', 'link', 'bookmark', 'pages'] as const;
+export const FLOW_KEYS = ['id', 'break', 'link', 'linkSlop', 'bookmark', 'pages'] as const;
 export type FlowKey = (typeof FLOW_KEYS)[number];
 
 /**

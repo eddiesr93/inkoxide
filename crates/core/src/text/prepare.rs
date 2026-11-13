@@ -1033,6 +1033,7 @@ mod tests {
             bookmark_title: None,
             leader: None,
             link: None,
+            link_slop: None,
             hyphenate: None,
             font_key: None,
             vertical_align: None,

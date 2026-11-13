@@ -1,4 +1,4 @@
-import type { Color, Style, TransformOp } from '@inkoxide/schema';
+import type { Color, EdgesNumber, Style, TransformOp } from '@inkoxide/schema';
 import {
   BORDER_STYLES,
   type FontStretch,
@@ -62,6 +62,8 @@ export interface TextCtx extends Omit<{ [K in InheritedKey]?: FlatStyle[K] }, Ro
   hyphenation: HyphenationCallback | undefined;
   /** Link target inherited by runs (nested `Text href`). */
   link: string | undefined;
+  /** The `hitSlop` of the `Link` the runs are in: one object for each `Link`. */
+  linkSlop?: EdgesNumber | undefined;
   /**
    * Where runs sit on their line (`verticalAlign` on a `Text`): it is not a `TEXT_INHERITED` key,
    * since a `Cell`'s `verticalAlign` must not reach its text, but the runs of a nested `Text` take
@@ -90,6 +92,7 @@ export interface InheritExtra {
   /** `null` turns off the callback inherited from the document. */
   hyphenation?: HyphenationCallback | null | undefined;
   link?: string | undefined;
+  linkSlop?: EdgesNumber | undefined;
   verticalAlign?: RunAlign | undefined;
   direction?: FlatStyle['direction'];
   orphans?: number | undefined;
@@ -127,7 +130,11 @@ export function inherit(parent: TextCtx, own: FlatStyle, extra?: InheritExtra): 
       const ownSwitch = own.hyphenate ?? extra.hyphenate;
       if (extra.hyphenation && c.hyphenate === false && ownSwitch === undefined) c.hyphenate = undefined;
     }
-    if (extra.link !== undefined) c.link = extra.link;
+    if (extra.link !== undefined) {
+      c.link = extra.link;
+      // The slop is the link's own: a link inside another does not take the outer one's.
+      c.linkSlop = extra.linkSlop;
+    }
     if (extra.verticalAlign !== undefined) c.verticalAlign = extra.verticalAlign;
     if (extra.direction !== undefined) c.direction = extra.direction;
     if (extra.orphans !== undefined) c.orphans = extra.orphans;

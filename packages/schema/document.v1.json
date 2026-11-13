@@ -1410,6 +1410,10 @@
           "$ref": "#/$defs/Link",
           "description": "Makes the run a link; the clickable area covers the run's glyphs on each line."
         },
+        "linkSlop": {
+          "$ref": "#/$defs/EdgesNumber",
+          "description": "With `link`: how far the clickable area reaches past the run's part of each line, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`."
+        },
         "hyphenate": {
           "type": "boolean",
           "description": "Overrides the text node's `hyphenate` for this run's words, in the node's language."
@@ -2052,6 +2056,10 @@
         "link": {
           "$ref": "#/$defs/Link"
         },
+        "linkSlop": {
+          "$ref": "#/$defs/EdgesNumber",
+          "description": "With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`."
+        },
         "bookmark": {
           "$ref": "#/$defs/Bookmark"
         },
@@ -2103,6 +2111,10 @@
         "link": {
           "$ref": "#/$defs/Link"
         },
+        "linkSlop": {
+          "$ref": "#/$defs/EdgesNumber",
+          "description": "With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`."
+        },
         "bookmark": {
           "$ref": "#/$defs/Bookmark"
         },
@@ -2144,6 +2156,10 @@
         },
         "link": {
           "$ref": "#/$defs/Link"
+        },
+        "linkSlop": {
+          "$ref": "#/$defs/EdgesNumber",
+          "description": "With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`."
         },
         "bookmark": {
           "$ref": "#/$defs/Bookmark"
@@ -2330,6 +2346,10 @@
         "link": {
           "$ref": "#/$defs/Link"
         },
+        "linkSlop": {
+          "$ref": "#/$defs/EdgesNumber",
+          "description": "With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`."
+        },
         "bookmark": {
           "$ref": "#/$defs/Bookmark"
         },
@@ -2398,6 +2418,10 @@
         },
         "link": {
           "$ref": "#/$defs/Link"
+        },
+        "linkSlop": {
+          "$ref": "#/$defs/EdgesNumber",
+          "description": "With `link`: how far the clickable area reaches past the node's box, in points per side; a side left out is 0. Without `link` it is `INVALID_VALUE`."
         },
         "bookmark": {
           "$ref": "#/$defs/Bookmark"
@@ -2483,7 +2507,7 @@
               "maxItems": 1000
             }
           ],
-          "description": "text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select and list: the selected option (one of `options`), or for a list with `multiSelect` an array of them, each at most once; radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`). A string is at most 8000 characters."
+          "description": "text: the initial text, at most `maxLength` characters (`OUT_OF_RANGE`); select and list: the selected option (one of `options`), or for a list with `multiSelect` an array of them, each at most once; radio: the value this button exports when selected, required and non-empty (`MISSING_FIELD`); checkbox: the value it exports when on, non-empty (`INVALID_VALUE`), `Yes` without one. A string is at most 8000 characters."
         },
         "checked": {
           "type": "boolean",
@@ -2578,6 +2602,14 @@
           ],
           "default": "left",
           "description": "text, select and list only: where the text sits across the field, as written and as viewers lay out what is typed (`/Q`)."
+        },
+        "mark": {
+          "enum": [
+            "check",
+            "cross"
+          ],
+          "default": "check",
+          "description": "checkbox only: the mark it shows when on, a check mark or a cross."
         }
       }
     },

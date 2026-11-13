@@ -504,7 +504,11 @@ fn paint_line(
         }
         if let Some(target) = run.link.as_deref() {
             match links.last_mut() {
-                Some((_, x1, t, covered)) if *t == target && (*x1 - x).abs() < WIDTH_EPS => {
+                Some((_, x1, t, covered))
+                    if *t == target
+                        && (*x1 - x).abs() < WIDTH_EPS
+                        && runs[covered[0] as usize].link_slop == run.link_slop =>
+                {
                     *x1 = x + piece.width;
                     if covered.last() != Some(&piece.run) {
                         covered.push(piece.run);
@@ -593,13 +597,14 @@ fn paint_line(
         if x1 > x0 {
             // In its run's `Link` element.
             let owner = run_tags.and_then(|t| t[covered[0] as usize].link);
+            let slop = runs[covered[0] as usize].link_slop.as_deref();
             // What it says it is: the text of its runs.
             let mut label = LinkText::default();
             for r in covered {
                 label.push(runs[r as usize].text.as_deref().unwrap_or_default());
             }
             ops.push(Op::Link {
-                rect: Rect::new(x0, cy + line.top, x1 - x0, line.height),
+                rect: crate::paint::grown(Rect::new(x0, cy + line.top, x1 - x0, line.height), slop),
                 target: target.into(),
                 label: label.finish(),
                 owner,

@@ -671,6 +671,11 @@ component: inside a `Text` it is a linked run, elsewhere a box like a `View`. A 
 style it is given and adds no colour or underline of its own. `href="#id"` jumps to the element
 with that `id`.
 
+A small link is hard to hit with a finger. `hitSlop` on a `Link` makes its clickable area reach
+past it without moving anything: `hitSlop={6}` adds 6 points on every side, and
+`hitSlop={{ top: 4, bottom: 4 }}` only above and below. In a `Text`, the area grows around the
+link's part of each line.
+
 Bookmarks become the PDF outline in the viewer's sidebar. A bookmark is a title, or `{ title,
 level, expanded, zoom }`: `level` nests it under the nearest earlier bookmark of a lower level
 (default 1), `expanded: false` starts it closed, its children hidden until it is opened, and
@@ -1173,6 +1178,10 @@ array of them. `Field` is any of these, picked by its `kind` (`"text"`, `"checkb
 `noSpell` turns off the viewer's spelling check, on a `TextField` or on a `Select` with `edit`.
 `align` (`'left'`, `'center'` or `'right'`) puts the value of a `TextField`, `Select` or `List`
 in the middle or at the right of its box, in the appearance drawn and in viewers.
+
+A `Checkbox` exports `Yes` when it is checked; `value` is what it exports instead, as the
+`value` of a `Radio` is. `mark="cross"` draws a cross in a checked box in place of the check
+mark. The mark takes the text colour (`text-red-600`), the box its border and background.
 
 A `FieldSet` groups fields: it is a `View`, with the same props (`render` too), whose `name`
 goes in front of the name of every field inside it, at any depth. Viewers show and export the
