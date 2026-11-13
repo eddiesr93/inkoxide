@@ -16,6 +16,7 @@ mod fast;
 pub(crate) mod float;
 mod flow;
 mod shape;
+mod solve;
 mod style;
 pub(crate) mod table;
 
@@ -23,7 +24,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::sync::Arc;
 
-use taffy::prelude::{NodeId as TaffyId, Size as TSize, TaffyTree};
+use taffy::prelude::Size as TSize;
 use taffy::{LayoutInput, LayoutOutput};
 
 pub(crate) use float::{LineBox, LineBoxes};
@@ -357,11 +358,6 @@ impl LeafMeasure for NoContent {
     }
 }
 
-#[expect(clippy::needless_pass_by_value, reason = "a `map_err` adapter")]
-fn layout_err(e: taffy::TaffyError) -> InkoxideError {
-    InkoxideError::Layout(e.to_string())
-}
-
 fn edges(r: taffy::geometry::Rect<f32>) -> Edges<f32> {
     Edges {
         top: r.top,
@@ -558,21 +554,15 @@ impl<'m> LayoutCtx<'m> {
             k += 1;
         }
 
-        let mut taffy: TaffyTree<NodeIdx> = TaffyTree::with_capacity(list.len());
-        taffy.disable_rounding();
-        let mut ids: Vec<TaffyId> = vec![TaffyId::from(0u64); list.len()];
-        for k in (0..list.len()).rev() {
-            let (idx, start, len) = list[k];
+        let mut solve_nodes = Vec::with_capacity(list.len());
+        for (k, &(idx, start, len)) in list.iter().enumerate() {
             let ln = &tree.nodes[idx as usize];
-            let kids = &ids[start..start + len];
             let leaf_root = len == 0
                 && (matches!(mode, RootMode::Item { .. })
                     || ln.is_table()
                     || self.flows(tree, idx));
-            let id = if k == 0 && leaf_root {
-                taffy.new_leaf_with_context(root_style(ln, mode), idx)
-            } else if k == 0 {
-                taffy.new_with_children(root_style(ln, mode), kids)
+            let style = if k == 0 {
+                root_style(ln, mode)
             } else {
                 let mut s = match mode {
                     // The page content box is a page child's containing
@@ -592,14 +582,15 @@ impl<'m> LayoutCtx<'m> {
                     let parent = tree.nodes[ln.parent as usize].style();
                     style::keep_intrinsic_size(&mut s, ln.style(), parent);
                 }
-                if len == 0 {
-                    taffy.new_leaf_with_context(s, idx)
-                } else {
-                    taffy.new_with_children(s, kids)
-                }
-            }
-            .map_err(layout_err)?;
-            ids[k] = id;
+                s
+            };
+            solve_nodes.push(solve::SolveNode {
+                style,
+                children: start..start + len,
+                // A root without children is measured as its node only
+                // when it is a leaf of its own.
+                leaf: (len == 0 && (k > 0 || leaf_root)).then_some(idx),
+            });
         }
 
         let width = match mode {
@@ -622,67 +613,67 @@ impl<'m> LayoutCtx<'m> {
             height: taffy::AvailableSpace::MaxContent,
         };
         let nodes = &tree.nodes;
-        taffy
-            .compute_layout_with_measure(
-                ids[0],
-                available,
-                |inputs: LayoutInput,
-                 _id,
-                 ctx: Option<&mut NodeIdx>,
-                 style: &taffy::Style|
-                 -> LayoutOutput {
-                    let Some(&mut idx) = ctx else {
-                        return taffy::compute_leaf_layout(
-                            inputs,
-                            style,
-                            |_, _| 0.0,
-                            |_, _| TSize::ZERO,
-                        );
-                    };
-                    let mut out = taffy::compute_leaf_layout(
+        let layouts = solve::solve(
+            solve_nodes,
+            available,
+            |inputs: LayoutInput, ctx: Option<NodeIdx>, style: &taffy::Style| -> LayoutOutput {
+                let Some(idx) = ctx else {
+                    return taffy::compute_leaf_layout(
                         inputs,
                         style,
                         |_, _| 0.0,
-                        |known, available| {
-                            let available = Size {
-                                width: available.width.into(),
-                                height: available.height.into(),
-                            };
-                            if self.flows(tree, idx) {
-                                return self
-                                    .flow_size(tree, idx, available, parent_h_of(idx))
-                                    .into();
-                            }
-                            match nodes[idx as usize].node() {
-                                Some(n) if matches!(n.kind, NodeKind::Table(_)) => {
-                                    self.table_size(tree, idx, available)
-                                }
-                                Some(n) => self.leaves.measure(n, known.into(), available),
-                                None => Size::ZERO,
-                            }
-                            .into()
-                        },
+                        |_, _| TSize::ZERO,
                     );
-                    // A text leaf's baseline is its first line's, for
-                    // baseline alignment and its box's own baseline.
-                    if inputs.run_mode == taffy::RunMode::PerformLayout {
-                        if let Some(n) = nodes[idx as usize].node() {
-                            out.baselines.first = leaf_baseline(
-                                self.leaves,
-                                n,
-                                style,
-                                inputs.parent_size.width,
-                                out.size,
-                            );
+                };
+                let mut out = taffy::compute_leaf_layout(
+                    inputs,
+                    style,
+                    |_, _| 0.0,
+                    |known, available| {
+                        let available = Size {
+                            width: available.width.into(),
+                            height: available.height.into(),
+                        };
+                        if self.flows(tree, idx) {
+                            return self
+                                .flow_size(tree, idx, available, parent_h_of(idx))
+                                .into();
                         }
+                        match nodes[idx as usize].node() {
+                            Some(n) if matches!(n.kind, NodeKind::Table(_)) => {
+                                self.table_size(tree, idx, available)
+                            }
+                            Some(n) => self.leaves.measure(n, known.into(), available),
+                            None => Size::ZERO,
+                        }
+                        .into()
+                    },
+                );
+                // A text leaf's baseline is its first line's, for
+                // baseline alignment and its box's own baseline.
+                if inputs.run_mode == taffy::RunMode::PerformLayout {
+                    if let Some(n) = nodes[idx as usize].node() {
+                        out.baselines.first = leaf_baseline(
+                            self.leaves,
+                            n,
+                            style,
+                            inputs.parent_size.width,
+                            out.size,
+                        );
                     }
-                    out
-                },
+                }
+                out
+            },
+        )
+        .ok_or_else(|| {
+            InkoxideError::Layout(
+                "the boxes nest too deeply to lay out: sizes in percent, nested, are worked \
+                     out again at every level"
+                    .into(),
             )
-            .map_err(layout_err)?;
+        })?;
 
-        let root_layout = taffy.layout(ids[0]).map_err(layout_err)?;
-        let size = root_layout.size.into();
+        let size = layouts[0].size.into();
         let mut geos = Vec::new();
         if collect {
             // Positions are relative to the parent; accumulate from the root.
@@ -696,7 +687,7 @@ impl<'m> LayoutCtx<'m> {
             }
             geos.reserve(list.len());
             for k in 0..list.len() {
-                let l = taffy.layout(ids[k]).map_err(layout_err)?;
+                let l = &layouts[k];
                 let (px, py) = if k == 0 {
                     (0.0, 0.0)
                 } else {

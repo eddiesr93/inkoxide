@@ -19,8 +19,9 @@ Inkoxide is designed to render documents built from untrusted data:
 
 - The engine is written in safe Rust (`#![forbid(unsafe_code)]` in the core crate) and is fuzzed
   every night with JSON, structured documents, SVG images and fonts as input.
-- Documents are validated before rendering, and page counts, nesting depth, image sizes, SVG
-  complexity, font declarations and the instances of variable fonts, the size a WOFF or WOFF2
+- Documents are validated before rendering, and page counts, nesting depth, the work nested
+  boxes take to lay out, the characters leaders draw, image sizes, SVG complexity, font
+  declarations and the instances of variable fonts, the size a WOFF or WOFF2
   font decodes to, and the colour glyphs drawn from fonts are limited, so hostile input fails
   with an error instead of exhausting memory.
   Attachments are limited to 1000 files, 64 MiB each and 256 MiB in all.

@@ -192,6 +192,89 @@ fn runaway_repeated_content_is_an_error() {
     repeated_past_the_limit("text", &fixed(""), &fixed(r#""pages":"first","#));
 }
 
+/// A leader repeated on every page counts the glyphs it fills its line
+/// with, which are made when the line is painted.
+#[test]
+fn leaders_repeated_on_every_page_are_counted() {
+    let fixed = |pages: &str| {
+        format!(
+            r#"{{"type":"text","break":{{"fixed":true}},{pages}
+                "runs":[{{"leader":"........","font":"Inter-Regular","size":1}}]}}"#
+        )
+    };
+    repeated_past_the_limit("leaders", &fixed(""), &fixed(r#""pages":"first","#));
+}
+
+/// A header that shows bookmark titles counts the longest title of the
+/// document, which is known before the header is shaped for each page.
+#[test]
+fn bookmark_titles_repeated_on_every_page_are_counted() {
+    let header = |runs: usize| {
+        let run = r#"{"bookmarkTitle":1,"font":"Inter-Regular","size":1}"#;
+        format!(
+            r#"{{"type":"text","runs":[{}]}}"#,
+            vec![run; runs].join(",")
+        )
+    };
+    let doc = |header: &str, title: &str, tall: usize| {
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+               "pages":[{{"size":{{"width":595,"height":842}},"header":{header},"children":[
+               {{"type":"box","bookmark":{{"title":"{title}"}},"style":{{"height":10}}}}{}]}}]}}"#,
+            format!(",{TALL}").repeat(tall)
+        )
+    };
+    let long = "x".repeat(1000);
+    assert_bounded("titles", 2, |n| {
+        let d = doc(&header(40), &long, n);
+        let t = Instant::now();
+        let err = render(&d, Some(1)).unwrap_err();
+        let took = t.elapsed();
+        assert_eq!(err.code(), "LAYOUT_ERROR", "{err}");
+        assert!(err.to_string().contains("the limit is 64 MB"), "{err}");
+        took
+    });
+    // Short titles on as many pages fit, as does a long one on a few.
+    render(&doc(&header(2), "Chapter", 2), Some(1)).unwrap();
+    render(&doc(&header(40), &long, 0), Some(1)).unwrap();
+}
+
+/// The leaders of a flow are bounded together: each fills its line with
+/// up to thousands of glyphs from a few bytes.
+#[test]
+fn runaway_leaders_are_an_error() {
+    let lines = |n: usize, size: f32, width: u32| {
+        let line = format!(
+            r#"{{"type":"text","runs":[{{"leader":"........","font":"Inter-Regular","size":{size}}}]}}"#
+        );
+        format!(
+            r#"{{"version":1,"fonts":[{{"id":"Inter-Regular","family":"Inter"}}],
+               "pages":[{{"size":{{"width":{width},"height":14400}},"children":[{}]}}]}}"#,
+            vec![line.as_str(); n].join(",")
+        )
+    };
+    assert_as_fast(
+        "leaders",
+        || {
+            let d = lines(400, 1.0, 14400);
+            let t = Instant::now();
+            let err = render(&d, Some(1)).unwrap_err();
+            let took = t.elapsed();
+            assert_eq!(err.code(), "LAYOUT_ERROR", "{err}");
+            assert!(err.to_string().contains("the leaders draw"), "{err}");
+            took
+        },
+        || {
+            let d = lines(1600, 1.0, 14400);
+            let t = Instant::now();
+            render(&d, Some(1)).unwrap_err();
+            t.elapsed()
+        },
+    );
+    // A long table of contents fits.
+    render(&lines(2000, 10.0, 595), Some(1)).unwrap();
+}
+
 /// A `wavy` decoration repeated on every page counts its waves.
 #[test]
 fn wavy_decorations_repeated_on_every_page_are_counted() {
@@ -602,6 +685,77 @@ fn runaway_glyphs_repeated_on_every_page_are_an_error() {
         assert!(err.to_string().contains("the limit is 64 MB"), "{err}");
         took
     });
+}
+
+/// A text under `depth` boxes, each with the style and the siblings
+/// `level` gives for its level.
+fn nested(depth: usize, level: impl Fn(usize) -> (&'static str, bool)) -> String {
+    let leaf = r#"{"type":"text","runs":[{"text":"deep","font":"Inter-Regular","size":10}]}"#;
+    let mut node = leaf.to_string();
+    for k in 0..depth {
+        let (style, sibling) = level(k);
+        let sibling = if sibling {
+            format!(",{leaf}")
+        } else {
+            String::new()
+        };
+        node = format!(r#"{{"type":"box","style":{{{style}}},"children":[{node}{sibling}]}}"#);
+    }
+    doc(&node)
+}
+
+/// Nested boxes are asked for their size again and again by the boxes
+/// around them: each answer is worked out once, so the time grows with
+/// the depth, not as a power of two of it.
+#[test]
+fn nested_boxes_lay_out_in_linear_time() {
+    type Level = fn(usize) -> (&'static str, bool);
+    let rows: Level = |k| (["\"flexDirection\":\"row\"", ""][k % 2], true);
+    let grids: Level = |_| {
+        (
+            r#""display":"grid","gridTemplateColumns":["1fr","1fr"],"alignItems":"baseline""#,
+            true,
+        )
+    };
+    for (what, level) in [("rows and columns", rows), ("grids on a baseline", grids)] {
+        assert_linear(what, 12, |depth| {
+            let d = nested(depth, level);
+            let t = Instant::now();
+            render(&d, Some(1)).unwrap();
+            t.elapsed()
+        });
+    }
+}
+
+/// Percentages nested give every level a width of its own, and more of
+/// them the deeper it is: past what real documents nest, that is an
+/// error, as fast as a document that renders.
+#[test]
+fn runaway_nested_percentages_are_an_error() {
+    let level = |k: usize| {
+        (
+            [r#""maxWidth":"80%""#, r#""padding":{"left":"5%"}"#][k % 2],
+            false,
+        )
+    };
+    assert_as_fast(
+        "percentages",
+        || {
+            let d = nested(20, level);
+            let t = Instant::now();
+            render(&d, Some(1)).unwrap();
+            t.elapsed()
+        },
+        || {
+            let d = nested(48, level);
+            let t = Instant::now();
+            let err = render(&d, Some(1)).unwrap_err();
+            let took = t.elapsed();
+            assert_eq!(err.code(), "LAYOUT_ERROR", "{err}");
+            assert!(err.to_string().contains("nest too deeply"), "{err}");
+            took
+        },
+    );
 }
 
 /// The parser's recursion limit bounds node depth; everything below it

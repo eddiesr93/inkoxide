@@ -31,6 +31,31 @@ schema has its own version and [changelog](packages/schema/CHANGELOG.md).
   `TOCI`; under PDF/UA-2, in the PDF 1.7 namespace and role-mapped to `Div`, as PDF 2.0 has
   neither). With `pdfUA`, a `tocItem` outside a `toc` is `UA_CONFLICT`.
 
+### Changed
+
+- Boxes nested many levels deep lay out in time that grows with their depth: the time used to
+  double with each level, for rows in columns, for grids with `alignItems: 'baseline'` and for
+  sizes in percent, so a few dozen levels took seconds. Documents render to the same bytes.
+
+### Security
+
+- Nested boxes whose sizes in percent need more work than any real document are a
+  `LAYOUT_ERROR`, in milliseconds: a document of two kilobytes could keep a render busy for as
+  long as its nesting allowed.
+- SVG: the path data of a `textPath` (`path`) is held to the limit on radii and coordinates,
+  like `d`: an arc with a huge radius kept the render busy and took memory without a bound.
+- SVG: a radius in `em` or `ex` is held to that limit at the font size it resolves to, which an
+  ancestor, a `use`, nested relative sizes or a style sheet may set, and so are a radius in an
+  absolute unit and one a style sheet gives: a few hundred bytes of circles took more than a
+  gigabyte.
+- SVG: the limit on style parsing work counts every place the CSS parser rescans a style from
+  (a sign or a point alone, an at-rule, a block it gives up on), not only declarations and
+  numbers: a style of 100 KB took several seconds.
+- The limit on content repeated on every page counts what a `Leader` fills its line with and
+  the longest bookmark title a `BookmarkTitle` may show, and the leaders of a document draw at
+  most 5000000 characters in all (`LAYOUT_ERROR`): a document of 50 KB took more than a
+  gigabyte.
+
 ## 1.1.0 - 2026-11-08
 
 Fonts are read with read-fonts and text is shaped with HarfRust, the maintained Rust crates of the

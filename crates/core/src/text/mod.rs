@@ -1046,6 +1046,34 @@ impl<'s, S: TextShaper> TextCache<'s, S> {
         })
     }
 
+    /// At most the glyphs each run of text node `node` draws as a leader
+    /// in `boxes`, by run, once it is shaped: they are made when a line is
+    /// painted, so [`glyph_count`](Self::glyph_count) has none of them.
+    /// Empty for a text without leaders.
+    pub fn leader_glyphs(&self, node: &Node, boxes: &LineBoxes) -> Vec<u64> {
+        let NodeKind::Text { runs } = &node.kind else {
+            return Vec::new();
+        };
+        if runs.iter().all(|r| r.leader.is_none()) {
+            return Vec::new();
+        }
+        let Some((_, p, style)) = self.paragraph(node, boxes) else {
+            return Vec::new();
+        };
+        let fonts = self.shaper.fonts();
+        // A hanging indent widens the first line.
+        let width = boxes.width + (-style.indent).max(0.0);
+        let mut most = vec![0u64; runs.len()];
+        for seg in &p.segments {
+            let run = &runs[seg.run as usize];
+            if let Some(pattern) = &run.leader {
+                let glyphs = paint::most_leader_glyphs(pattern, run, fonts.get(seg.font), width);
+                most[seg.run as usize] = most[seg.run as usize].saturating_add(glyphs);
+            }
+        }
+        most
+    }
+
     /// How many glyphs text node `node` shaped to, once it is shaped.
     pub fn glyph_count(&self, node: &Node) -> Option<usize> {
         let e = self.entries.get(&node_key(node))?;

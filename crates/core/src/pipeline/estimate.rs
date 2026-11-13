@@ -50,23 +50,30 @@ pub(super) fn repeated_size(
     laid: &[Laid<'_>],
     text: &Cache<'_, '_, '_>,
     tagged: bool,
+    longest_title: usize,
 ) -> Result<(), InkoxideError> {
     let mut total: u64 = 0;
     for l in laid {
         let (all, pages) = (l.spec.debug, u64::from(l.placement.pages));
+        let on = |pages| Repeat {
+            pages,
+            all,
+            tagged,
+            longest_title,
+        };
         let bands = l.header.iter().chain(&l.footer);
         let bands = bands.chain(l.overlays.iter().map(|(_, b)| b));
         for b in bands {
-            total = total.saturating_add(repeated(&b.tree, 0, (pages, all, tagged), text));
+            total = total.saturating_add(repeated(&b.tree, 0, on(pages), text));
         }
         for &i in &l.placement.fixed {
-            total = total.saturating_add(repeated(&l.flow, i, (pages, all, tagged), text));
+            total = total.saturating_add(repeated(&l.flow, i, on(pages), text));
         }
         // Header rows, again on every page after a table's first.
         for (&t, table) in &l.flow.tables {
             let (first, last) = l.placement.page_range[t as usize];
             for r in l.flow.children(t).take(table.header_rows) {
-                let size = repeated(&l.flow, r, (u64::from(last - first), all, tagged), text);
+                let size = repeated(&l.flow, r, on(u64::from(last - first)), text);
                 total = total.saturating_add(size);
             }
         }
@@ -82,15 +89,66 @@ pub(super) fn repeated_size(
     Ok(())
 }
 
+/// How content is repeated.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Repeat {
+    /// On this many pages (fewer for nodes shown on some pages only).
+    pub(super) pages: u64,
+    /// Every box has a `debug` outline.
+    pub(super) all: bool,
+    /// In tagged output.
+    pub(super) tagged: bool,
+    /// The longest bookmark title of the document, in bytes: what a
+    /// `bookmarkTitle` run may show.
+    pub(super) longest_title: usize,
+}
+
+/// Most glyphs the leaders of one document may draw, repeated ones
+/// aside: a leader of a few bytes fills a line with up to thousands of
+/// glyphs, made when the line is painted.
+pub(crate) const MAX_LEADER_GLYPHS: u64 = 5_000_000;
+
+/// Checks that the leaders of the flows stay within
+/// [`MAX_LEADER_GLYPHS`].
+pub(super) fn leader_glyphs(
+    laid: &[Laid<'_>],
+    text: &Cache<'_, '_, '_>,
+) -> Result<(), InkoxideError> {
+    let mut total: u64 = 0;
+    for l in laid {
+        for (i, ln) in l.flow.nodes.iter().enumerate() {
+            let Some(n) = ln
+                .node()
+                .filter(|n| matches!(n.kind, NodeKind::Text { .. }))
+            else {
+                continue;
+            };
+            let glyphs = text.leader_glyphs(n, &l.flow.line_boxes(i as NodeIdx));
+            total = total.saturating_add(glyphs.iter().sum());
+        }
+    }
+    if total > MAX_LEADER_GLYPHS {
+        return Err(InkoxideError::Layout(format!(
+            "the leaders draw about {total} characters; the limit is {MAX_LEADER_GLYPHS}"
+        )));
+    }
+    Ok(())
+}
+
 /// Estimated output, in bytes, of node `i` of `tree` and its descendants
-/// painted on `pages` pages (fewer for nodes shown on some pages only);
-/// `all`: every box has a `debug` outline; `tagged`: in tagged output.
+/// repeated as `repeat` says.
 pub(super) fn repeated(
     tree: &Tree<'_>,
     i: NodeIdx,
-    (pages, all, tagged): (u64, bool, bool),
+    repeat: Repeat,
     text: &Cache<'_, '_, '_>,
 ) -> u64 {
+    let Repeat {
+        pages,
+        all,
+        tagged,
+        longest_title,
+    } = repeat;
     // What tagging adds to an annotation, and to a link with target `t`
     // whose text takes `label` bytes (its `/Contents`: that text, or where
     // it goes).
@@ -148,12 +206,20 @@ pub(super) fn repeated(
                         .map(|r| r.text.as_ref().map_or(0, |t| t.chars().count() + 1))
                         .sum();
                     let label = most_written_text_len(linked.min(MAX_LINK_TEXT));
-                    for r in runs {
+                    let leaders = text.leader_glyphs(n, &tree.line_boxes(j));
+                    for (k, r) in runs.iter().enumerate() {
                         if let Some(icon) = r.icon() {
                             size = size.saturating_add(icon_bytes(icon) + tag);
                         }
-                        // A placeholder shows a page number.
-                        let chars = r.text.as_ref().map_or(8, String::len) as u64;
+                        let chars = match &r.text {
+                            Some(t) => t.len() as u64,
+                            // Filled when its line is painted.
+                            None if r.leader.is_some() => leaders.get(k).copied().unwrap_or(0),
+                            // Any title of the document.
+                            None if r.bookmark_title.is_some() => longest_title as u64,
+                            // A placeholder shows a page number.
+                            None => 8,
+                        };
                         let mut each = r.link.as_ref().map_or(ITEM_BYTES, |_| LINK_BYTES);
                         if is_wavy(r) {
                             wavy = true;
