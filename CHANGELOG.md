@@ -36,6 +36,12 @@ schema has its own version and [changelog](packages/schema/CHANGELOG.md).
 - **Link hit slop:** `hitSlop` on a `Link` makes its clickable area reach past it, by a number of
   points on every side or by `{ top, right, bottom, left }`, so that a small link is easier to
   hit. In the document format, `linkSlop` on a node or a run with `link`.
+- **A worker the application makes:** in a browser, `init({ worker })` takes a function that
+  makes the engine's Web Worker, for a build that does not bundle the package's own, and
+  `@inkoxide/angular/worker` is the script such a worker imports. An application built with the
+  Angular CLI renders in a worker with them
+  ([guide](packages/angular/GUIDE.md#in-an-angular-cli-application)); before, its first render
+  failed with `the engine's worker failed to start`.
 
 ### Changed
 
@@ -49,6 +55,15 @@ schema has its own version and [changelog](packages/schema/CHANGELOG.md).
   wide letter spacing on small text) no longer fails the render with `a real number past
   ±32767`: such a glyph is placed with a text matrix of its own, not with an adjustment. The
   text draws where it did.
+- `pdfTemplates(vue(), filter)` of `@inkoxide/vue/vite` tests the filter against a file's path in
+  both of the plugin's hooks. It tested the file's source in one, so a template the filter picked
+  was still compiled for the server, and its render failed with `Cannot read properties of
+  undefined (reading 'modules')`.
+- `renderToBuffer` and the `pdf` of `generate` are typed `Uint8Array<ArrayBuffer>`, so
+  `new Response(pdf)` and `new Blob([pdf])` compile with TypeScript 5.7 or later. The bytes are
+  the same.
+- The guide named `@inkoxide/react` as the package that holds the bundled fonts and hyphenation
+  patterns; they are in `@inkoxide/render`.
 
 ### Security
 

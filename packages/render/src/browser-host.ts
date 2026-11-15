@@ -34,8 +34,13 @@ export interface BrowserOptions {
    * Default: the files of the packages, which bundlers copy.
    */
   assets?: string | URL;
-  /** Render in a Web Worker. Default `true` where there is `Worker`. */
-  worker?: boolean;
+  /**
+   * Render in a Web Worker. Default `true` where there is `Worker`. A function makes the worker
+   * itself, for a build that does not bundle the package's own (the Angular CLI's): a module
+   * worker of the application whose script imports the front end's `worker` entry
+   * (`@inkoxide/angular/worker`). It is called again for each worker a stopped render replaces.
+   */
+  worker?: boolean | (() => Worker);
 }
 
 /**
@@ -258,7 +263,10 @@ class WorkerEngine implements Engine {
   }
 
   private spawn(): Worker {
-    const worker = startWorker(() => new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' }));
+    const worker =
+      typeof options.worker === 'function'
+        ? options.worker()
+        : startWorker(() => new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' }));
     this.channel?.close();
     this.channel = undefined;
     if (typeof BroadcastChannel !== 'undefined') {
@@ -355,7 +363,8 @@ const browserHost: EngineHost = {
     configured = true;
     // The worker of a start that failed after it (an engine of another schema version).
     if (engine instanceof WorkerEngine) engine.close();
-    const inWorker = options.worker ?? typeof Worker !== 'undefined';
+    const inWorker =
+      typeof options.worker === 'function' || (options.worker ?? typeof Worker !== 'undefined');
     const starting = inWorker ? new WorkerEngine() : direct;
     engine = starting;
     try {

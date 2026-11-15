@@ -48,7 +48,7 @@ export interface BrowserRenderer<Input, Component> {
    * that passes, ends the worker (the next render starts a new one) and rejects with the signal's
    * reason.
    */
-  renderToBuffer(input: Input, opts?: BrowserRenderOptions): Promise<Uint8Array>;
+  renderToBuffer(input: Input, opts?: BrowserRenderOptions): Promise<Uint8Array<ArrayBuffer>>;
   /** `renderToBuffer`, as a `Blob` of type `application/pdf`, for a link or a viewer. */
   renderToBlob(input: Input, opts?: BrowserRenderOptions): Promise<Blob>;
   /**
@@ -78,7 +78,7 @@ export function createRenderer<Input, Component>(
     renderToBuffer: toBuffer,
     async renderToBlob(input, opts = {}) {
       const pdf = await toBuffer(input, opts);
-      return new Blob([pdf as Uint8Array<ArrayBuffer>], { type: 'application/pdf' });
+      return new Blob([pdf], { type: 'application/pdf' });
     },
     async renderToStream(input, opts = {}) {
       const pdf = await toBuffer(input, opts);

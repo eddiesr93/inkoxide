@@ -115,6 +115,9 @@ and `update()`. `renderToBlob` and `renderToStream` (a web stream) are there too
 [In the browser](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#in-the-browser)
 for where the engine and fonts come from.
 
+An application built with the Angular CLI makes the engine's worker itself and serves the engine's
+files as assets: [In an Angular CLI application](GUIDE.md#in-an-angular-cli-application).
+
 ## Licence
 
 MIT

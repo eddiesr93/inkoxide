@@ -27,7 +27,7 @@ export interface NodeRenderer<Input, Component> {
    * A document straight to PDF bytes: no template registry, schema or sample data. A template is
    * any component, and its data are its props.
    */
-  renderToBuffer(input: Input, opts?: RenderToBufferOptions): Promise<Uint8Array>;
+  renderToBuffer(input: Input, opts?: RenderToBufferOptions): Promise<Uint8Array<ArrayBuffer>>;
   /** `renderToBuffer`, then writes the PDF to `path`; a failed write is an `INTERNAL` RenderError. */
   renderToFile(input: Input, path: string, opts?: RenderToBufferOptions): Promise<void>;
   /**

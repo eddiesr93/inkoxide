@@ -89,7 +89,7 @@ describe('exports', () => {
   });
 
   it('has an entry in package.json for each', () => {
-    expect(Object.keys(pkg.exports).sort()).toEqual(['.', './browser', './templates']);
+    expect(Object.keys(pkg.exports).sort()).toEqual(['.', './browser', './templates', './worker']);
   });
 
   it('has each name in its docs, or in those of the package it comes from', () => {

@@ -159,6 +159,56 @@ Policy are in the React guide's
 [In the browser](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#in-the-browser);
 an application compiled ahead of time needs no `'unsafe-eval'`.
 
+### In an Angular CLI application
+
+The Angular CLI bundles the workers of the application's own code, not those of its packages, and
+copies no file a package refers to by URL. So the application makes the engine's worker and
+serves the engine's files as assets:
+
+```jsonc
+// angular.json, the build target of the application
+"options": {
+  "webWorkerTsConfig": "tsconfig.worker.json",
+  "assets": [
+    { "glob": "**/*", "input": "public" },
+    { "glob": "*.wasm", "input": "node_modules/@inkoxide/wasm", "output": "inkoxide" },
+    { "glob": "*.bin", "input": "node_modules/@inkoxide/wasm/hyphenation", "output": "inkoxide/hyphenation" },
+    { "glob": "**/*", "input": "node_modules/@inkoxide/render/assets", "output": "inkoxide" }
+  ]
+}
+```
+
+```jsonc
+// tsconfig.worker.json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "outDir": "./out-tsc/worker", "lib": ["es2022", "webworker"], "types": [] },
+  "include": ["src/**/*.worker.ts"]
+}
+```
+
+```ts
+// src/pdf.worker.ts: the engine's worker, as a worker of the application
+import '@inkoxide/angular/worker';
+```
+
+```ts
+// src/main.ts, before the first render
+import { init } from '@inkoxide/angular/browser';
+
+void init({
+  worker: () => new Worker(new URL('./pdf.worker', import.meta.url), { type: 'module' }),
+  wasm: new URL('inkoxide/inkoxide.wasm', document.baseURI),
+  assets: new URL('inkoxide/', document.baseURI),
+});
+```
+
+`worker` is a function that makes the worker; it is called again when a stopped render ends its
+worker. `@inkoxide/render` is a dependency of `@inkoxide/angular`: with pnpm, its `assets` are at
+`node_modules/@inkoxide/angular/node_modules/@inkoxide/render/assets`. Without any of this the
+first render fails with `INTERNAL`: the engine's worker did not start. Analog and other builds on
+Vite need none of it.
+
 ### Tailwind in an Angular CLI build
 
 In a browser, `@inkoxide/tailwind` loads Tailwind's compiler (about 90 KB with brotli) unless the
@@ -207,6 +257,7 @@ component with the input `data`.
 | `Font`, `init`, `countPages`, `version`, `engineStatus`, `RenderError`, `TemplateError` | As in the React guide. |
 | `@inkoxide/angular/browser` | The above without what needs Node, with `injectPdf` (its result is an `InjectPdfResult`), `InkPdfViewer`, `InkPdfDownload`, `InkBlobProvider` (its template's context is a `BlobProviderContext`), `renderToBlob`, `generate`. |
 | `@inkoxide/angular/templates` | `generate`, `renderTree`, `parseData`, `renderSettled`, `renderDocument`. |
+| `@inkoxide/angular/worker` | The script of the engine's worker, for a worker file of the application to import ([Angular CLI](#in-an-angular-cli-application)). |
 
 The options of each are the React guide's
 [API](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#api).

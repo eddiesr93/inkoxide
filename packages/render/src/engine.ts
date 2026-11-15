@@ -279,7 +279,7 @@ export async function renderPdf(
   opts: RenderOpts & Abortable,
   images: Record<string, Uint8Array>,
   output: OutputOptions = {},
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   checkOptionTypes(opts);
   // The <Document> passwords and permissions, which JavaScript can give any type.
   checkEncryptionTypes(opts.encryption ?? output.encryption);
@@ -303,7 +303,10 @@ export async function renderPdf(
   signal?.throwIfAborted();
   try {
     const deferredFonts = await untilAborted(loadDocumentFonts(doc), signal);
-    return await engineHost().render(JSON.stringify(doc), options, signal, deferredFonts);
+    const pdf = await engineHost().render(JSON.stringify(doc), options, signal, deferredFonts);
+    // The engine's bytes are their own buffer, never a shared one: typed so, they are a
+    // `BodyInit` and a `BlobPart` (`new Response(pdf)`).
+    return pdf as Uint8Array<ArrayBuffer>;
   } catch (e) {
     if (signal?.aborted && e === signal.reason) throw e;
     throw toRenderError(e);
