@@ -1,3 +1,4 @@
+import { inkoxide } from '@inkoxide/react/vite';
 import { inkoxideTailwind } from '@inkoxide/tailwind/plugin';
 import { defineConfig, type Plugin } from 'vite';
 
@@ -79,18 +80,15 @@ export const cdn = (): Plugin => ({
 const { INKOXIDE_CDN } = process.env;
 
 export default defineConfig({
-  // The page's classes come from a table built here, not from Tailwind's compiler.
+  // What the engine needs in a browser, and the page's classes from a table built here, not from
+  // Tailwind's compiler. The invoice imports `@inkoxide/react`, as in Node: its browser entry here.
   plugins: [
+    inkoxide(),
     inkoxideTailwind(),
     ...(process.env.INKOXIDE_ISOLATED || INKOXIDE_CDN === 'page' ? [isolated()] : []),
     ...(INKOXIDE_CDN === 'assets' ? [cdn()] : []),
   ],
   ...(INKOXIDE_CDN ? { base: `${CDN}/` } : {}),
-  resolve: {
-    // The invoice imports from `@inkoxide/react`, as it would in Node: the browser entry here.
-    alias: [{ find: /^@inkoxide\/react$/, replacement: '@inkoxide/react/browser' }],
-  },
-  worker: { format: 'es' },
   build: { target: 'es2023', ...(INKOXIDE_CDN ? { outDir: 'dist-cdn' } : {}) },
   preview: { headers: { 'Content-Security-Policy': INKOXIDE_CDN ? CDN_CSP : CSP } },
 });

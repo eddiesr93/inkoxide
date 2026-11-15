@@ -1656,12 +1656,16 @@ options of `generate`), `RenderResult` (what `generate` resolves to), `Timings` 
 ## In the browser
 
 The same templates render in a browser, with the engine as WebAssembly in a Web Worker, so the
-page keeps responding while it renders. Install the module next to the package, and import
-from `@inkoxide/react/browser`:
+page keeps responding while it renders. Install the module next to the package:
 
 ```sh
 npm install @inkoxide/react @inkoxide/wasm
 ```
+
+In a browser bundle, `@inkoxide/react` is its browser entry (the `browser` condition of its
+`exports`, which Vite, webpack, Rollup and esbuild follow), so a template imports its components
+the same in Node and in the browser, without an alias. The helpers below are in
+`@inkoxide/react/browser`, which names that entry:
 
 ```tsx
 import { PdfDownloadLink, PdfViewer, usePdf } from '@inkoxide/react/browser';
@@ -1687,13 +1691,15 @@ function InvoicePage({ invoice }: { invoice: InvoiceData }) {
 - **`<PdfDownloadLink>`** is a link that downloads the PDF: `document`, `fileName` (default
   `'document.pdf'`), `options` and the props of an `<a>`; its children may be a function of the
   `usePdf` result. **`<PdfViewer>`** is an `<iframe>` with the browser's own viewer: `document`,
-  `options`, `fallback` (shown until the first render has finished, and when it failed),
+  `options`, `fallback` (shown until the first render has finished, and when it failed: the error is then
+  logged to the console, and `usePdf` or `<BlobProvider>` give it to show),
   `showToolbar` (`false` adds `#toolbar=0` to the URL, which Chromium's viewer follows), `title`
   (default `'PDF'`) and the props of an `<iframe>`. **`<BlobProvider>`** shows what its
   function child makes of the `usePdf` result: `<BlobProvider document={doc}>{({ url }) => …}</BlobProvider>`.
   Each renders when it mounts and again when `document` changes: an element of another type or
   key, or one whose props are not the same values (`<Invoice invoice={invoice} />` made again
-  with the same `invoice` is the same document). A render that starts stops the one still
+  with the same `invoice` is the same document, and so is one with the same data made again,
+  `invoice={{ ...invoice }}`: arrays and plain objects are compared by their contents). A render that starts stops the one still
   running, and the last PDF stays until the next one is ready. Their props are
   `PdfDownloadLinkProps`, `PdfViewerProps` and `BlobProviderProps`.
 - **`renderToBuffer`**, **`renderToBlob`** and **`renderToStream`** render outside React
@@ -1723,14 +1729,21 @@ function InvoicePage({ invoice }: { invoice: InvoiceData }) {
   same.
 
 **Setting up.** Bundlers copy the module, the worker and the bundled fonts, which the packages
-refer to with `new URL(…, import.meta.url)`. With Vite, set `worker: { format: 'es' }` for the
-engine's module worker. For the dev server, also add
-`optimizeDeps: { exclude: ['@inkoxide/wasm'] }`: pre-bundling moves the module away from its
-`hyphenation/` folder, and a document that hyphenates a language other than English then fails
-with `INTERNAL` (`engineCode` `NOT_LOADED`). [examples/browser](https://github.com/eddiesr93/inkoxide/tree/main/examples/browser)
-is a Vite page; its `vite.config.ts` sets `worker.format`, the policy below, and an alias that
-points `@inkoxide/react` at `@inkoxide/react/browser`, so that components written for Node
-import unchanged. To use the engine without React, with document trees as JSON, see
+refer to with `new URL(…, import.meta.url)`. With Vite, add the plugin of
+`@inkoxide/react/vite`:
+
+```ts
+// vite.config.ts
+import { inkoxide } from '@inkoxide/react/vite';
+
+export default defineConfig({ plugins: [react(), inkoxide()] });
+```
+
+It sets `worker: { format: 'es' }`, for the engine's module worker, and
+`optimizeDeps: { exclude: ['@inkoxide/wasm'] }`: the dev server's pre-bundling moves the module
+away from its `hyphenation/` folder, and a document that hyphenates a language other than English
+then fails with `INTERNAL` (`engineCode` `NOT_LOADED`). Its type is `InkoxidePlugin`. [examples/browser](https://github.com/eddiesr93/inkoxide/tree/main/examples/browser)
+is a Vite page; its `vite.config.ts` has the plugin and the policy below. To use the engine without React, with document trees as JSON, see
 [`@inkoxide/wasm`](https://github.com/eddiesr93/inkoxide/blob/main/packages/wasm/README.md).
 
 **Fonts and images.** A bundled font is downloaded the first time a document uses it, as a
@@ -1836,6 +1849,12 @@ still renders with the engine's built-in ones, and `engineStatus().warnings` say
 **Do I need Tailwind installed?**
 Only to style with `className`: install `@inkoxide/tailwind` ([Tailwind](#tailwind)). It brings
 the Tailwind compiler, so there is no config and no CSS build. Without it, style with `style`.
+
+**A script fails with "React is not defined".**
+The script's JSX was compiled for the classic runtime, which needs `React` in scope. `tsx` and
+esbuild read `jsx` from the `tsconfig.json` next to the script, and a project made by Vite keeps
+it in `tsconfig.app.json`: run `npx tsx --tsconfig tsconfig.app.json render.tsx`, or start each
+file that has JSX with `/** @jsxRuntime automatic */`, as the quick start does.
 
 **Can I use my own components and hooks?**
 Yes. A document is ordinary React: components, props, context, `.map` and conditionals all work,

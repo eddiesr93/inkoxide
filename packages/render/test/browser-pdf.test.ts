@@ -27,7 +27,7 @@ describe('sameDocument', () => {
   it('compares React elements and Vue VNodes by type, key and props', () => {
     expect(sameDocument(createElement(Invoice, { invoice }), createElement(Invoice, { invoice }))).toBe(true);
     expect(
-      sameDocument(createElement(Invoice, { invoice }), createElement(Invoice, { invoice: { number: 1 } })),
+      sameDocument(createElement(Invoice, { invoice }), createElement(Invoice, { invoice: { number: 2 } })),
     ).toBe(false);
     expect(sameDocument(createElement(Invoice, { invoice }), createElement(Receipt, { invoice }))).toBe(
       false,
@@ -66,6 +66,36 @@ describe('sameDocument', () => {
     ).toBe(false);
     expect(sameDocument(Invoice, Invoice)).toBe(true);
     expect(sameDocument(Invoice, { component: Invoice })).toBe(false);
+  });
+
+  it('compares data made again by its contents, and anything else by identity', () => {
+    const data = () => ({ number: 'A-1', lines: [{ name: 'Tea', price: 3 }], notes: null });
+    const doc = (invoice: unknown) => ({ component: Invoice, inputs: { invoice } });
+    // Data a template builds as it renders: the same document, or a helper renders without end.
+    expect(sameDocument(doc(data()), doc(data()))).toBe(true);
+    expect(
+      sameDocument(createElement(Invoice, { invoice: data() }), createElement(Invoice, { invoice: data() })),
+    ).toBe(true);
+    expect(sameDocument(doc(data()), doc({ ...data(), lines: [{ name: 'Tea', price: 4 }] }))).toBe(false);
+    expect(sameDocument(doc(data()), doc({ ...data(), lines: [] }))).toBe(false);
+    expect(sameDocument(doc([1, 2]), doc({ 0: 1, 1: 2 }))).toBe(false);
+    // Not data: each is the same only as itself.
+    expect(sameDocument(doc(new Date(0)), doc(new Date(0)))).toBe(false);
+    expect(sameDocument(doc(new Uint8Array(2)), doc(new Uint8Array(2)))).toBe(false);
+    expect(
+      sameDocument(
+        doc(() => 1),
+        doc(() => 1),
+      ),
+    ).toBe(false);
+    const bytes = new Uint8Array(2);
+    expect(sameDocument(doc({ logo: bytes }), doc({ logo: bytes }))).toBe(true);
+    // Data that holds itself ends: it is another document.
+    const loop: Record<string, unknown> = {};
+    loop.self = loop;
+    const other: Record<string, unknown> = {};
+    other.self = other;
+    expect(sameDocument(doc(loop), doc(other))).toBe(false);
   });
 
   it('compares components given alone by identity', () => {

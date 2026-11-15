@@ -42,12 +42,29 @@ schema has its own version and [changelog](packages/schema/CHANGELOG.md).
   Angular CLI renders in a worker with them
   ([guide](packages/angular/GUIDE.md#in-an-angular-cli-application)); before, its first render
   failed with `the engine's worker failed to start`.
+- **The browser entry by itself:** in a browser bundle, `@inkoxide/react`, `@inkoxide/vue`,
+  `@inkoxide/svelte` and `@inkoxide/angular` are their browser entries (the `browser` condition
+  of their `exports`), so a template imports its components the same on a server and in a page.
+  Before, a page that imported the package needed an alias to `/browser`, and without one Vite
+  failed with `Invalid glob: "inkoxide.*.node"`.
+- **A Vite plugin:** `inkoxide()`, from the `vite` entry of each front end
+  (`@inkoxide/react/vite`), sets what a page that renders in the browser needs: the engine's
+  module worker (`worker.format`) and `@inkoxide/wasm` kept out of the dev server's pre-bundling.
 
 ### Changed
 
 - Boxes nested many levels deep lay out in time that grows with their depth: the time used to
   double with each level, for rows in columns, for grids with `alignItems: 'baseline'` and for
   sizes in percent, so a few dozen levels took seconds. Documents render to the same bytes.
+- The browser helpers (`PdfViewer`, `usePdf` and those of the other front ends) compare a
+  document's data by its contents: arrays and plain objects made again with the same contents
+  (`invoice={{ ...invoice }}`) are the same document. Before, they rendered it again, and a
+  template that built its data on every change (an Angular template's method, a component that
+  reads `usePdf`) rendered without end.
+- The `error` of the browser helpers is an `Error` or null, not `unknown`; a value thrown that is
+  not an `Error` is wrapped in one.
+- A viewer (`PdfViewer`, `[inkPdfViewer]`) logs the error of a render that failed to the console.
+  It showed only its fallback, with nothing to tell why.
 
 ### Fixed
 
@@ -64,6 +81,10 @@ schema has its own version and [changelog](packages/schema/CHANGELOG.md).
   the same.
 - The guide named `@inkoxide/react` as the package that holds the bundled fonts and hyphenation
   patterns; they are in `@inkoxide/render`.
+- With the Tailwind build plugin, a Vite dev server gives the page the classes its sources have
+  now. The class table was a file of `node_modules`, which the browser caches for good: a class
+  added since the page first loaded failed with `not a Tailwind utility, or one the build did not
+  see`, even after the server started again.
 
 ### Security
 

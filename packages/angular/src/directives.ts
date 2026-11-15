@@ -45,6 +45,11 @@ export class InkPdfViewer {
       if (url === null) renderer.removeAttribute(frame, 'src');
       else renderer.setAttribute(frame, 'src', viewerUrl(url, this.toolbar()));
     });
+    // A frame has no place for an error: without this, a render that failed shows an empty frame.
+    effect(() => {
+      const error = this.pdf.error();
+      if (error) console.error(error);
+    });
   }
 
   static ɵfac: i0.ɵɵFactoryDeclaration<InkPdfViewer, never> = i0.ɵɵngDeclareFactory({

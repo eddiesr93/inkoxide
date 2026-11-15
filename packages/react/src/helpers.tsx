@@ -129,7 +129,10 @@ export interface PdfViewerProps extends Omit<IframeHTMLAttributes<HTMLIFrameElem
   /** The `<Document>` element to render. */
   document: ReactElement;
   options?: BrowserRenderOptions;
-  /** Shown in place of the frame while the first render runs, or when it failed. */
+  /**
+   * Shown in place of the frame while the first render runs, or when it failed; the error of a
+   * render that failed is logged to the console.
+   */
   fallback?: ReactNode;
   /**
    * `false` asks the viewer to hide its toolbar (`#toolbar=0` on the URL). Chromium's viewer
@@ -151,6 +154,11 @@ export function PdfViewer({
   ...rest
 }: PdfViewerProps) {
   const pdf = useDocumentPdf(document, options);
+  // A frame has no place for an error: without this, a render that failed shows only the fallback.
+  const { error } = pdf;
+  useEffect(() => {
+    if (error) console.error(error);
+  }, [error]);
   if (pdf.url === null) return <>{fallback}</>;
   return <iframe {...rest} title={title} src={viewerUrl(pdf.url, showToolbar)} />;
 }

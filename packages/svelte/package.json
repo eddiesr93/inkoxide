@@ -6,6 +6,7 @@
   "description": "Svelte templates to PDF with the Inkoxide engine, in Node and in the browser: components, renderToBuffer, renderToFile, Font.register.",
   "exports": {
     ".": {
+      "browser": "./src/browser.ts",
       "svelte": "./src/index.ts",
       "default": "./src/index.ts"
     },
@@ -16,7 +17,8 @@
     "./templates": {
       "svelte": "./src/templates.ts",
       "default": "./src/templates.ts"
-    }
+    },
+    "./vite": "./src/vite.ts"
   },
   "dependencies": {
     "@inkoxide/render": "workspace:*",

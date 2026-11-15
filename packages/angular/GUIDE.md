@@ -113,7 +113,10 @@ innermost. Listeners (`(click)`) are errors: nothing happens in a PDF.
 inputs (`{ component: Invoice, inputs: { invoice } }`), or a component alone. The component is
 compiled like any other: by the Angular build of your server (Angular SSR, Analog), or just in time
 in a plain Node script, with `import '@angular/compiler';` first. Signal inputs need the AOT
-compiler; a script compiled just in time uses `@Input()`.
+compiler; a script compiled just in time uses `@Input()`. Run the script and the component as ES
+modules (`"type": "module"` in `package.json`, which a project made by `ng new` lacks, then
+`npx tsx --tsconfig tsconfig.app.json render.ts`): compiled as CommonJS, the component loads a
+second copy of Angular, and the render fails with `NG0203`.
 
 ## In the browser
 
@@ -153,7 +156,9 @@ export class Preview {
 ```
 
 They render again only when the document is another one: another component, or other input
-values. The directives are declared as a library compiled for linking is, so the application's
+values (arrays and plain objects are compared by their contents, so a document a template builds
+on every change detection, `{ component: Invoice, inputs: { invoice: { ...invoice } } }`, is the
+same one). The directives are declared as a library compiled for linking is, so the application's
 Angular build links them. Where the engine and the fonts come from, a CDN and Content Security
 Policy are in the React guide's
 [In the browser](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#in-the-browser);
@@ -257,6 +262,7 @@ component with the input `data`.
 | `Font`, `init`, `countPages`, `version`, `engineStatus`, `RenderError`, `TemplateError` | As in the React guide. |
 | `@inkoxide/angular/browser` | The above without what needs Node, with `injectPdf` (its result is an `InjectPdfResult`), `InkPdfViewer`, `InkPdfDownload`, `InkBlobProvider` (its template's context is a `BlobProviderContext`), `renderToBlob`, `generate`. |
 | `@inkoxide/angular/templates` | `generate`, `renderTree`, `parseData`, `renderSettled`, `renderDocument`. |
+| `@inkoxide/angular/vite` | `inkoxide()`, the Vite plugin a page that renders in the browser needs, for a build on Vite such as Analog (an `InkoxidePlugin`; [React guide](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#in-the-browser)). |
 | `@inkoxide/angular/worker` | The script of the engine's worker, for a worker file of the application to import ([Angular CLI](#in-an-angular-cli-application)). |
 
 The options of each are the React guide's

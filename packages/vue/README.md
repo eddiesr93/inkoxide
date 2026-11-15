@@ -53,7 +53,10 @@ await renderToFile(h(Receipt, { customer: 'Ada Lovelace', lines: [{ name: 'Espre
 ```
 
 `renderToBuffer`, `renderToFile` and `renderToStream` take a VNode (`h(Receipt, props)`) or a
-component. Classes need [`@inkoxide/tailwind`](https://www.npmjs.com/package/@inkoxide/tailwind).
+component. Node does not read `.vue` files: a script that imports one is built by Vite first,
+with [the plugin below](#single-file-components-on-a-server) in its config
+(`npx vite build --ssr render.ts`, then `node dist/render.js`); a template written as a render
+function needs no build. Classes need [`@inkoxide/tailwind`](https://www.npmjs.com/package/@inkoxide/tailwind).
 
 ## In Vue
 
@@ -124,6 +127,16 @@ again when what the getter reads changes; `<BlobProvider :document v-slot="{ blo
 error }">` hands them to its slot. `renderToBlob` and `renderToStream` (a web stream) are there
 too. See [In the browser](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#in-the-browser)
 for where the engine and fonts come from.
+
+In a browser bundle `@inkoxide/vue` is its browser entry, so a template imports its components
+the same on a server and in a page. With Vite, `inkoxide()` sets what the engine needs:
+
+```ts
+// vite.config.ts
+import { inkoxide } from '@inkoxide/vue/vite';
+
+export default defineConfig({ plugins: [vue(), inkoxide()] });
+```
 
 ## Licence
 

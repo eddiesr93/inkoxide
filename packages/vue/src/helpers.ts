@@ -33,7 +33,7 @@ export interface UsePdfResult {
   /** Whether a render is running. */
   loading: Ref<boolean>;
   /** Why the last render failed (a `RenderError`, usually), or null. */
-  error: Ref<unknown>;
+  error: Ref<Error | null>;
   /** Renders again: `document` when given, otherwise the last one. */
   update(document?: Renderable): void;
 }
@@ -58,7 +58,7 @@ export function usePdf(
   const blob = shallowRef<Blob | null>(null);
   const url = ref<string | null>(null);
   const loading = ref(false);
-  const error = shallowRef<unknown>(null);
+  const error = shallowRef<Error | null>(null);
   const run = new PdfRun<Renderable>(
     browserRenderer.renderToBlob,
     (state) => {
@@ -142,6 +142,10 @@ export const PdfViewer = defineComponent({
       () => props.document,
       () => props.options,
     );
+    // A frame has no place for an error: without this, a render that failed shows only the fallback.
+    watch(pdf.error, (error) => {
+      if (error) console.error(error);
+    });
     return () => {
       const url = pdf.url.value;
       if (url === null) return slots.fallback?.();

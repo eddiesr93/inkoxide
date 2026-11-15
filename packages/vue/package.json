@@ -5,7 +5,10 @@
   "type": "module",
   "description": "Vue templates to PDF with the Inkoxide engine, in Node and in the browser: components, renderToBuffer, renderToFile, Font.register.",
   "exports": {
-    ".": "./src/index.ts",
+    ".": {
+      "browser": "./src/browser.ts",
+      "default": "./src/index.ts"
+    },
     "./browser": "./src/browser.ts",
     "./templates": "./src/templates.ts",
     "./vite": "./src/vite.ts"

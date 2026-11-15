@@ -22,6 +22,10 @@
     () => document,
     () => options,
   );
+  // A frame has no place for an error: without this, a render that failed shows only the fallback.
+  $effect(() => {
+    if (pdf.error) console.error(pdf.error);
+  });
 </script>
 
 {#if pdf.url === null}

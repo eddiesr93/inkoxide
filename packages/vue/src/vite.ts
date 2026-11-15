@@ -10,3 +10,5 @@
 // export default defineConfig({ plugins: [pdfTemplates(vue(), /\/pdf\//)] });
 // ```
 export { pdfTemplates, type TemplateFilter, type VuePluginLike } from './pdf-templates.ts';
+// `inkoxide()` sets what a page rendering in the browser needs, in any Vite config.
+export { inkoxide, type InkoxidePlugin } from '@inkoxide/render/vite';
