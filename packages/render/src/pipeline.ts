@@ -321,7 +321,7 @@ export async function renderSettled(
 /** What {@link renderSettled} gives. */
 interface Settled {
   tree: TreeResult;
-  pdf: Uint8Array;
+  pdf: Uint8Array<ArrayBuffer>;
   pages: number;
   passes: number;
   images: Record<string, Uint8Array>;
@@ -342,7 +342,7 @@ async function settle(
   const registered = { ...images, ...opts.images };
   const all: Record<string, Uint8Array> = { ...registered };
   let fetchMs = 0;
-  const render = async (tr: TreeResult): Promise<Uint8Array> => {
+  const render = async (tr: TreeResult): Promise<Uint8Array<ArrayBuffer>> => {
     checkIds(tr, registered);
     Object.assign(all, tr.images);
     const missing = { remote: notIn(tr.remote, all), pending: notIn(tr.pending, all) };
@@ -492,7 +492,7 @@ export async function renderToBuffer<Input, Component>(
   fe: FrontEnd<Input, Component>,
   input: Input,
   opts: RenderToBufferOptions = {},
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   await init();
   const name = fe.componentName(input);
   // Outside the try: a bad option is not a template error.
@@ -526,7 +526,7 @@ export async function renderDocument(
   doc: Document,
   images: Record<string, Uint8Array> = {},
   opts: RenderOpts = {},
-): Promise<{ pdf: Uint8Array; pages: number; engineMs: number }> {
+): Promise<{ pdf: Uint8Array<ArrayBuffer>; pages: number; engineMs: number }> {
   await init();
   const t0 = performance.now();
   const pdf = await renderPdf(doc, opts, { ...images, ...opts.images });

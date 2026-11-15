@@ -93,6 +93,15 @@ describe('renderToBuffer', () => {
     expect(countPages(pdf)).toBe(1);
   });
 
+  it('gives bytes that are the body of a Response and a part of a Blob, as they are', async () => {
+    const pdf = await renderToBuffer(<Receipt customer="Ada" lines={[]} />);
+    // Typed with their own buffer: with a buffer that may be shared, neither line compiles.
+    const body = await new Response(pdf, { headers: { 'Content-Type': 'application/pdf' } }).arrayBuffer();
+    expect(body.byteLength).toBe(pdf.byteLength);
+    expect(new Blob([pdf]).size).toBe(pdf.byteLength);
+    expect(pdf.buffer).toBeInstanceOf(ArrayBuffer);
+  });
+
   it('paginates long content and fills in the page count', async () => {
     const lines = Array.from({ length: 200 }, (_, i) => ({ name: `Item ${i + 1}`, amount: i * 1.25 }));
     const pdf = await renderToBuffer(<Receipt customer="Ada" lines={lines} />);

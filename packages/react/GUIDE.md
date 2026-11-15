@@ -1713,9 +1713,11 @@ function InvoicePage({ invoice }: { invoice: InvoiceData }) {
   rejects with `INTERNAL`, and the next one starts it again, with its own options. The options (`BrowserOptions`): `wasm` is where the module comes from (a
   URL, a `Response`, its bytes or a compiled `WebAssembly.Module`, of either module); `assets` is
   a folder to serve the bundled fonts and hyphenation patterns from: `fonts/` and `hyphenation/`
-  from `@inkoxide/react`'s `assets/`, with the `.bin` files of `@inkoxide/wasm`'s
+  from `@inkoxide/render`'s `assets/`, with the `.bin` files of `@inkoxide/wasm`'s
   `hyphenation/` in `hyphenation/` too; `threads` is how many threads renders
-  use ([below](#threads-in-the-browser)); `worker: false` renders on the calling thread.
+  use ([below](#threads-in-the-browser)); `worker: false` renders on the calling thread, and a function makes the worker itself, for a
+  build that does not bundle the package's own
+  ([the Angular CLI's](https://github.com/eddiesr93/inkoxide/blob/main/packages/angular/GUIDE.md#in-an-angular-cli-application)).
 - **`clearCaches()`** empties the engine's caches of decoded images, font subsets and SVG text.
   The memory stays with the engine, which reuses it for the next renders; the PDFs are the
   same.
@@ -1824,7 +1826,7 @@ the code.
 
 **Every render fails with "No fonts found … Set INKOXIDE_ASSETS_DIR".**
 The bundled fonts and hyphenation patterns are files in the package's `assets/` folder
-(`node_modules/@inkoxide/react/assets`), found next to its code. When a bundler (esbuild,
+(`node_modules/@inkoxide/render/assets`), found next to its code. When a bundler (esbuild,
 webpack) moves the code into one file, for a serverless function say, they are no longer there.
 Copy that folder into the deployment and point the `INKOXIDE_ASSETS_DIR` environment variable at
 the copy: a folder with `fonts/` (the bundled `.ttf` and `.otf` files) and `hyphenation/`

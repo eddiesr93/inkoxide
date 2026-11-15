@@ -159,6 +159,7 @@ describe('exports', () => {
       '.': './src/index.ts',
       './browser': './src/browser.ts',
       './templates': './src/templates.ts',
+      './worker': './src/worker.ts',
     });
   });
 

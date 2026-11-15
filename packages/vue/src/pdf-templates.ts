@@ -25,18 +25,20 @@ export function pdfTemplates<P extends VuePluginLike>(vuePlugin: P, include?: Te
     if (include === undefined) return true;
     return typeof include === 'function' ? include(file) : include.test(file);
   };
-  const wrap = (hook: unknown, at: number): unknown => {
+  // `id` is where the hook gets the file's id, and `at` its options: `load(id, options)` and
+  // `transform(code, id, options)`.
+  const wrap = (hook: unknown, id: number, at: number): unknown => {
     if (hook === undefined) return undefined;
     const fn = (typeof hook === 'function' ? hook : (hook as { handler: Hook }).handler) as Hook;
     const handler: Hook = function (this: unknown, ...args: unknown[]) {
-      if (matches(String(args[0]))) args[at] = { ...(args[at] as object | undefined), ssr: false };
+      if (matches(String(args[id]))) args[at] = { ...(args[at] as object | undefined), ssr: false };
       return fn.apply(this, args);
     };
     return typeof hook === 'function' ? handler : { ...(hook as object), handler };
   };
   return {
     ...vuePlugin,
-    load: wrap(vuePlugin.load as HookOrObject | undefined, 1),
-    transform: wrap(vuePlugin.transform as HookOrObject | undefined, 2),
+    load: wrap(vuePlugin.load as HookOrObject | undefined, 0, 1),
+    transform: wrap(vuePlugin.transform as HookOrObject | undefined, 1, 2),
   };
 }

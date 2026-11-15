@@ -136,7 +136,7 @@ export interface Timings {
 }
 
 export interface RenderResult {
-  pdf: Uint8Array;
+  pdf: Uint8Array<ArrayBuffer>;
   timings: Timings;
   pages: number;
   /** Engine renders: 1, or more when `render` props needed the page count. */
