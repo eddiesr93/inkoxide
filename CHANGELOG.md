@@ -37,6 +37,13 @@ schema has its own version and [changelog](packages/schema/CHANGELOG.md).
   double with each level, for rows in columns, for grids with `alignItems: 'baseline'` and for
   sizes in percent, so a few dozen levels took seconds. Documents render to the same bytes.
 
+### Fixed
+
+- Under PDF/A-1b, text whose glyphs sit far apart for its size (a font with stray advances, or
+  wide letter spacing on small text) no longer fails the render with `a real number past
+  ±32767`: such a glyph is placed with a text matrix of its own, not with an adjustment. The
+  text draws where it did.
+
 ### Security
 
 - Nested boxes whose sizes in percent need more work than any real document are a
