@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./templates": "./src/templates.ts",
     "./browser": "./src/browser.ts",
+    "./vite": "./src/vite.ts",
     "./worker": "./src/worker.ts"
   },
   "dependencies": {

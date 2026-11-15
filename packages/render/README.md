@@ -61,6 +61,7 @@ document follows the
 | `countPages(pdf)`, `version()`, `engineStatus()` | The page count of a PDF; the engine and schema versions; what `init` loaded. |
 | `RenderError` | Every failure, with a `code`. |
 | `createRenderer(frontEnd)` | For a front end: the functions it exports, from how it builds a document tree (`FrontEnd`): in Node a `NodeRenderer` (`renderToBuffer`, `renderToFile`, `renderToStream`, `generate`, `renderTree`), in a browser a `BrowserRenderer` (`renderToBuffer`, `renderToBlob`, a web stream, `generate`). Their documentation is the front ends'. |
+| `inkoxide()` (`@inkoxide/render/vite`) | The Vite plugin a front end exports from its `vite` entry: the configuration a page that renders in the browser needs (`worker.format`, `@inkoxide/wasm` out of the dev server's pre-bundling). An `InkoxidePlugin`. |
 | `PdfRun`, `sameDocument`, `viewerUrl` (`@inkoxide/render/browser`) | For a front end's browser helpers: a document rendered to a PDF blob and its URL (`BlobRender` renders it), again when it changes (`follow`) or on request, each render stopping the one still running and each URL revoked when another replaces it; whether two documents render the same PDF; and the URL a frame shows a PDF at, with or without the viewer's toolbar. `PdfSnapshot` is the state, and `PdfState` the state with `update()`, as the helpers give it. |
 | `@inkoxide/render/templates` | What templates served by id share in every front end: `parseData`, `renderSettled`, `renderDocument`. |
 

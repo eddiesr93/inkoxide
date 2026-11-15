@@ -39,6 +39,12 @@ export interface TailwindPluginOptions {
 /** The module the plugin puts `@inkoxide/tailwind` in place of, and the table stub it fills. */
 const PRECOMPILED = realpathSync(fileURLToPath(new URL('./precompiled.ts', import.meta.url)));
 const TABLE_FILE = realpathSync(fileURLToPath(new URL('./table.ts', import.meta.url)));
+/**
+ * The id the table stub has in a Vite, Rollup or Rolldown build: a module of the plugin's, not a
+ * file. A dev server serves a file of `node_modules` to be cached for good (`?v=…`), so the page
+ * would keep the table of the first time it loaded, whatever classes the sources got since.
+ */
+const TABLE_ID = '\0inkoxide-tailwind:table';
 
 /** The theme CSS of `options`, where its imports resolve from, and its file. */
 function themeOf(options: TailwindPluginOptions, root: string): ThemeOptions & { file?: string } {
@@ -219,13 +225,17 @@ export function inkoxideTailwind(options: TailwindPluginOptions = {}): TailwindP
       sources.restart();
       for (const f of await sources.files()) this.addWatchFile?.(f);
     },
-    resolveId(id, _importer, opts) {
+    resolveId(id, importer, opts) {
+      // The stub `precompiled.ts` imports.
+      if (importer !== undefined && id.startsWith('./table.') && fileOf(importer) === slashed(PRECOMPILED)) {
+        return TABLE_ID;
+      }
       if (id !== '@inkoxide/tailwind') return null;
       const server = opts?.ssr === true || this.environment?.config?.consumer === 'server';
       return server ? null : PRECOMPILED;
     },
     async load(id) {
-      if (fileOf(id) !== slashed(TABLE_FILE)) return null;
+      if (id !== TABLE_ID && fileOf(id) !== slashed(TABLE_FILE)) return null;
       return { code: (await sources.table()).code, map: null };
     },
     // A file created or changed in the browser's environment (only it has the table; a removed
@@ -238,7 +248,7 @@ export function inkoxideTailwind(options: TailwindPluginOptions = {}): TailwindP
       if (await sources.isTheme(path)) sources.restart();
       else if (!(await sources.update(path, read))) return undefined;
       // A new class or theme: the table again, and the page, whose styles are cached.
-      const mod = env.moduleGraph.getModuleById(slashed(TABLE_FILE));
+      const mod = env.moduleGraph.getModuleById(TABLE_ID);
       if (mod) env.moduleGraph.invalidateModule(mod as never);
       env.hot.send({ type: 'full-reload' });
       return [];

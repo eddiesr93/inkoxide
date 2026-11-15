@@ -243,10 +243,19 @@ describe('exports', () => {
     expect(declared(SRC, 'templates.ts')).toEqual(sorted([...TEMPLATES_VALUES, ...TEMPLATES_TYPES]));
   });
 
-  it('has an entry in package.json for each, with the svelte condition first', () => {
-    expect(Object.keys(pkg.exports).sort()).toEqual(['.', './browser', './templates']);
-    for (const entry of Object.values(pkg.exports))
+  it('has an entry in package.json for each, with the svelte condition before the default', () => {
+    const { './vite': vite, '.': main, ...components } = pkg.exports;
+    expect(Object.keys(components).sort()).toEqual(['./browser', './templates']);
+    for (const entry of Object.values(components))
       expect(Object.keys(entry as object)).toEqual(['svelte', 'default']);
+    // In a browser bundle the package is its browser entry: no alias, and no Node binding.
+    expect(main).toEqual({
+      browser: './src/browser.ts',
+      svelte: './src/index.ts',
+      default: './src/index.ts',
+    });
+    // The Vite plugin has no component to compile.
+    expect(vite).toBe('./src/vite.ts');
   });
 
   it('has each name in its docs, or in those of the package it comes from', () => {

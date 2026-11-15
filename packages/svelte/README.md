@@ -105,6 +105,16 @@ the function reads changes; `<BlobProvider {document}>` hands them to its childr
 [In the browser](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#in-the-browser)
 for where the engine and fonts come from.
 
+In a browser bundle `@inkoxide/svelte` is its browser entry, so a template imports its components
+the same on a server and in a page. With Vite, `inkoxide()` sets what the engine needs:
+
+```ts
+// vite.config.ts
+import { inkoxide } from '@inkoxide/svelte/vite';
+
+export default defineConfig({ plugins: [sveltekit(), inkoxide()] });
+```
+
 ## Licence
 
 MIT

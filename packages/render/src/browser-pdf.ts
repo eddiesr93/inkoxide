@@ -14,8 +14,11 @@ export interface PdfSnapshot {
   url: string | null;
   /** Whether a render is running. */
   loading: boolean;
-  /** Why the last render failed (a `RenderError`, usually), or null. */
-  error: unknown;
+  /**
+   * Why the last render failed, or null: a `RenderError`, or the `DOMException` of a `timeoutMs`
+   * that passed. What is thrown that is not an `Error` (the reason of a `signal`) is wrapped in one.
+   */
+  error: Error | null;
 }
 
 /** What a helper gives besides the state: `update()` renders again, `document` or the last one. */
@@ -91,7 +94,7 @@ export class PdfRun<Input> {
       },
       (error: unknown) => {
         if (signal.aborted) return;
-        this.set({ loading: false, error });
+        this.set({ loading: false, error: error instanceof Error ? error : new Error(String(error)) });
       },
     );
   }
@@ -115,7 +118,10 @@ export class PdfRun<Input> {
  * same values (a React element or a Vue VNode made again with the same props); or a component
  * with the same props or inputs (`{ component, props }` in Svelte, `{ component, inputs }` in
  * Angular). Elements first: a VNode has a `component` too, the instance it mounts, null until then.
- * A component alone is the same only as itself.
+ * A component alone is the same only as itself. Props that are arrays or plain objects are
+ * compared by their contents: a template that builds its data as it renders (`{ ...invoice }`)
+ * would otherwise be another document each time, and a helper whose state the template reads
+ * would render without end.
  */
 export function sameDocument(a: unknown, b: unknown): boolean {
   if (a === b) return true;
@@ -134,10 +140,34 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 /** Whether two sets of props are the same values (none and `{}` are). */
 function sameProps(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  const x = isObject(a) ? a : {};
-  const y = isObject(b) ? b : {};
-  const keys = Object.keys(x);
+  return sameValue(isObject(a) ? a : {}, isObject(b) ? b : {}, 0);
+}
+
+/** How deep data is compared by its contents; deeper, it is the same only as itself. */
+const MAX_DEPTH = 32;
+
+const isPlain = (value: object): boolean => {
+  const proto: unknown = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+};
+
+/**
+ * Whether two values are the same data: the same value, or arrays and plain objects with the same
+ * contents, so that data made again with the same contents (`{ ...invoice }`, a list filtered
+ * again) is not another document. Anything else (a function, bytes, a `Date`, an instance of a
+ * class) is the same only as itself.
+ */
+function sameValue(a: unknown, b: unknown, depth: number): boolean {
+  if (Object.is(a, b)) return true;
+  if (!isObject(a) || !isObject(b) || depth > MAX_DEPTH) return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((item, i) => sameValue(item, b[i], depth + 1));
+  }
+  if (!isPlain(a) || !isPlain(b)) return false;
+  const keys = Object.keys(a);
   return (
-    keys.length === Object.keys(y).length && keys.every((k) => Object.hasOwn(y, k) && Object.is(x[k], y[k]))
+    keys.length === Object.keys(b).length &&
+    keys.every((k) => Object.hasOwn(b, k) && sameValue(a[k], b[k], depth + 1))
   );
 }

@@ -10,6 +10,7 @@ import pkg from '../package.json' with { type: 'json' };
 import * as browser from '../src/browser.ts';
 import * as main from '../src/index.ts';
 import * as templates from '../src/templates.ts';
+import * as vite from '../src/vite.ts';
 
 const MAIN_VALUES = [
   'Font',
@@ -88,8 +89,19 @@ describe('exports', () => {
     expect(declaredIn('templates.ts')).toEqual(sorted([...TEMPLATES_VALUES, ...TEMPLATES_TYPES]));
   });
 
+  it('@inkoxide/render/vite exports the Vite plugin, which sets what a browser page needs', () => {
+    expect(Object.keys(vite)).toEqual(['inkoxide']);
+    expect(declaredIn('vite.ts')).toEqual(['InkoxidePlugin', 'inkoxide']);
+    const plugin = vite.inkoxide();
+    expect(plugin.name).toBe('inkoxide');
+    expect(plugin.config()).toEqual({
+      worker: { format: 'es' },
+      optimizeDeps: { exclude: ['@inkoxide/wasm'] },
+    });
+  });
+
   it('has an entry in package.json for each', () => {
-    expect(Object.keys(pkg.exports).sort()).toEqual(['.', './browser', './templates', './worker']);
+    expect(Object.keys(pkg.exports).sort()).toEqual(['.', './browser', './templates', './vite', './worker']);
   });
 
   it('has each name in its docs, or in those of the package it comes from', () => {

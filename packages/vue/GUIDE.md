@@ -141,7 +141,8 @@ render functions.
 - `renderToBlob` and `renderToStream` (a web stream).
 
 They render again only when the document is another one: a VNode of another component or key, or
-with other prop values. Where the engine and the fonts come from, a CDN and Content Security
+with other prop values (arrays and plain objects are compared by their contents, so data made
+again is the same document). Where the engine and the fonts come from, a CDN and Content Security
 Policy are in the React guide's
 [In the browser](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#in-the-browser).
 
@@ -175,7 +176,7 @@ const { pdf } = await generate(invoice, { number: '2026-001', total: 120 });
 | `Font`, `init`, `countPages`, `version`, `engineStatus`, `RenderError`, `TemplateError` | As in the React guide. |
 | `@inkoxide/vue/browser` | The above without what needs Node, with `usePdf`, `PdfViewer`, `PdfDownloadLink`, `BlobProvider`, `renderToBlob`, `generate`; `PdfState` is the state the components' slots get. |
 | `@inkoxide/vue/templates` | `generate`, `renderTree`, `parseData`, `renderSettled`, `renderDocument`. |
-| `@inkoxide/vue/vite` | `pdfTemplates(vuePlugin, include?)`: `VuePluginLike` is what it takes of `@vitejs/plugin-vue`, and `TemplateFilter` picks the template files (a `RegExp` or a function of the file name). |
+| `@inkoxide/vue/vite` | `inkoxide()`, the Vite plugin a page that renders in the browser needs (an `InkoxidePlugin`; [React guide](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#in-the-browser)), and `pdfTemplates(vuePlugin, include?)`: `VuePluginLike` is what it takes of `@vitejs/plugin-vue`, and `TemplateFilter` picks the template files (a `RegExp` or a function of the file name). |
 
 The options of each are the React guide's
 [API](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#api).

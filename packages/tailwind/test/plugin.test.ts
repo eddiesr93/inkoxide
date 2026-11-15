@@ -90,7 +90,7 @@ describe('the build plugin', () => {
     ]);
   });
 
-  it('leaves server bundles to the compiler', () => {
+  it('leaves server bundles to the compiler', async () => {
     const plugin = inkoxideTailwind();
     const precompiled = plugin.resolveId.call({}, '@inkoxide/tailwind');
     expect(precompiled).toMatch(/precompiled\.ts$/);
@@ -98,6 +98,13 @@ describe('the build plugin', () => {
     const server = { environment: { config: { consumer: 'server' } } };
     expect(plugin.resolveId.call(server, '@inkoxide/tailwind')).toBeNull();
     expect(plugin.resolveId.call({}, '@inkoxide/style')).toBeNull();
+    // The table it imports is a module of the plugin's, not a file: a dev server would have the
+    // browser cache a file of node_modules (`?v=…`) for good, with the classes of its first load.
+    const table = plugin.resolveId.call({}, './table.js', `${precompiled}?v=1a2b3c4d`);
+    expect(table).toBe('\0inkoxide-tailwind:table');
+    expect(plugin.resolveId.call({}, './table.ts', precompiled ?? '')).toBe(table);
+    expect(plugin.resolveId.call({}, './table.js', join(dir, 'src/main.ts'))).toBeNull();
+    expect((await plugin.load.call({}, table ?? ''))?.code).toContain('export const TABLE');
   });
 
   it('works with esbuild, for the browser only', async () => {
@@ -272,7 +279,7 @@ export const styles = [tw(/class="([^"]+)"/.exec(template)?.[1] ?? '')];
     expect(await hot(b, '<View className="m-3" />', 'create')).toEqual([]);
     expect(await hot(join(dir, 'classes.json'), '["m-5"]')).toEqual([]);
     expect(sent).toEqual([{ type: 'full-reload' }, { type: 'full-reload' }]);
-    expect(invalidated).toHaveLength(2);
+    expect(invalidated).toEqual([{ id: '\0inkoxide-tailwind:table' }, { id: '\0inkoxide-tailwind:table' }]);
     const table = await plugin.load.call({}, join(SRC, 'table.ts'));
     expect(table?.code).toContain('m-3');
     expect(table?.code).toContain('m-5');

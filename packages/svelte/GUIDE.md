@@ -114,7 +114,8 @@ a Web Worker, with [`@inkoxide/wasm`](https://www.npmjs.com/package/@inkoxide/wa
   given the render's state; `<BlobProvider {document}>` hands the state to its children snippet.
 - `renderToBlob` and `renderToStream` (a web stream).
 
-They render again only when the document is another one: another component, or other prop values.
+They render again only when the document is another one: another component, or other prop values
+(arrays and plain objects are compared by their contents, so data made again is the same document).
 Where the engine and the fonts come from, a CDN and Content Security Policy are in the React
 guide's [In the browser](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#in-the-browser).
 
@@ -148,6 +149,7 @@ const { pdf } = await generate(invoice, { number: '2026-001', total: 120 });
 | `Font`, `init`, `countPages`, `version`, `engineStatus`, `RenderError`, `TemplateError` | As in the React guide. |
 | `@inkoxide/svelte/browser` | The above without what needs Node, with `createPdf`, `PdfViewer`, `PdfDownloadLink`, `BlobProvider`, `renderToBlob`, `generate`; `PdfState` is what `createPdf` gives. |
 | `@inkoxide/svelte/templates` | `generate`, `renderTree`, `parseData`, `renderSettled`, `renderDocument`. |
+| `@inkoxide/svelte/vite` | `inkoxide()`, the Vite plugin a page that renders in the browser needs (an `InkoxidePlugin`; [React guide](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#in-the-browser)). |
 
 The options of each are the React guide's
 [API](https://github.com/eddiesr93/inkoxide/blob/main/packages/react/GUIDE.md#api).

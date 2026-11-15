@@ -27,7 +27,7 @@ export interface InjectPdfResult {
   /** Whether a render is running. */
   loading: Signal<boolean>;
   /** Why the last render failed (a `RenderError`, usually), or null. */
-  error: Signal<unknown>;
+  error: Signal<Error | null>;
   /** Renders again: `document` when given, otherwise the last one. */
   update(document?: Renderable): void;
 }

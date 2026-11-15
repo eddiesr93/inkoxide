@@ -280,9 +280,11 @@ describe('exports', () => {
 
   it('has an entry in package.json for each', () => {
     expect(pkg.exports).toEqual({
-      '.': './src/index.ts',
+      // In a browser bundle the package is its browser entry: no alias, and no Node binding.
+      '.': { browser: './src/browser.ts', default: './src/index.ts' },
       './templates': './src/templates.ts',
       './browser': './src/browser.ts',
+      './vite': './src/vite.ts',
     });
   });
 
