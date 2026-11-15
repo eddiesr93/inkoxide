@@ -24,6 +24,13 @@ use super::{
 /// puts it needs no `TJ` adjustment.
 pub(super) const KERN_EPS: f32 = 1e-3;
 
+/// The largest `TJ` adjustment written, in thousandths of text space: a
+/// glyph further than this from where the previous one's advance ends is
+/// placed with a text matrix of its own. Under the largest real number of
+/// PDF/A-1 (32767), so that a font with stray advances, or wide letter
+/// spacing on small text, does not make a document fail there.
+const MAX_ADJUST: f32 = 32_000.0;
+
 /// Encodes one page: its content stream, compressed at Flate level
 /// `compression`, and the resources and areas the writer needs from it.
 /// With `plan` the content is tagged.
@@ -345,7 +352,8 @@ pub(super) fn type3_name(index: u16) -> String {
 }
 
 /// Text ops: one `TJ` per stretch of glyphs on the baseline, with kerning
-/// adjustments wherever our positions differ from the font's advances.
+/// adjustments wherever our positions differ from the font's advances; a
+/// glyph further than [`MAX_ADJUST`] from the pen starts a new stretch.
 /// With `skip_notdef` (PDF/A, PDF/UA), `.notdef` glyphs are left out and the next
 /// glyph keeps its position.
 pub(super) fn show_text(
@@ -400,6 +408,20 @@ pub(super) fn show_text(
             .iter()
             .position(|g| g.y_offset != 0.0 || silent(g))
             .map_or(glyphs.len(), |n| i + n);
+        // Or up to the next glyph too far from the pen for an adjustment.
+        let mut pen = g0.x;
+        let mut far = None;
+        for (n, g) in glyphs[i..end].iter().enumerate() {
+            if skip_notdef && g.id == 0 {
+                continue;
+            }
+            if n > 0 && t.size != 0.0 && ((g.x - pen) * 1000.0 / t.size).abs() > MAX_ADJUST {
+                far = Some(i + n);
+                break;
+            }
+            pen = g.x + font.advance(g.id) * scale;
+        }
+        let end = far.unwrap_or(end);
         let run = glyphs[i..end]
             .iter()
             .filter(|g| !(skip_notdef && g.id == 0));
