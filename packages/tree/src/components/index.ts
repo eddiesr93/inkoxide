@@ -632,8 +632,14 @@ export interface TextProps extends Flow {
 }
 
 /** A `Link` needs a target: `href`, or `src`, which is the same. */
-export type LinkProps = Flow &
-  (
+export type LinkProps = Flow & {
+  /**
+   * Makes the clickable area larger than the link, which helps small links on touch screens:
+   * points on every side, or `{ top, right, bottom, left }`. In a `Text`, around the link's
+   * part of each line.
+   */
+  hitSlop?: number | { top?: number; right?: number; bottom?: number; left?: number };
+} & (
     | { href: string; src?: string }
     | {
         /** The same as `href`. */
@@ -825,6 +831,10 @@ export interface TextFormat {
 
 export interface CheckboxProps extends FieldCommon {
   checked?: boolean;
+  /** What the field exports when it is checked; default `'Yes'`. */
+  value?: string;
+  /** The mark of a checked box: a check mark or a cross; default `'check'`. */
+  mark?: 'check' | 'cross';
 }
 
 export interface RadioProps extends FieldCommon {

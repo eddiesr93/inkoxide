@@ -633,7 +633,7 @@ export class Resume {
           }
         </ink-view>
         <ink-text
-          >A <ink-link href="https://example.com">link</ink-link> and a note
+          >A <ink-link href="https://example.com" [hitSlop]="4">link</ink-link> and a note
           <ink-note>Read me</ink-note>.</ink-text
         >
         <ink-text>The logo<ink-leader /><ink-page-ref to="#logo" /></ink-text>
@@ -645,7 +645,13 @@ export class Resume {
         <ink-canvas [width]="40" [height]="20" [paint]="paint" />
         <ink-view class="flex-row gap-2">
           <ink-text-field name="name" value="Ada" class="h-5 w-24 border border-gray-300" />
-          <ink-checkbox name="agree" checked class="h-3 w-3 border border-gray-400" />
+          <ink-checkbox
+            name="agree"
+            checked
+            value="agreed"
+            mark="cross"
+            class="h-3 w-3 border border-gray-400"
+          />
         </ink-view>
       </ink-page>
     </ink-document>

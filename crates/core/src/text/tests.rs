@@ -1363,6 +1363,7 @@ fn vertical_text_shapes_top_to_bottom_with_vertical_forms() {
         bookmark_title: None,
         leader: None,
         link: None,
+        link_slop: None,
         hyphenate: Some(false),
         font_key: None,
         vertical_align: None,

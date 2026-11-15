@@ -743,7 +743,7 @@ fn validation_returns_at_most_max_errors() {
 fn links_and_bookmarks() {
     let ok = doc(
         r##"{"type":"text","id":"a","bookmark":{"title":"A"},"runs":[{"text":"x","font":"Inter-Regular","size":9}]},
-            {"type":"box","link":"#a","bookmark":{"title":"B","level":3}},
+            {"type":"box","link":"#a","linkSlop":{"top":4,"left":4},"bookmark":{"title":"B","level":3}},
             {"type":"text","runs":[{"text":"y","font":"Inter-Regular","size":9,"link":"mailto:x@example.com"}]},
             {"type":"image","src":"logo","link":"https://example.com/ä b"},
             {"type":"text","runs":[{"pageOf":"a","font":"Inter-Regular","size":9,"link":"#a"}]}"##,
@@ -771,6 +771,21 @@ fn links_and_bookmarks() {
             r#"{"type":"box","link":""}"#,
             C::InvalidValue,
             "pages[0].children[1].link",
+        ),
+        (
+            r#"{"type":"box","linkSlop":{"top":2}}"#,
+            C::InvalidValue,
+            "pages[0].children[1].linkSlop",
+        ),
+        (
+            r##"{"type":"box","link":"#t","linkSlop":{"left":-1}}"##,
+            C::OutOfRange,
+            "pages[0].children[1].linkSlop.left",
+        ),
+        (
+            r#"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":9,"linkSlop":{}}]}"#,
+            C::InvalidValue,
+            "pages[0].children[1].runs[0].linkSlop",
         ),
         (
             r#"{"type":"text","runs":[{"text":"x","font":"Inter-Regular","size":9,"link":"1http:x"}]}"#,
@@ -1261,6 +1276,16 @@ fn form_fields() {
             r#"{"type":"field","field":{"name":"a","kind":"checkbox","multiline":true}}"#,
             C::InvalidValue,
             "multiline",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"a","kind":"checkbox","value":""}}"#,
+            C::InvalidValue,
+            "value",
+        ),
+        (
+            r#"{"type":"field","field":{"name":"a","kind":"radio","value":"x","mark":"cross"}}"#,
+            C::InvalidValue,
+            "mark",
         ),
         (
             r#"{"type":"field","field":{"name":"a","kind":"text","font":"Inter-Regular","value":"long","maxLength":2}}"#,

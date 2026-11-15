@@ -20,6 +20,10 @@ Still document schema version 1.
   line has left with the pattern repeated. A run takes one of `text`, `placeholder`, `pageOf`,
   `bookmarkTitle`, `leader`, `image`, `note` and `attachment`.
 - **Roles:** `toc` and `tocItem`, a table of contents and its entries.
+- **Checkboxes:** `value` on a checkbox field, what it exports when on (`Yes` without one; it
+  was `INVALID_VALUE` before), and `mark` (`check` or `cross`), the mark it shows when on.
+- **Link slop:** `linkSlop` on a node or a text run with `link`, points per side: how far the
+  clickable area reaches past the node's box, or past the run's part of each line.
 
 ## 2.7.0 - 2026-10-25
 

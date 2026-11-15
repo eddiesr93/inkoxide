@@ -14,7 +14,21 @@ pub(crate) use debug::{DebugBoxes, DebugLine, Labels as DebugLabels};
 pub(crate) use shapes::{is_square, polygon, rounded_rect, Radii, KAPPA, NO_RADII};
 
 use crate::geom::Rect;
-use crate::schema::Color;
+use crate::schema::{Color, Edges};
+
+/// `rect` reaching `slop` further on each side: the clickable area of a
+/// link with `linkSlop`.
+pub(crate) fn grown(rect: Rect, slop: Option<&Edges<f32>>) -> Rect {
+    match slop {
+        Some(s) => Rect::new(
+            rect.x - s.left,
+            rect.y - s.top,
+            rect.w + s.left + s.right,
+            rect.h + s.top + s.bottom,
+        ),
+        None => rect,
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum PathSeg {

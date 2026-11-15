@@ -185,6 +185,38 @@ fn links_and_widgets_cover_their_transformed_area() {
 }
 
 #[test]
+fn a_link_reaches_past_its_box_by_its_slop() {
+    // A 100 × 40 box at (50, 60) on the 300 pt tall page.
+    let boxed = |slop: &str| {
+        annotation_rects(&format!(
+            r#"{{"type":"box","link":"https://a.example"{slop},"style":{{"width":100,"height":40,"margin":{{"left":50,"top":60}}}}}}"#
+        ))
+    };
+    assert_eq!(boxed(""), [[50.0, 200.0, 150.0, 240.0]]);
+    assert_eq!(
+        boxed(r#","linkSlop":{"top":4,"right":10,"bottom":6,"left":2}"#),
+        [[48.0, 194.0, 160.0, 244.0]]
+    );
+    // Sides left out are 0.
+    assert_eq!(
+        boxed(r#","linkSlop":{"right":10}"#),
+        [[50.0, 200.0, 160.0, 240.0]]
+    );
+    // A run: around its part of the line.
+    let run = |slop: &str| {
+        annotation_rects(&format!(
+            r#"{{"type":"box","style":{{"margin":{{"left":50,"top":60}}}},"children":[{{"type":"text","runs":[{{"text":"Click","font":"Inter-Regular","size":10,"link":"https://b.example"{slop}}}]}}]}}"#
+        ))
+    };
+    let (plain, wide) = (
+        run(""),
+        run(r#","linkSlop":{"top":5,"right":5,"bottom":5,"left":5}"#),
+    );
+    let [x0, y0, x1, y1] = plain[0];
+    assert_eq!(wide, [[x0 - 5.0, y0 - 5.0, x1 + 5.0, y1 + 5.0]]);
+}
+
+#[test]
 fn the_content_stream_writes_non_finite_numbers_as_zero_and_bounds_the_rest() {
     let doc: crate::schema::Document =
         serde_json::from_str(r#"{"version":1,"pages":[{"size":{"width":10,"height":10}}]}"#)
